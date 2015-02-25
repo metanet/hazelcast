@@ -87,7 +87,7 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
                 sendResponse(tasks);
             }
         } finally {
-            partitionService.finishReplicaSyncProcess();
+            partitionService.releaseReplicaSyncPermit();
         }
     }
 
@@ -117,7 +117,7 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
             return false;
         }
 
-        if (!partitionService.startReplicaSyncProcess()) {
+        if (!partitionService.tryToAcquireReplicaSyncPermit()) {
             if (logger.isFinestEnabled()) {
                 logger.finest(
                         "Max parallel replication process limit exceeded! Could not run replica sync -> " + toString());

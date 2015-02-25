@@ -44,7 +44,7 @@ public class ReplicaSyncRetryResponse extends Operation
         final int partitionId = getPartitionId();
         final int replicaIndex = getReplicaIndex();
 
-        partitionService.clearReplicaSync(partitionId, replicaIndex);
+        partitionService.clearReplicaSyncRequest(partitionId, replicaIndex);
 
         InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
         Address thisAddress = getNodeEngine().getThisAddress();
