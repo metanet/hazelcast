@@ -481,7 +481,8 @@ public class MapProxyImpl<K, V> extends MapProxySupport implements IMap<K, V>, I
         if (id == null) {
             throw new NullPointerException("Listener id should not be null!");
         }
-        return removeEntryListenerInternal(id);
+        final MapService mapService = getService();
+        return mapService.getMapServiceContext().removePartitionLostListener(name, id);
     }
 
     @Override

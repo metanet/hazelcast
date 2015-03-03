@@ -19,4 +19,6 @@ public interface MapServiceContextEventListenerSupport {
 
     boolean removeEventListener(String mapName, String registrationId);
 
+    boolean removePartitionLostListener(String mapName, String registrationId);
+
 }

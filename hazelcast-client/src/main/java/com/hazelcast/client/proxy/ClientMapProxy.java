@@ -33,6 +33,7 @@ import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.IMapEvent;
 import com.hazelcast.core.MapEvent;
+import com.hazelcast.core.MapPartitionLostEvent;
 import com.hazelcast.core.Member;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.map.EntryProcessor;
@@ -46,6 +47,7 @@ import com.hazelcast.map.impl.client.MapAddEntryListenerRequest;
 import com.hazelcast.map.impl.client.MapAddIndexRequest;
 import com.hazelcast.map.impl.client.MapAddInterceptorRequest;
 import com.hazelcast.map.impl.client.MapAddNearCacheEntryListenerRequest;
+import com.hazelcast.map.impl.client.MapAddPartitionLostListenerRequest;
 import com.hazelcast.map.impl.client.MapClearRequest;
 import com.hazelcast.map.impl.client.MapContainsKeyRequest;
 import com.hazelcast.map.impl.client.MapContainsValueRequest;
@@ -75,6 +77,7 @@ import com.hazelcast.map.impl.client.MapQueryRequest;
 import com.hazelcast.map.impl.client.MapRemoveEntryListenerRequest;
 import com.hazelcast.map.impl.client.MapRemoveIfSameRequest;
 import com.hazelcast.map.impl.client.MapRemoveInterceptorRequest;
+import com.hazelcast.map.impl.client.MapRemovePartitionLostListenerRequest;
 import com.hazelcast.map.impl.client.MapRemoveRequest;
 import com.hazelcast.map.impl.client.MapReplaceIfSameRequest;
 import com.hazelcast.map.impl.client.MapReplaceRequest;
@@ -104,6 +107,7 @@ import com.hazelcast.query.PagingPredicate;
 import com.hazelcast.query.PagingPredicateAccessor;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.spi.impl.PortableEntryEvent;
+import com.hazelcast.spi.impl.PortableMapPartitionLostEvent;
 import com.hazelcast.util.ExceptionUtil;
 import com.hazelcast.util.IterationType;
 import com.hazelcast.util.QueryResultSet;
@@ -535,14 +539,15 @@ public final class ClientMapProxy<K, V> extends ClientProxy implements IMap<K, V
 
     @Override
     public String addPartitionLostListener(MapPartitionLostListener listener) {
-        // TODO basri
-        return null;
+        MapAddPartitionLostListenerRequest request = new MapAddPartitionLostListenerRequest(name);
+        final EventHandler<PortableMapPartitionLostEvent> handler = new ClientMapPartitionLostEventHandler(listener);
+        return listen(request, handler);
     }
 
     @Override
     public boolean removePartitionLostListener(String id) {
-        // TODO basri
-        return false;
+        final MapRemovePartitionLostListenerRequest request = new MapRemovePartitionLostListenerRequest(name, id);
+        return stopListening(request, id);
     }
 
     @Override
@@ -1120,6 +1125,32 @@ public final class ClientMapProxy<K, V> extends ClientProxy implements IMap<K, V
 
         @Override
         public void onListenerRegister() {
+        }
+    }
+
+    private class ClientMapPartitionLostEventHandler implements EventHandler<PortableMapPartitionLostEvent> {
+
+
+        private MapPartitionLostListener listener;
+
+        public ClientMapPartitionLostEventHandler(MapPartitionLostListener listener) {
+            this.listener = listener;
+        }
+
+        @Override
+        public void handle(PortableMapPartitionLostEvent event) {
+            final Member member = getContext().getClusterService().getMember(event.getUuid());
+            listener.partitionLost(new MapPartitionLostEvent(name, member, -1, event.getPartitionId()));
+        }
+
+        @Override
+        public void beforeListenerRegister() {
+
+        }
+
+        @Override
+        public void onListenerRegister() {
+
         }
     }
 

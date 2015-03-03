@@ -217,5 +217,11 @@ abstract class AbstractMapServiceContextSupport implements MapServiceContext {
         return nodeEngine.getEventService().deregisterListener(serviceName(), mapName, registrationId);
     }
 
+    @Override
+    public boolean removePartitionLostListener(String mapName, String registrationId) {
+        final String topic = mapName + ":partitionLost";
+        return nodeEngine.getEventService().deregisterListener(serviceName(), topic, registrationId);
+    }
+
 }
 
