@@ -19,6 +19,7 @@ package com.hazelcast.core;
 import com.hazelcast.map.EntryProcessor;
 import com.hazelcast.map.MapInterceptor;
 import com.hazelcast.map.listener.MapListener;
+import com.hazelcast.map.listener.MapPartitionLostListener;
 import com.hazelcast.mapreduce.JobTracker;
 import com.hazelcast.mapreduce.aggregation.Aggregation;
 import com.hazelcast.mapreduce.aggregation.Supplier;
@@ -830,6 +831,18 @@ public interface IMap<K, V>
      * @return true if registration is removed, false otherwise
      */
     boolean removeEntryListener(String id);
+
+
+    String addPartitionLostListener(MapPartitionLostListener listener);
+
+    /**
+     * Removes the specified partition lost listener
+     * Returns silently if there is no such listener added before.
+     *
+     * @param id id of registered listener
+     * @return true if registration is removed, false otherwise
+     */
+    boolean removePartitionLostListener(String id);
 
     /**
      * Adds the specified entry listener for the specified key.

@@ -6,6 +6,10 @@ import com.hazelcast.nio.serialization.DataSerializable;
 
 import java.io.IOException;
 
+/**
+ * Internal event that is dispatched to @see com.hazelcast.spi.PartitionAwareService#onPartitionLostEvent()
+ * It contains the id and number of backups of the lost partition
+ */
 public class InternalPartitionLostEvent implements DataSerializable {
 
     private int partitionId;

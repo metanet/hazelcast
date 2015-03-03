@@ -19,6 +19,7 @@ package com.hazelcast.partition;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MigrationListener;
 import com.hazelcast.core.Partition;
+import com.hazelcast.core.PartitionLostListener;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.logging.ILogger;
@@ -81,6 +82,16 @@ public class PartitionServiceProxy implements com.hazelcast.core.PartitionServic
     @Override
     public boolean removeMigrationListener(final String registrationId) {
         return partitionService.removeMigrationListener(registrationId);
+    }
+
+    @Override
+    public String addPartitionLostListener(PartitionLostListener partitionLostListener) {
+        return partitionService.addPartitionLostListener(partitionLostListener);
+    }
+
+    @Override
+    public boolean removePartitionLostListener(String registrationId) {
+        return partitionService.removePartitionLostListener(registrationId);
     }
 
     @Override

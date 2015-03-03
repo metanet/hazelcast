@@ -18,6 +18,7 @@ package com.hazelcast.partition;
 
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MigrationListener;
+import com.hazelcast.core.PartitionLostListener;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
@@ -34,6 +35,16 @@ public interface InternalPartitionService extends CoreService {
 
     long DEFAULT_REPLICA_SYNC_DELAY = 5000L;
     long REPLICA_SYNC_RETRY_DELAY = 500L;
+
+    /**
+     * Static constant for dispatching and listening migration events
+     */
+    String MIGRATION_EVENT_TOPIC = ".migration";
+
+    /**
+     * Static constant for dispatching and internal partition lost events
+     */
+    String PARTITION_LOST_EVENT_TOPIC = ".partitionLost";
 
     /**
      * Gets the owner of the partition if it's set.
@@ -123,6 +134,10 @@ public interface InternalPartitionService extends CoreService {
     String addMigrationListener(MigrationListener migrationListener);
 
     boolean removeMigrationListener(String registrationId);
+
+    String addPartitionLostListener(PartitionLostListener partitionLostListener);
+
+    boolean removePartitionLostListener(String registrationId);
 
     Member getMember(Address address);
 

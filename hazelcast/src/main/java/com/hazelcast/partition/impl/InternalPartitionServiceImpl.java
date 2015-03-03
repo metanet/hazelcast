@@ -22,6 +22,10 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.core.MigrationEvent.MigrationStatus;
 import com.hazelcast.core.MigrationListener;
+import com.hazelcast.core.PartitionEvent;
+import com.hazelcast.core.PartitionEventListener;
+import com.hazelcast.core.PartitionLostEvent;
+import com.hazelcast.core.PartitionLostListener;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.OutOfMemoryErrorDispatcher;
@@ -30,6 +34,7 @@ import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.partition.InternalPartition;
+import com.hazelcast.partition.InternalPartitionLostEvent;
 import com.hazelcast.partition.InternalPartitionService;
 import com.hazelcast.partition.MigrationEndpoint;
 import com.hazelcast.partition.MigrationInfo;
@@ -49,6 +54,7 @@ import com.hazelcast.spi.ManagedService;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
+import com.hazelcast.spi.PartitionAwareService;
 import com.hazelcast.spi.ResponseHandler;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.ResponseHandlerFactory;
@@ -94,7 +100,7 @@ import static com.hazelcast.util.FutureUtil.waitWithDeadline;
  * The {@link InternalPartitionService} implementation.
  */
 public class InternalPartitionServiceImpl implements InternalPartitionService, ManagedService,
-        EventPublishingService<MigrationEvent, MigrationListener> {
+        EventPublishingService<PartitionEvent, PartitionEventListener<PartitionEvent>>, PartitionAwareService {
 
     private static final String EXCEPTION_MSG_PARTITION_STATE_SYNC_TIMEOUT = "Partition state sync invocation timed out";
 
@@ -1449,7 +1455,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         MemberImpl newOwner = getMember(migrationInfo.getDestination());
         MigrationEvent event = new MigrationEvent(migrationInfo.getPartitionId(), current, newOwner, status);
         EventService eventService = nodeEngine.getEventService();
-        Collection<EventRegistration> registrations = eventService.getRegistrations(SERVICE_NAME, SERVICE_NAME);
+        Collection<EventRegistration> registrations = eventService.getRegistrations(SERVICE_NAME, MIGRATION_EVENT_TOPIC);
         eventService.publishEvent(SERVICE_NAME, registrations, event, event.getPartitionId());
     }
 
@@ -1459,8 +1465,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             throw new NullPointerException("listener can't be null");
         }
 
+        final MigrationListenerAdapter adapter = new MigrationListenerAdapter(listener);
+
         EventService eventService = nodeEngine.getEventService();
-        EventRegistration registration = eventService.registerListener(SERVICE_NAME, SERVICE_NAME, listener);
+        EventRegistration registration = eventService.registerListener(SERVICE_NAME, MIGRATION_EVENT_TOPIC, adapter);
         return registration.getId();
     }
 
@@ -1471,25 +1479,33 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
 
         EventService eventService = nodeEngine.getEventService();
-        return eventService.deregisterListener(SERVICE_NAME, SERVICE_NAME, registrationId);
+        return eventService.deregisterListener(SERVICE_NAME, MIGRATION_EVENT_TOPIC, registrationId);
     }
 
     @Override
-    public void dispatchEvent(MigrationEvent migrationEvent, MigrationListener migrationListener) {
-        final MigrationStatus status = migrationEvent.getStatus();
-        switch (status) {
-            case STARTED:
-                migrationListener.migrationStarted(migrationEvent);
-                break;
-            case COMPLETED:
-                migrationListener.migrationCompleted(migrationEvent);
-                break;
-            case FAILED:
-                migrationListener.migrationFailed(migrationEvent);
-                break;
-            default:
-                throw new IllegalArgumentException("Not a known MigrationStatus: " + status);
+    public String addPartitionLostListener(PartitionLostListener listener) {
+        if (listener == null) {
+            throw new NullPointerException("listener can't be null");
         }
+
+        EventService eventService = nodeEngine.getEventService();
+        EventRegistration registration = eventService.registerListener(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC, listener);
+        return registration.getId();
+    }
+
+    @Override
+    public boolean removePartitionLostListener(String registrationId) {
+        if (registrationId == null) {
+            throw new NullPointerException("registrationId can't be null");
+        }
+
+        EventService eventService = nodeEngine.getEventService();
+        return eventService.deregisterListener(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC, registrationId);
+    }
+
+    @Override
+    public void dispatchEvent(PartitionEvent partitionEvent, PartitionEventListener partitionEventListener) {
+        partitionEventListener.onEvent(partitionEvent);
     }
 
     @Override
@@ -1508,6 +1524,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     @Override
     public int getPartitionStateVersion() {
         return stateVersion.get();
+    }
+
+    @Override
+    public void onPartitionLostEvent(InternalPartitionLostEvent event) {
+        final PartitionLostEvent partitionLostEvent = new PartitionLostEvent(event.getPartitionId(), event.getLostBackupCount());
+        final EventService eventService = nodeEngine.getEventService();
+        final Collection<EventRegistration> registrations = eventService.getRegistrations(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC);
+        eventService.publishEvent(SERVICE_NAME, registrations, partitionLostEvent, event.getPartitionId());
     }
 
     private class SendClusterStateTask implements Runnable {

@@ -85,6 +85,7 @@ import com.hazelcast.map.impl.client.MapTryRemoveRequest;
 import com.hazelcast.map.impl.client.MapUnlockRequest;
 import com.hazelcast.map.impl.client.MapValuesRequest;
 import com.hazelcast.map.listener.MapListener;
+import com.hazelcast.map.listener.MapPartitionLostListener;
 import com.hazelcast.mapreduce.Collator;
 import com.hazelcast.mapreduce.CombinerFactory;
 import com.hazelcast.mapreduce.Job;
@@ -530,6 +531,18 @@ public final class ClientMapProxy<K, V> extends ClientProxy implements IMap<K, V
     public boolean removeEntryListener(String id) {
         final MapRemoveEntryListenerRequest request = new MapRemoveEntryListenerRequest(name, id);
         return stopListening(request, id);
+    }
+
+    @Override
+    public String addPartitionLostListener(MapPartitionLostListener listener) {
+        // TODO basri
+        return null;
+    }
+
+    @Override
+    public boolean removePartitionLostListener(String id) {
+        // TODO basri
+        return false;
     }
 
     @Override

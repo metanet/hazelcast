@@ -104,6 +104,18 @@ class MapEventPublisherSupport implements MapEventPublisher {
         }
     }
 
+    @Override
+    public void publishMapPartitionLostEvent(Address caller, String mapName, int partitionId) {
+        final Collection<EventRegistration> registrations = getRegistrations(mapName + ":partitionLost");
+        if (registrations.isEmpty()) {
+            return;
+        }
+
+        final String thisNodesAddress = getThisNodesAddress();
+        final MapPartitionEventData eventData = new MapPartitionEventData(thisNodesAddress, mapName, caller, partitionId);
+        publishEventInternal(registrations, eventData, partitionId);
+    }
+
     private List<EventRegistration> initRegistrationsWithoutValue(List<EventRegistration> registrationsWithoutValue,
                                                                   Result result) {
         if (registrationsWithoutValue != null) {

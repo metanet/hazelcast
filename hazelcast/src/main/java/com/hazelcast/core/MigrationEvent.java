@@ -31,7 +31,7 @@ import java.io.IOException;
  * @see PartitionService
  * @see MigrationListener
  */
-public class MigrationEvent implements DataSerializable {
+public class MigrationEvent implements DataSerializable, PartitionEvent {
 
     private int partitionId;
     private Member oldOwner;
