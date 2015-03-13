@@ -539,7 +539,7 @@ public final class ClientMapProxy<K, V> extends ClientProxy implements IMap<K, V
 
     @Override
     public String addPartitionLostListener(MapPartitionLostListener listener) {
-        MapAddPartitionLostListenerRequest request = new MapAddPartitionLostListenerRequest(name);
+        final MapAddPartitionLostListenerRequest request = new MapAddPartitionLostListenerRequest(name);
         final EventHandler<PortableMapPartitionLostEvent> handler = new ClientMapPartitionLostEventHandler(listener);
         return listen(request, handler);
     }
@@ -1129,7 +1129,6 @@ public final class ClientMapProxy<K, V> extends ClientProxy implements IMap<K, V
     }
 
     private class ClientMapPartitionLostEventHandler implements EventHandler<PortableMapPartitionLostEvent> {
-
 
         private MapPartitionLostListener listener;
 

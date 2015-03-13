@@ -109,8 +109,8 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
 
         if (currentVersion == 0) {
             if (logger.isFinestEnabled()) {
-                logger.finest("Current replica version = 0, sending empty response for partition: "
-                        + getPartitionId() + ", replica: " + getReplicaIndex() + ", versions: "
+                logger.finest("Current replicaVersion=0, sending empty response for partitionId="
+                        + getPartitionId() + ", replicaIndex=" + getReplicaIndex() + ", replicaVersions="
                         + Arrays.toString(replicaVersions));
             }
             sendEmptyResponse();
@@ -167,8 +167,8 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
         Address target = getCallerAddress();
         ILogger logger = getLogger();
         if (logger.isFinestEnabled()) {
-            logger.finest("Sending sync response to -> " + target + " for partition: "
-                    + getPartitionId() + ", replica: " + getReplicaIndex());
+            logger.finest("Sending sync response to -> " + target + " for partitionId="
+                    + getPartitionId() + ", replicaIndex=" + getReplicaIndex());
         }
         OperationService operationService = nodeEngine.getOperationService();
         operationService.send(syncResponse, target);
@@ -190,7 +190,7 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
         ILogger logger = nodeEngine.getLogger(getClass());
 
         if (logger.isFinestEnabled()) {
-            logger.finest("No replica data is found for partition: " + partitionId + ", replica: " + replicaIndex);
+            logger.finest("No replica data is found for partitionId=" + partitionId + ", replicaIndex=" + replicaIndex);
         }
     }
 
@@ -230,8 +230,8 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
     public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append("ReplicaSyncRequest");
-        sb.append("{partition=").append(getPartitionId());
-        sb.append(", replica=").append(getReplicaIndex());
+        sb.append("{partitionId=").append(getPartitionId());
+        sb.append(", replicaIndex=").append(getReplicaIndex());
         sb.append('}');
         return sb.toString();
     }

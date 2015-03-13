@@ -1,5 +1,6 @@
 package com.hazelcast.partition;
 
+import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
@@ -14,43 +15,82 @@ public class InternalPartitionLostEvent implements DataSerializable {
 
     private int partitionId;
 
-    private int lostBackupCount;
+    private int lostReplicaIndex;
+
+    private Address eventSource;
 
     public InternalPartitionLostEvent() {
     }
 
-    public InternalPartitionLostEvent(int partitionId, int lostBackupCount) {
+    public InternalPartitionLostEvent(int partitionId, int lostReplicaIndex, Address eventSource) {
         this.partitionId = partitionId;
-        this.lostBackupCount = lostBackupCount;
+        this.lostReplicaIndex = lostReplicaIndex;
+        this.eventSource = eventSource;
     }
 
     public int getPartitionId() {
         return partitionId;
     }
 
-    public int getLostBackupCount() {
-        return lostBackupCount;
+    public int getLostReplicaIndex() {
+        return lostReplicaIndex;
+    }
+
+    public Address getEventSource() {
+        return eventSource;
     }
 
     @Override
     public void writeData(ObjectDataOutput out)
             throws IOException {
         out.writeInt(partitionId);
-        out.writeInt(lostBackupCount);
+        out.writeInt(lostReplicaIndex);
+        eventSource.writeData(out);
     }
 
     @Override
     public void readData(ObjectDataInput in)
             throws IOException {
         this.partitionId = in.readInt();
-        this.lostBackupCount = in.readInt();
+        this.lostReplicaIndex = in.readInt();
+        this.eventSource = new Address();
+        this.eventSource.readData(in);
     }
 
     @Override
     public String toString() {
         return "InternalPartitionLostEvent{" +
                 "partitionId=" + partitionId +
-                ", lostBackupCount=" + lostBackupCount +
+                ", lostReplicaIndex=" + lostReplicaIndex +
+                ", eventSource=" + eventSource +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        InternalPartitionLostEvent that = (InternalPartitionLostEvent) o;
+
+        if (lostReplicaIndex != that.lostReplicaIndex) {
+            return false;
+        }
+        if (partitionId != that.partitionId) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = partitionId;
+        result = 31 * result + lostReplicaIndex;
+        return result;
     }
 }

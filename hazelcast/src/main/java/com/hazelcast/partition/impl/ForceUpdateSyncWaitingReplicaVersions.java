@@ -12,6 +12,7 @@ import com.hazelcast.spi.PartitionAwareService;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 // Runs locally when the node becomes owner of a partition upon a node failure
 // Finds the replicaIndices that are on the sync-waiting state. Those indices represents the lost backups of the partition.
@@ -21,35 +22,62 @@ final class ForceUpdateSyncWaitingReplicaVersions
         extends AbstractOperation
         implements PartitionAwareOperation, MigrationCycleOperation {
 
+    private final PartitionReplicaAssignmentReason reason;
+
+    public ForceUpdateSyncWaitingReplicaVersions(PartitionReplicaAssignmentReason reason) {
+        this.reason = reason;
+    }
+
     @Override
     public void run()
             throws Exception {
         final int partitionId = getPartitionId();
         final InternalPartitionService partitionService = getService();
-        final long[] versions = partitionService
-                .getPartitionReplicaVersions(partitionId); // returns the internal array itself, not the copy
-        final int biggestLostReplicaIndex = getBiggestLostReplicaIndex(versions);
+        // returns the internal array itself, not the copy
+        final long[] versions = partitionService.getPartitionReplicaVersions(partitionId);
 
-        if (biggestLostReplicaIndex > 0) {
-            forceUpdateLostReplicaIndices(partitionId, versions, biggestLostReplicaIndex);
-            sendPartitionLostEvent(partitionId, biggestLostReplicaIndex);
+        if (reason == PartitionReplicaAssignmentReason.MEMBER_REMOVED) {
+            final int lostReplicaIndex = getLostReplicaIndex(versions);
+            if (lostReplicaIndex > 0) {
+                if (getLogger().isFinestEnabled()) {
+                    getLogger().finest("Partition replica is lost! partitionId=" + partitionId + " lostReplicaIndex=" + lostReplicaIndex + " replicaVersions=" + Arrays.toString(versions));
+                }
+
+                forceUpdateLostReplicaIndices(versions, lostReplicaIndex);
+            }
+
+            sendPartitionLostEvent(partitionId, lostReplicaIndex);
+        } else {
+            if (getLogger().isFinestEnabled()) {
+                getLogger().finest("Resetting all SYNC_WAITING Versions. partitionId=" + partitionId
+                        + " versionsBeforeReset=" + Arrays.toString(versions));
+            }
+
+            resetSyncWaitingVersions(versions);
         }
     }
 
-    private int getBiggestLostReplicaIndex(final long[] versions) {
+    private void resetSyncWaitingVersions(long[] versions) {
+        for (int replicaIndex = 1; replicaIndex < versions.length; replicaIndex++) {
+            if (versions[replicaIndex - 1] == InternalPartition.SYNC_WAITING) {
+                versions[replicaIndex - 1] = 0;
+            }
+        }
+    }
+
+    private int getLostReplicaIndex(final long[] versions) {
         int biggestLostReplicaIndex = 0;
 
         for (int replicaIndex = 1; replicaIndex <= versions.length; replicaIndex++) {
-            if (versions[replicaIndex - 1] == InternalPartition.WAITING_SYNC) {
+            if (versions[replicaIndex - 1] == InternalPartition.SYNC_WAITING) {
                 biggestLostReplicaIndex = replicaIndex;
             }
         }
+
         return biggestLostReplicaIndex;
     }
 
-    private void forceUpdateLostReplicaIndices(final int partitionId, final long[] versions, final int lostReplicaIndex) {
-        getLogger().warning("Partition " + partitionId + " is lost for biggest replica index: " + lostReplicaIndex);
-
+    private void forceUpdateLostReplicaIndices(final long[] versions, final int lostReplicaIndex) {
         final long forcedVersion = lostReplicaIndex <= versions.length ? versions[lostReplicaIndex] : 0;
         for (int replicaIndex = lostReplicaIndex; replicaIndex > 0; replicaIndex--) {
             versions[replicaIndex - 1] = forcedVersion;
@@ -57,7 +85,7 @@ final class ForceUpdateSyncWaitingReplicaVersions
     }
 
     private void sendPartitionLostEvent(int partitionId, int lostReplicaIndex) {
-        final InternalPartitionLostEvent partitionLostEvent = new InternalPartitionLostEvent(partitionId, lostReplicaIndex);
+        final InternalPartitionLostEvent partitionLostEvent = new InternalPartitionLostEvent(partitionId, lostReplicaIndex, getNodeEngine().getThisAddress());
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
         for (PartitionAwareService service : nodeEngine.getServices(PartitionAwareService.class)) {
             try {

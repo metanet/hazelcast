@@ -291,6 +291,14 @@ public abstract class HazelcastTestSupport {
         }
     }
 
+    public static void warmUpPartitions(Collection<HazelcastInstance> instances) {
+        try {
+            TestUtil.warmUpPartitions(instances);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /**
      * Gets a partition id owned by this particular member.
      *
@@ -397,8 +405,8 @@ public abstract class HazelcastTestSupport {
     }
 
     public static boolean isAllInSafeState(Collection<HazelcastInstance> nodes) {
-        for (HazelcastInstance node : nodes) {
-            if (!isInstanceInSafeState(node)) {
+        for (HazelcastInstance instance : nodes) {
+            if (!isInstanceInSafeState(instance)) {
                 return false;
             }
         }

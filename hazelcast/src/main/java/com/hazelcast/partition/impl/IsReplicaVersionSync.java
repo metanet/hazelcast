@@ -36,8 +36,11 @@ public class IsReplicaVersionSync extends Operation implements PartitionAwareOpe
         final int replicaIndex = getReplicaIndex();
         final long[] currentVersions = partitionService.getPartitionReplicaVersions(partitionId);
         final long currentVersion = currentVersions[replicaIndex - 1];
+
         if (currentVersion == version) {
             result = true;
+        } else if (getLogger().isFinestEnabled()) {
+            getLogger().finest(" Replica versions are not sync! partitionId=" + partitionId + " replicaIndex=" + replicaIndex + " currentVersion=" + currentVersion + " version=" + version + " thisAddress=" + getNodeEngine().getThisAddress() + " callerAddress=" + getCallerAddress());
         }
     }
 

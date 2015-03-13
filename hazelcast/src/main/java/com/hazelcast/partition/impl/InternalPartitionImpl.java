@@ -67,7 +67,7 @@ class InternalPartitionImpl implements InternalPartition {
             }
             newAddresses[MAX_REPLICA_COUNT - 1] = null;
             addresses = newAddresses;
-            callPartitionListener(newAddresses, currentAddresses);
+            callPartitionListener(newAddresses, currentAddresses, PartitionReplicaAssignmentReason.MEMBER_REMOVED);
             return true;
         }
         return false;
@@ -80,21 +80,21 @@ class InternalPartitionImpl implements InternalPartition {
     void setReplicaAddresses(Address[] newAddresses) {
         Address[] oldAddresses = addresses;
         addresses = newAddresses;
-        callPartitionListener(newAddresses, oldAddresses);
+        callPartitionListener(newAddresses, oldAddresses, PartitionReplicaAssignmentReason.ASSIGNMENT);
 
     }
 
-    private void callPartitionListener(Address[] newAddresses, Address[] oldAddresses) {
+    private void callPartitionListener(Address[] newAddresses, Address[] oldAddresses, PartitionReplicaAssignmentReason reason) {
         if (partitionListener != null) {
             for (int replicaIndex = 0; replicaIndex < MAX_REPLICA_COUNT; replicaIndex++) {
                 Address oldAddress = oldAddresses[replicaIndex];
                 Address newAddress = newAddresses[replicaIndex];
-                callPartitionListener(replicaIndex, oldAddress, newAddress);
+                callPartitionListener(replicaIndex, oldAddress, newAddress, reason);
             }
         }
     }
 
-    private void callPartitionListener(int replicaIndex, Address oldAddress, Address newAddress) {
+    private void callPartitionListener(int replicaIndex, Address oldAddress, Address newAddress, PartitionReplicaAssignmentReason reason) {
         boolean changed;
         if (oldAddress == null) {
             changed = newAddress != null;
@@ -103,7 +103,7 @@ class InternalPartitionImpl implements InternalPartition {
         }
         if (changed) {
             PartitionReplicaChangeEvent event
-                    = new PartitionReplicaChangeEvent(partitionId, replicaIndex, oldAddress, newAddress);
+                    = new PartitionReplicaChangeEvent(partitionId, replicaIndex, oldAddress, newAddress, reason);
             partitionListener.replicaChanged(event);
         }
     }

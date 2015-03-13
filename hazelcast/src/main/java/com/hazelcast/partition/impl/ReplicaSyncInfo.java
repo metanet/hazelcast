@@ -42,8 +42,8 @@ final class ReplicaSyncInfo {
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("ReplicaSyncInfo{");
-        sb.append("partitionId=").append(partitionId);
+        StringBuilder sb = new StringBuilder("ReplicaSyncInfo");
+        sb.append("{partitionId=").append(partitionId);
         sb.append(", replicaIndex=").append(replicaIndex);
         sb.append(", target=").append(target);
         sb.append('}');

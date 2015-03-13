@@ -26,7 +26,7 @@ class MapPartitionAwareService implements PartitionAwareService {
             final String mapName = entry.getKey();
             final MapContainer mapContainer = entry.getValue();
 
-            if (mapContainer.getBackupCount() < partitionLostEvent.getLostBackupCount()) {
+            if (mapContainer.getBackupCount() <= partitionLostEvent.getLostReplicaIndex()) {
                 mapServiceContext.getMapEventPublisher().publishMapPartitionLostEvent(thisAddress, mapName, partitionId);
             }
         }

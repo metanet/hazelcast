@@ -1,5 +1,6 @@
 package com.hazelcast.core;
 
+import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
@@ -20,12 +21,15 @@ public class PartitionLostEvent
 
     private int lostReplicaIndex;
 
+    private Address eventSource;
+
     public PartitionLostEvent() {
     }
 
-    public PartitionLostEvent(int partitionId, int lostReplicaIndex) {
+    public PartitionLostEvent(int partitionId, int lostReplicaIndex, Address eventSource) {
         this.partitionId = partitionId;
         this.lostReplicaIndex = lostReplicaIndex;
+        this.eventSource = eventSource;
     }
 
     /**
@@ -47,11 +51,20 @@ public class PartitionLostEvent
         return lostReplicaIndex;
     }
 
+    /**
+     * Returns the address of the node that dispatches the event
+     * @return the address of the node that dispatches the event
+     */
+    public Address getEventSource() {
+        return eventSource;
+    }
+
     @Override
     public void writeData(ObjectDataOutput out)
             throws IOException {
         out.writeInt(partitionId);
         out.writeInt(lostReplicaIndex);
+        eventSource.writeData(out);
     }
 
     @Override
@@ -59,6 +72,8 @@ public class PartitionLostEvent
             throws IOException {
         partitionId = in.readInt();
         lostReplicaIndex = in.readInt();
+        eventSource = new Address();
+        eventSource.readData(in);
     }
 
     @Override
@@ -66,6 +81,7 @@ public class PartitionLostEvent
         return "PartitionLostEvent{" +
                 "partitionId=" + partitionId +
                 ", lostReplicaIndex=" + lostReplicaIndex +
+                ", eventSource=" + eventSource +
                 '}';
     }
 }

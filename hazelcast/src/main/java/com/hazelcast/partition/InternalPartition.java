@@ -31,7 +31,7 @@ public interface InternalPartition {
 
     int MAX_REPLICA_COUNT = 7;
     int MAX_BACKUP_COUNT = MAX_REPLICA_COUNT - 1;
-    int WAITING_SYNC = -1;
+    int SYNC_WAITING = -1;
 
     /**
      * Checks if the partition is local.

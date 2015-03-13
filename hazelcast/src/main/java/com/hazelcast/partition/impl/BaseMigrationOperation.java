@@ -41,6 +41,10 @@ public abstract class BaseMigrationOperation extends AbstractOperation
         setPartitionId(migrationInfo.getPartitionId());
     }
 
+    public MigrationInfo getMigrationInfo() {
+        return migrationInfo;
+    }
+
     @Override
     public Object getResponse() {
         return success;
