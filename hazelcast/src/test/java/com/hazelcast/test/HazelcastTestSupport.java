@@ -29,7 +29,7 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.SerializationService;
 import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.partition.InternalPartitionService;
-import com.hazelcast.spi.impl.InternalOperationService;
+import com.hazelcast.spi.impl.operationservice.InternalOperationService;
 import org.junit.After;
 import org.junit.ComparisonFailure;
 
@@ -169,6 +169,17 @@ public abstract class HazelcastTestSupport {
             TimeUnit.SECONDS.sleep(seconds);
         } catch (InterruptedException ignored) {
         }
+    }
+
+    public static void sleepAtLeastMillis(int millis) {
+        final long targetTime = System.currentTimeMillis() + millis + 1;
+        while (System.currentTimeMillis() < targetTime) {
+            sleepMillis(1);
+        }
+    }
+
+    public static void sleepAtLeastSeconds(int seconds) {
+        sleepAtLeastMillis(seconds * 1000);
     }
 
     public static String generateRandomString(int length) {
