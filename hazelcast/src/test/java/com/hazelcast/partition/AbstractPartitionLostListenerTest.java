@@ -7,11 +7,6 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
-import org.apache.log4j.FileAppender;
-import org.apache.log4j.Layout;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
 import org.junit.After;
 import org.junit.Before;
 
@@ -26,22 +21,11 @@ public abstract class AbstractPartitionLostListenerTest extends HazelcastTestSup
 
     protected TestHazelcastInstanceFactory hazelcastInstanceFactory;
 
-    private void initLogger()
-            throws IOException {
-        Layout layout = new PatternLayout();
-        FileAppender appender = new FileAppender(layout, "target/tests/" + System.currentTimeMillis() + ".log");
-        Logger root = Logger.getRootLogger();
-        root.setLevel(Level.DEBUG);
-        root.removeAllAppenders();
-        root.addAppender(appender);
-    }
-
     public abstract int getNodeCount();
 
     @Before
     public void before()
             throws IOException {
-        initLogger();
         hazelcastInstanceFactory = createHazelcastInstanceFactory(getNodeCount());
     }
 
