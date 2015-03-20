@@ -33,7 +33,7 @@ public class PartitionLostListenerInvocationTest
         }
 
         public synchronized List<PartitionLostEvent> getLostPartitions() {
-            return lostPartitions;
+            return new ArrayList<PartitionLostEvent>(lostPartitions);
         }
     }
 
@@ -114,7 +114,7 @@ public class PartitionLostListenerInvocationTest
         survivingInstances = survivingInstances.subList(numberOfNodesToCrash, instances.size());
 
         if (withData) {
-            populateMaps(survivingInstances.get(0), nodeCount);
+            populateMaps(survivingInstances.get(0), nodeCount, ITEM_COUNT_PER_MAP);
         }
 
         final StringBuilder logBuilder = new StringBuilder();
@@ -155,15 +155,6 @@ public class PartitionLostListenerInvocationTest
                         previouslyLostReplicaIndex < lostReplicaIndex);
             }
             memorizedPartitionFailures.put(failedPartitionId, lostReplicaIndex);
-        }
-    }
-
-    private void populateMaps(final HazelcastInstance instance, final int nodeCount) {
-        for (int i = 0; i < nodeCount; i++) {
-            final Map<Integer, Integer> map = instance.getMap("map" + i);
-            for (int j = 0; j < ITEM_COUNT_PER_MAP; j++) {
-                map.put(j, j);
-            }
         }
     }
 

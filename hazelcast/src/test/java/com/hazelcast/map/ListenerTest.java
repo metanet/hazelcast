@@ -18,12 +18,19 @@ package com.hazelcast.map;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.EntryListenerConfig;
+import com.hazelcast.config.MapConfig;
+import com.hazelcast.config.MapPartitionLostListenerConfig;
 import com.hazelcast.core.EntryAdapter;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.MapEvent;
+import com.hazelcast.core.MapPartitionLostEvent;
+import com.hazelcast.instance.Node;
+import com.hazelcast.map.MapPartitionLostListenerTest.EventCollectingMapPartitionLostListener;
+import com.hazelcast.map.impl.MapService;
+import com.hazelcast.partition.InternalPartitionLostEvent;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -35,6 +42,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -44,6 +52,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -508,7 +517,33 @@ public class ListenerTest extends HazelcastTestSupport {
         assertEquals(value, oldValueFromEntryEvent);
     }
 
+    @Test
+    public void testMapPartitionLostListener_registeredViaImplementationInConfigObject() {
+        final Config config = new Config();
+        final MapConfig mapConfig = config.getMapConfig("map");
+        final int backupCount = 0;
+        final EventCollectingMapPartitionLostListener listener = new EventCollectingMapPartitionLostListener(backupCount);
+        mapConfig.addMapPartitionLostListenerConfig(new MapPartitionLostListenerConfig(listener));
+        mapConfig.setBackupCount(backupCount);
 
+        final HazelcastInstance instance = createHazelcastInstance(config);
+        instance.getMap("map");
+        final Node node =  getNode(instance);
+        final MapService service = node.getNodeEngine().getService(MapService.SERVICE_NAME);
+
+        final int partitionId = 1;
+        service.onPartitionLostEvent(new InternalPartitionLostEvent(partitionId, backupCount, null));
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                final List<MapPartitionLostEvent> events = listener.getEvents();
+                assertFalse(events.isEmpty());
+                assertEquals(partitionId, events.get(0).getLostPartitionId());
+            }
+        });
+    }
 
     private Predicate<String, String> matchingPredicate() {
         return new Predicate<String, String>() {

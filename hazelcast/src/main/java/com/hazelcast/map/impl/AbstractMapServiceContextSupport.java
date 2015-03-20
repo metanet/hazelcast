@@ -8,7 +8,7 @@ import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.EventFilter;
 import com.hazelcast.spi.EventRegistration;
 import com.hazelcast.spi.NodeEngine;
-import com.hazelcast.spi.impl.EventServiceImpl.EmptyFilter;
+import com.hazelcast.spi.impl.eventservice.impl.EmptyFilter;
 import com.hazelcast.util.Clock;
 
 import java.util.List;

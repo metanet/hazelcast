@@ -1,8 +1,14 @@
 package com.hazelcast.partition;
 
+import com.hazelcast.config.Config;
+import com.hazelcast.config.ListenerConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.PartitionLostListener;
 import com.hazelcast.core.PartitionService;
+import com.hazelcast.instance.Node;
+import com.hazelcast.partition.PartitionLostListenerInvocationTest.PartitionIdCollectingPartitionLostListener;
+import com.hazelcast.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
@@ -87,6 +93,29 @@ public class PartitionLostListenerRegistrationTest
         PartitionService partitionService = hz.getPartitionService();
 
         partitionService.removePartitionLostListener(null);
+    }
+
+    @Test
+    public void testPartitionLostListener_registeredViaConfiguration() {
+        final PartitionIdCollectingPartitionLostListener listener = new PartitionIdCollectingPartitionLostListener();
+        final Config config = new Config();
+        config.addListenerConfig(new ListenerConfig(listener));
+
+        final HazelcastInstance instance = createHazelcastInstance(config);
+        final Node node = getNode(instance);
+
+        final InternalPartitionServiceImpl partitionService =
+                (InternalPartitionServiceImpl) node.getNodeEngine().getPartitionService();
+
+        partitionService.onPartitionLostEvent(new InternalPartitionLostEvent());
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertFalse(listener.getLostPartitions().isEmpty());
+            }
+        });
     }
 
 }

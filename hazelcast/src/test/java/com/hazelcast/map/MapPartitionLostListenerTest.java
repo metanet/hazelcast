@@ -1,7 +1,6 @@
 package com.hazelcast.map;
 
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.IMap;
 import com.hazelcast.core.MapPartitionLostEvent;
 import com.hazelcast.map.listener.MapPartitionLostListener;
 import com.hazelcast.partition.AbstractPartitionLostListenerTest;
@@ -115,8 +114,11 @@ public class MapPartitionLostListenerTest
         final List<HazelcastInstance> terminatingInstances = survivingInstances.subList(0, numberOfNodesToCrash);
         survivingInstances = survivingInstances.subList(numberOfNodesToCrash, instances.size());
 
-        final List<EventCollectingMapPartitionLostListener> listeners = createMaps(nodeCount, survivingInstances.get(0),
-                withData);
+        if(withData) {
+            populateMaps(survivingInstances.get(0), nodeCount, ITEM_COUNT_PER_MAP);
+        }
+
+        final List<EventCollectingMapPartitionLostListener> listeners = registerListeners(survivingInstances.get(0), nodeCount);
 
         final StringBuilder logBuilder = new StringBuilder();
         logBuilder.append("Surviving: ").append(survivingInstances).append(" Terminating: ").append(terminatingInstances);
@@ -154,20 +156,12 @@ public class MapPartitionLostListenerTest
         }
     }
 
-    private List<EventCollectingMapPartitionLostListener> createMaps(final int nodeCount,
-                                                                     final HazelcastInstance instance,
-                                                                     final boolean withData) {
+    private List<EventCollectingMapPartitionLostListener> registerListeners(final HazelcastInstance instance, final int nodeCount) {
         final List<EventCollectingMapPartitionLostListener> listeners = new ArrayList<EventCollectingMapPartitionLostListener>();
         for (int i = 0; i < nodeCount; i++) {
-            final IMap<Integer, Integer> map = instance.getMap("map" + i);
             final EventCollectingMapPartitionLostListener listener = new EventCollectingMapPartitionLostListener(i);
-            map.addPartitionLostListener(listener);
+            instance.getMap(getIthMapName(i)).addPartitionLostListener(listener);
             listeners.add(listener);
-            if (withData) {
-                for (int j = 0; j < ITEM_COUNT_PER_MAP; j++) {
-                    map.put(j, j);
-                }
-            }
         }
 
         return listeners;

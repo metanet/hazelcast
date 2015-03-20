@@ -2,11 +2,18 @@ package com.hazelcast.partition;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.MapConfig;
+import com.hazelcast.config.MapPartitionLostListenerConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
+import com.hazelcast.map.listener.MapPartitionLostListener;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
+import org.apache.log4j.FileAppender;
+import org.apache.log4j.Layout;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.log4j.PatternLayout;
 import org.junit.After;
 import org.junit.Before;
 
@@ -23,9 +30,20 @@ public abstract class AbstractPartitionLostListenerTest extends HazelcastTestSup
 
     public abstract int getNodeCount();
 
+    private void initLogger()
+            throws IOException {
+        Layout layout = new PatternLayout();
+        FileAppender appender = new FileAppender(layout, "target/tests/" + System.currentTimeMillis() + ".log");
+        Logger root = Logger.getRootLogger();
+        root.setLevel(Level.DEBUG);
+        root.removeAllAppenders();
+        root.addAppender(appender);
+    }
+
     @Before
     public void before()
             throws IOException {
+        initLogger();
         hazelcastInstanceFactory = createHazelcastInstanceFactory(getNodeCount());
     }
 
@@ -57,13 +75,26 @@ public abstract class AbstractPartitionLostListenerTest extends HazelcastTestSup
         return instances;
     }
 
+    protected List<HazelcastInstance> createInstances(final int nodeCount, MapPartitionLostListener lostListener) {
+        final List<HazelcastInstance> instances = new ArrayList<HazelcastInstance>();
+        final Config config = createConfig(nodeCount);
+        for(MapConfig mapConfig : config.getMapConfigs().values()) {
+            mapConfig.addMapPartitionLostListenerConfig(new MapPartitionLostListenerConfig(lostListener));
+        }
+
+        for (int i = 0; i < nodeCount; i++) {
+            instances.add(hazelcastInstanceFactory.newHazelcastInstance(config));
+        }
+        return instances;
+    }
+
     protected Config createConfig(final int nodeCount) {
         final Config config = new Config();
-        config.setProperty("hazelcast.logging.type", "log4j");
         for (int i = 0; i < nodeCount; i++) {
-            MapConfig mapConfig = config.getMapConfig("map" + i);
+            MapConfig mapConfig = config.getMapConfig(getIthMapName(i));
             mapConfig.setBackupCount(i);
         }
+
         return config;
     }
 
@@ -80,7 +111,8 @@ public abstract class AbstractPartitionLostListenerTest extends HazelcastTestSup
                         if (survivingNodeAddress.equals(partition.getReplicaAddress(replicaIndex))) {
                             final Integer replicaIndexOfOtherInstance = survivingPartitions.get(partition.getPartitionId());
                             if(replicaIndexOfOtherInstance != null) {
-                                survivingPartitions.put(partition.getPartitionId(), Math.min(replicaIndex, replicaIndexOfOtherInstance));
+                                survivingPartitions.put(partition.getPartitionId(),
+                                        Math.min(replicaIndex, replicaIndexOfOtherInstance));
                             } else {
                                 survivingPartitions.put(partition.getPartitionId(), replicaIndex);
                             }
@@ -95,4 +127,16 @@ public abstract class AbstractPartitionLostListenerTest extends HazelcastTestSup
         return survivingPartitions;
     }
 
+    final protected void populateMaps(final HazelcastInstance instance, final int nodeCount, final int itemCount) {
+        for (int i = 0; i < nodeCount; i++) {
+            final Map<Integer, Integer> map = instance.getMap(getIthMapName(i));
+            for (int j = 0; j < itemCount; j++) {
+                map.put(j, j);
+            }
+        }
+    }
+
+    final protected String getIthMapName(final int i) {
+        return "map-" + i;
+    }
 }
