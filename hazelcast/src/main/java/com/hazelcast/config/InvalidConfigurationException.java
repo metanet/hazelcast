@@ -14,14 +14,25 @@
  * limitations under the License.
  */
 
-package com.hazelcast.nio.serialization;
+package com.hazelcast.config;
 
-import com.hazelcast.nio.BufferObjectDataInput;
 
-import java.nio.ByteBuffer;
+import com.hazelcast.core.HazelcastException;
 
-interface PortableDataInput extends BufferObjectDataInput {
+/**
+ * A InvalidConfigurationException is thrown when there is an Invalid Configuration.
+ * Invalid Configuration can be a wrong Xml Config or logical config errors that are found
+ * at real time.
+ */
+public class InvalidConfigurationException extends HazelcastException {
 
-    ByteBuffer getHeaderBuffer();
 
+    /**
+     * Creates a InvalidConfigurationException with the given message.
+     *
+     * @param message the message.
+     */
+    public InvalidConfigurationException(String message) {
+        super(message);
+    }
 }

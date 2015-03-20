@@ -18,17 +18,17 @@ package com.hazelcast.spi.impl.operationservice;
 
 import com.hazelcast.internal.management.JsonSerializable;
 import com.hazelcast.nio.Address;
+import com.hazelcast.spi.Callback;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.impl.PartitionSpecificRunnable;
 import com.hazelcast.spi.impl.operationexecutor.OperationExecutor;
-import com.hazelcast.spi.impl.operationservice.impl.responses.Response;
 
 import java.util.Collection;
 
 /**
  * This is the interface that needs to be implemented by actual InternalOperationService. Currently there is a single
- * InternalOperationService: {@link com.hazelcast.spi.impl.operationservice.impl.BasicOperationService}, but in the
+ * InternalOperationService: {@link com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl}, but in the
  * future others can be added.
  * <p/>
  * It exposes methods that will not be called by regular code, like shutdown, but will only be called by
@@ -36,9 +36,13 @@ import java.util.Collection;
  */
 public interface InternalOperationService extends OperationService {
 
+    /**
+     * Checks if this call is timed out. A timed out call is not going to be executed.
+     *
+     * @param op the operation to check.
+     * @return true if it is timed out, false otherwise.
+     */
     boolean isCallTimedOut(Operation op);
-
-    void notifyBackupCall(long callId);
 
     /**
      * Executes a PartitionSpecificRunnable.
@@ -51,21 +55,11 @@ public interface InternalOperationService extends OperationService {
     void execute(PartitionSpecificRunnable task);
 
     /**
-     * Sends a response to a remote machine.
-     * <p/>
-     * This method is deprecated since 3.5. It is an implementation detail.
+     * Gets the OperationExecutor that is executing operations for this {@link InternalOperationService}.
      *
-     * @param response the response to send.
-     * @param target   the address of the target machine
-     * @return true if send is successful, false otherwise.
+     * @return the OperationExecutor.
      */
-    boolean send(Response response, Address target);
-
     OperationExecutor getOperationExecutor();
-
-    boolean isOperationExecuting(Address callerAddress, String callerUuid, String serviceName, Object identifier);
-
-    boolean isOperationExecuting(Address callerAddress, int partitionId, long operationCallId);
 
     /**
      * Returns information about long running operations.
@@ -75,4 +69,8 @@ public interface InternalOperationService extends OperationService {
      * @return collection of long running operation logs.
      */
     Collection<JsonSerializable> getSlowOperations();
+
+    <E> void invokeOnPartition(String serviceName, Operation op, int partitionId, Callback<E> callback);
+
+    <E> void invokeOnTarget(String serviceName, Operation op, Address target, Callback<E> callback);
 }

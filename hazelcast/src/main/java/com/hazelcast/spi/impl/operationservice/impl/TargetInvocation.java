@@ -24,16 +24,16 @@ import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
 /**
- * A {@link BasicInvocation} evaluates a Operation Invocation for a particular target running on top of the
- * {@link com.hazelcast.spi.impl.operationservice.impl.BasicOperationService}.
+ * A {@link Invocation} evaluates a Operation Invocation for a particular target running on top of the
+ * {@link OperationServiceImpl}.
  */
-public final class BasicTargetInvocation extends BasicInvocation {
+public final class TargetInvocation extends Invocation {
 
     private final Address target;
 
-    public BasicTargetInvocation(NodeEngineImpl nodeEngine, String serviceName, Operation op,
-                                 Address target, int tryCount, long tryPauseMillis, long callTimeout,
-                                 Callback<Object> callback, boolean resultDeserialized) {
+    public TargetInvocation(NodeEngineImpl nodeEngine, String serviceName, Operation op,
+                            Address target, int tryCount, long tryPauseMillis, long callTimeout,
+                            Callback callback, boolean resultDeserialized) {
         super(nodeEngine, serviceName, op, op.getPartitionId(), op.getReplicaIndex(),
                 tryCount, tryPauseMillis, callTimeout, callback, resultDeserialized);
         this.target = target;

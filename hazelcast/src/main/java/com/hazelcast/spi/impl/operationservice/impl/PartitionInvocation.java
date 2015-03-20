@@ -23,22 +23,24 @@ import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
 /**
- * A {@link BasicInvocation} evaluates a Operation Invocation for a particular partition running on top of the
- * {@link com.hazelcast.spi.impl.operationservice.impl.BasicOperationService}.
+ * A {@link Invocation} evaluates a Operation Invocation for a particular partition running on top of the
+ * {@link OperationServiceImpl}.
  */
-public final class BasicPartitionInvocation extends BasicInvocation {
+public final class PartitionInvocation extends Invocation {
 
-    public BasicPartitionInvocation(NodeEngineImpl nodeEngine, String serviceName, Operation op, int partitionId,
-                                    int replicaIndex, int tryCount, long tryPauseMillis, long callTimeout,
-                                    Callback<Object> callback, boolean resultDeserialized) {
+    public PartitionInvocation(NodeEngineImpl nodeEngine, String serviceName, Operation op, int partitionId,
+                               int replicaIndex, int tryCount, long tryPauseMillis, long callTimeout,
+                               Callback callback, boolean resultDeserialized) {
         super(nodeEngine, serviceName, op, partitionId, replicaIndex, tryCount, tryPauseMillis,
                 callTimeout, callback, resultDeserialized);
     }
 
+    @Override
     public Address getTarget() {
-        return getPartition().getReplicaAddress(getReplicaIndex());
+        return getPartition().getReplicaAddress(replicaIndex);
     }
 
+    @Override
     ExceptionAction onException(Throwable t) {
         final ExceptionAction action = op.onException(t);
         return action != null ? action : ExceptionAction.THROW_EXCEPTION;

@@ -101,6 +101,7 @@
     <suppress checks="MethodCount" files="com.hazelcast.config.Config"/>
     <suppress checks="ClassDataAbstractionCoupling" files="com.hazelcast.config.Config"/>
     <suppress checks="CyclomaticComplexity" files="com.hazelcast.config.AbstractXmlConfigHelper"/>
+    <suppress checks="ClassDataAbstractionCoupling" files="com.hazelcast.config.AbstractXmlConfigHelper"/>
     <!--Couldn't change structure because of API -->
     <suppress checks="CyclomaticComplexity" files="com.hazelcast.config.MapConfig"/>
     <suppress checks="BooleanExpressionComplexity" files="com.hazelcast.config.MapConfig"/>
@@ -111,6 +112,7 @@
     <!---->
     <suppress checks="MethodCount" files="com.hazelcast.config.SerializationConfig"/>
     <suppress checks="MethodCount" files="com.hazelcast.config.XmlConfigBuilder"/>
+    <suppress checks="FileLengthCheck" files="com.hazelcast.config.XmlConfigBuilder"/>
     <suppress checks="CyclomaticComplexity" files="com.hazelcast.config.XmlConfigBuilder"/>
     <suppress checks="ClassFanOutComplexity" files="com.hazelcast.config.XmlConfigBuilder"/>
     <suppress checks="ClassDataAbstractionCoupling" files="com.hazelcast.config.XmlConfigBuilder"/>
@@ -263,21 +265,21 @@
     <!-- the following suppressions are ok because these classes are the heart of the system. Although
          in the future we need to get rid of classes knowing about node/node-engine because it is a
          god-object -->
-    <suppress checks="ClassFanOutComplexity" files="com.hazelcast.spi.impl.operationservice.impl.BasicOperationService"/>
-    <suppress checks="ClassDataAbstractionCoupling" files="com.hazelcast.spi.impl.operationservice.impl.BasicOperationService"/>
-    <suppress checks="MethodCount" files="com.hazelcast.spi.impl.operationservice.impl.BasicOperationService"/>
+    <suppress checks="ClassFanOutComplexity" files="com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl"/>
+    <suppress checks="ClassDataAbstractionCoupling" files="com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl"/>
+    <suppress checks="MethodCount" files="com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl"/>
 
     <suppress checks="ClassDataAbstractionCoupling|MethodCount"
               files="com.hazelcast.spi.impl.eventservice.impl.EventServiceImpl"/>
     <!-- the invocation just has many parameters because there are a lot of things to tune.-->
-    <suppress checks="ParameterNumber" files="com.hazelcast.spi.impl.operationservice.impl.BasicInvocation"/>
+    <suppress checks="ParameterNumber" files="com.hazelcast.spi.impl.operationservice.impl.InvocationImpl"/>
     <!-- the partition-invocation just has many parameters because there are a lot of things to tune.-->
-    <suppress checks="ParameterNumber" files="com.hazelcast.spi.impl.operationservice.impl.BasicPartitionInvocation"/>
+    <suppress checks="ParameterNumber" files="com.hazelcast.spi.impl.operationservice.impl.PartitionInvocation"/>
 
     <!-- these need to be solved-->
-    <suppress checks="NPathComplexity" files="com.hazelcast.spi.impl.operationservice.impl.BasicInvocationFuture"/>
-    <suppress checks="ReturnCount" files="com.hazelcast.spi.impl.operationservice.impl.BasicInvocationFuture"/>
-    <suppress checks="CyclomaticComplexity" files="com.hazelcast.spi.impl.operationservice.impl.BasicInvocationFuture"/>
+    <suppress checks="NPathComplexity" files="com.hazelcast.spi.impl.operationservice.impl.InvocationFuture"/>
+    <suppress checks="ReturnCount" files="com.hazelcast.spi.impl.operationservice.impl.InvocationFuture"/>
+    <suppress checks="CyclomaticComplexity" files="com.hazelcast.spi.impl.operationservice.impl.InvocationFuture"/>
 
     <!-- Transaction -->
     <suppress checks="JavadocMethod" files="com.hazelcast.transaction[\\/]"/>
