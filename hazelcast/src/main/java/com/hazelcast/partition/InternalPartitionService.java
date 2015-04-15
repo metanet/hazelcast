@@ -160,6 +160,8 @@ public interface InternalPartitionService extends CoreService {
      */
     boolean isMemberStateSafe();
 
+    InternalPartitionServiceState getMemberState();
+
     InternalPartition[] getPartitions();
 
     Collection<MigrationInfo> getActiveMigrations();

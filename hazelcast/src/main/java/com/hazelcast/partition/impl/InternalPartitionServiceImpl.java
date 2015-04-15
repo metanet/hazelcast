@@ -32,6 +32,7 @@ import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.partition.InternalPartitionLostEvent;
 import com.hazelcast.partition.InternalPartitionService;
+import com.hazelcast.partition.InternalPartitionServiceState;
 import com.hazelcast.partition.MigrationEndpoint;
 import com.hazelcast.partition.MigrationInfo;
 import com.hazelcast.partition.PartitionEvent;
@@ -94,6 +95,10 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 
+import static com.hazelcast.partition.InternalPartitionServiceState.MIGRATION_LOCAL;
+import static com.hazelcast.partition.InternalPartitionServiceState.MIGRATION_ON_MASTER;
+import static com.hazelcast.partition.InternalPartitionServiceState.OK;
+import static com.hazelcast.partition.InternalPartitionServiceState.REPLICA_NOT_SYNC;
 import static com.hazelcast.util.FutureUtil.logAllExceptions;
 import static com.hazelcast.util.FutureUtil.waitWithDeadline;
 
@@ -894,8 +899,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         int replicaIndex = syncInfo.replicaIndex;
 
         if (logger.isFinestEnabled()) {
-            logger.finest("Scheduling [" + delayMillis + "ms] sync replica request to -> " + target
-                    + "; for partitionId=" + partitionId + ", replicaIndex=" + replicaIndex);
+            logger.finest(
+                    "Scheduling [" + delayMillis + "ms] sync replica request to -> " + target + "; for partitionId=" + partitionId
+                            + ", replicaIndex=" + replicaIndex);
         }
         replicaSyncScheduler.schedule(delayMillis, partitionId, syncInfo);
     }
@@ -1023,15 +1029,22 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     @Override
     public boolean isMemberStateSafe() {
-        if (hasOnGoingMigrationLocal()) {
-            return false;
+        return getMemberState() == OK;
+    }
+
+    @Override
+    public InternalPartitionServiceState getMemberState() {
+        if(hasOnGoingMigrationLocal()) {
+            return MIGRATION_LOCAL;
         }
+
         if (!node.isMaster()) {
             if (hasOnGoingMigrationMaster(Level.OFF)) {
-                return false;
+                return MIGRATION_ON_MASTER;
             }
         }
-        return isReplicaInSyncState();
+
+        return isReplicaInSyncState() ? OK : REPLICA_NOT_SYNC;
     }
 
     @Override

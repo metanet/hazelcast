@@ -33,6 +33,7 @@ import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.SerializationService;
 import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.partition.InternalPartitionService;
+import com.hazelcast.partition.InternalPartitionServiceState;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.operationservice.InternalOperationService;
@@ -382,6 +383,15 @@ public abstract class HazelcastTestSupport {
         return ps.isMemberStateSafe();
     }
 
+    public static InternalPartitionServiceState getInstancePartitionServiceState(final HazelcastInstance instance) {
+        final Node node = TestUtil.getNode(instance);
+        if (node == null) {
+            return InternalPartitionServiceState.OK;
+        }
+        final InternalPartitionService ps = node.getPartitionService();
+        return ps.getMemberState();
+    }
+
     public static void waitInstanceForSafeState(final HazelcastInstance instance) {
         assertTrueEventually(new AssertTask() {
             public void run() {
@@ -429,6 +439,18 @@ public abstract class HazelcastTestSupport {
         assertTrueEventually(new AssertTask() {
             public void run() {
                 assertTrue(isAllInSafeState(nodes));
+            }
+        });
+    }
+
+    public static void waitAllForSafeState2(final Collection<HazelcastInstance> instance) {
+        assertTrueEventually(new AssertTask() {
+            public void run() {
+                for (HazelcastInstance node : instance) {
+                    InternalPartitionServiceState state = getInstancePartitionServiceState(node);
+                    assertEquals("Instance not in safe state! Address: " + getNode(node).getThisAddress() + " State: " + state,
+                            InternalPartitionServiceState.OK, state);
+                }
             }
         });
     }
