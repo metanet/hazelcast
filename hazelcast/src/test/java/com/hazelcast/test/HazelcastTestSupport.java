@@ -42,6 +42,7 @@ import org.junit.Assert;
 import org.junit.ComparisonFailure;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -428,31 +429,29 @@ public abstract class HazelcastTestSupport {
     }
 
     public static void waitAllForSafeState() {
-        assertTrueEventually(new AssertTask() {
-            public void run() {
-                assertTrue(isAllInSafeState());
-            }
-        });
+        waitAllForSafeState(HazelcastInstanceFactory.getAllHazelcastInstances());
     }
 
-    public static void waitAllForSafeState(final Collection<HazelcastInstance> nodes) {
+    public static void waitAllForSafeState(final Collection<HazelcastInstance> instances) {
         assertTrueEventually(new AssertTask() {
             public void run() {
-                assertTrue(isAllInSafeState(nodes));
-            }
-        });
-    }
-
-    public static void waitAllForSafeState2(final Collection<HazelcastInstance> instance) {
-        assertTrueEventually(new AssertTask() {
-            public void run() {
-                for (HazelcastInstance node : instance) {
-                    InternalPartitionServiceState state = getInstancePartitionServiceState(node);
-                    assertEquals("Instance not in safe state! Address: " + getNode(node).getThisAddress() + " State: " + state,
-                            InternalPartitionServiceState.OK, state);
+                final Map<Address, InternalPartitionServiceState> states = new HashMap<Address, InternalPartitionServiceState>();
+                for (HazelcastInstance instance : instances) {
+                    final InternalPartitionServiceState state = getInternalPartitionServiceState(instance);
+                    if (state != InternalPartitionServiceState.OK) {
+                        states.put(getNode(instance).getThisAddress(), state);
+                    }
                 }
+
+                assertTrue("Instances not in safe state! " + states, states.isEmpty());
             }
         });
+    }
+
+    public static InternalPartitionServiceState getInternalPartitionServiceState(HazelcastInstance instance) {
+        final Node node = getNode(instance);
+        final InternalPartitionService partitionService = node.getPartitionService();
+        return partitionService.getMemberState();
     }
 
     public static void waitAllForSafeState(final HazelcastInstance... nodes) {
