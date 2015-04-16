@@ -138,7 +138,7 @@ public class PartitionReplicaVersionsCorrectnessStressTest
     }
 
     // Must be called on the correct node !!!
-    private long[] getReplicaVersions(Node node, int partitionId)
+    public static long[] getReplicaVersions(Node node, int partitionId)
             throws InterruptedException {
         final GetReplicaVersionsRunnable runnable = new GetReplicaVersionsRunnable(node, partitionId);
         node.getNodeEngine().getOperationService().execute(runnable);

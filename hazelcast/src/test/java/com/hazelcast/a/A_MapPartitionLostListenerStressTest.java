@@ -6,7 +6,6 @@ import com.hazelcast.map.MapPartitionLostEvent;
 import com.hazelcast.map.listener.MapPartitionLostListener;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.AbstractPartitionLostListenerTest;
-import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.SlowTest;
@@ -112,7 +111,8 @@ public class A_MapPartitionLostListenerStressTest
         testMapPartitionLostListener(4, true);
     }
 
-    private void testMapPartitionLostListener(final int numberOfNodesToCrash, final boolean withData) {
+    private void testMapPartitionLostListener(final int numberOfNodesToCrash, final boolean withData)
+            throws InterruptedException {
         final List<HazelcastInstance> instances = getCreatedInstancesShuffledAfterWarmedUp();
 
         List<HazelcastInstance> survivingInstances = new ArrayList<HazelcastInstance>(instances);
@@ -126,10 +126,17 @@ public class A_MapPartitionLostListenerStressTest
         }
 
         final String log = "Surviving: " + survivingInstances + " Terminating: " + terminatingInstances;
-        final Map<Integer, Integer> survivingPartitions = getMinReplicaIndicesByPartitionId(survivingInstances);
+        final Map<Integer, Integer> survivingPartitions = new HashMap<Integer, Integer>();
+        final Map<Node, List<Map.Entry<Integer, long[]>>> replicaVersionsByNodes = new HashMap<Node, List<Map.Entry<Integer, long[]>>>();
+        final Map<Integer, List<Address>> partitionTables = new HashMap<Integer, List<Address>>();
+
+        collectMinReplicaIndicesAndPartitionTablesByPartitionId(survivingInstances, survivingPartitions);
+        collectPartitionReplicaVersions(instances, replicaVersionsByNodes, partitionTables);
+        logReplicaVersions(replicaVersionsByNodes);
+        logPartitionTables(instances, partitionTables);
 
         terminateInstances(terminatingInstances);
-        waitAllForSafeState(survivingInstances);
+        waitAllForSafeStateAndLogReplicaVersions(survivingInstances);
 
         for (int i = 0; i < getNodeCount(); i++) {
             assertListenerInvocationsEventually(numberOfNodesToCrash, log, survivingPartitions, listeners.get(i), i);
@@ -180,35 +187,6 @@ public class A_MapPartitionLostListenerStressTest
         }
 
         return listeners;
-    }
-
-    private Map<Integer, Integer> getMinReplicaIndicesByPartitionId(final List<HazelcastInstance> instances) {
-        final Map<Integer, Integer> survivingPartitions = new HashMap<Integer, Integer>();
-
-        for (HazelcastInstance instance : instances) {
-            final Node survivingNode = getNode(instance);
-            final Address survivingNodeAddress = survivingNode.getThisAddress();
-
-            for (InternalPartition partition : survivingNode.getPartitionService().getPartitions()) {
-                if (partition.isOwnerOrBackup(survivingNodeAddress)) {
-                    for (int replicaIndex = 0; replicaIndex < getNodeCount(); replicaIndex++) {
-                        if (survivingNodeAddress.equals(partition.getReplicaAddress(replicaIndex))) {
-                            final Integer replicaIndexOfOtherInstance = survivingPartitions.get(partition.getPartitionId());
-                            if (replicaIndexOfOtherInstance != null) {
-                                survivingPartitions
-                                        .put(partition.getPartitionId(), Math.min(replicaIndex, replicaIndexOfOtherInstance));
-                            } else {
-                                survivingPartitions.put(partition.getPartitionId(), replicaIndex);
-                            }
-
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        return survivingPartitions;
     }
 
 }
