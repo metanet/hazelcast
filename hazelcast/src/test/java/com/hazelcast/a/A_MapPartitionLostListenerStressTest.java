@@ -1,7 +1,8 @@
-package com.hazelcast.map;
+package com.hazelcast.a;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
+import com.hazelcast.map.MapPartitionLostEvent;
 import com.hazelcast.map.listener.MapPartitionLostListener;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.AbstractPartitionLostListenerTest;
@@ -25,7 +26,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(SlowTest.class)
-public class MapPartitionLostListenerStressTest
+public class A_MapPartitionLostListenerStressTest
         extends AbstractPartitionLostListenerTest {
 
     public static class EventCollectingMapPartitionLostListener

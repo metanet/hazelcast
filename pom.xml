@@ -221,7 +221,7 @@
                 <version>${maven.surefire.plugin.version}</version>
                 <configuration combine.self="override">
                     <redirectTestOutputToFile>true</redirectTestOutputToFile>
-
+                    <runOrder>alphabetical</runOrder>
 
                     <!-- 1C means 1 process per cpu core -->
                     <!-- forkCount>1C</forkCount>
@@ -727,6 +727,7 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <version>${maven.surefire.plugin.version}</version>
                         <configuration combine.self="override">
+                            <runOrder>alphabetical</runOrder>
                             <parallel>none</parallel>
                             <redirectTestOutputToFile>true</redirectTestOutputToFile>
                             <argLine>-Xms128m -Xmx1G -XX:MaxPermSize=128M

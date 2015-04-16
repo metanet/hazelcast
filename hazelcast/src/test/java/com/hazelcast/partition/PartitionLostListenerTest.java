@@ -3,7 +3,7 @@ package com.hazelcast.partition;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.PartitionLostListenerStressTest.EventCollectingPartitionLostListener;
+import com.hazelcast.a.A_PartitionLostListenerStressTest.EventCollectingPartitionLostListener;
 import com.hazelcast.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;

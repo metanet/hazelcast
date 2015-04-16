@@ -1,8 +1,12 @@
-package com.hazelcast.partition;
+package com.hazelcast.a;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
 import com.hazelcast.nio.Address;
+import com.hazelcast.partition.AbstractPartitionLostListenerTest;
+import com.hazelcast.partition.InternalPartition;
+import com.hazelcast.partition.PartitionLostEvent;
+import com.hazelcast.partition.PartitionLostListener;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.SlowTest;
@@ -21,7 +25,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(SlowTest.class)
-public class PartitionLostListenerStressTest
+public class A_PartitionLostListenerStressTest
         extends AbstractPartitionLostListenerTest {
 
     public static class EventCollectingPartitionLostListener
