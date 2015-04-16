@@ -1,10 +1,10 @@
 package com.hazelcast.partition;
 
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.instance.Node;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
-import com.hazelcast.test.annotation.Repeat;
 import com.hazelcast.test.annotation.SlowTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -21,7 +21,6 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(SlowTest.class)
-@Repeat(10)
 public class PartitionLostListenerStressTest
         extends AbstractPartitionLostListenerTest {
 
@@ -48,13 +47,13 @@ public class PartitionLostListenerStressTest
         return 5000;
     }
 
-//    @Test
+    @Test
     public void test_partitionLostListenerInvoked_when1NodeCrashed_withoutData()
             throws InterruptedException {
         testPartitionLostListener(1, false);
     }
 
-//    @Test
+    @Test
     public void test_partitionLostListenerInvoked_when1NodeCrashed_withData()
             throws InterruptedException {
         testPartitionLostListener(1, true);
@@ -102,8 +101,8 @@ public class PartitionLostListenerStressTest
         final EventCollectingPartitionLostListener listener = registerPartitionLostListener(master);
         final List<HazelcastInstance> others = createInstances(getNodeCount() - 1);
 
-        waitAllForSafeState2(singletonList(master));
-        waitAllForSafeState2(others);
+        waitAllForSafeState(singletonList(master));
+        waitAllForSafeState(others);
 
         assertTrue("No invocation to PartitionLostListener when new nodes join to cluster", listener.getEvents().isEmpty());
     }
@@ -118,22 +117,22 @@ public class PartitionLostListenerStressTest
             populateMaps(survivingInstances.get(0));
         }
 
-            final String log = "Surviving: " + survivingInstances + " Terminating: " + terminatingInstances;
-            final EventCollectingPartitionLostListener listener = registerPartitionLostListener(survivingInstances.get(0));
-            final Map<Integer, Integer> survivingPartitions = new HashMap<Integer, Integer>();
-            final Map<Integer, List<Address>> partitionTables = new HashMap<Integer, List<Address>>();
-            collectMinReplicaIndicesAndPartitionTablesByPartitionId(survivingInstances, survivingPartitions, partitionTables);
+        final String log = "Surviving: " + survivingInstances + " Terminating: " + terminatingInstances;
+        final EventCollectingPartitionLostListener listener = registerPartitionLostListener(survivingInstances.get(0));
+        final Map<Integer, Integer> survivingPartitions = new HashMap<Integer, Integer>();
+        final Map<Integer, List<Address>> partitionTables = new HashMap<Integer, List<Address>>();
+        collectMinReplicaIndicesAndPartitionTablesByPartitionId(survivingInstances, survivingPartitions, partitionTables);
 
-            terminateInstances(terminatingInstances);
-            waitAllForSafeState2(survivingInstances);
+        terminateInstances(terminatingInstances);
+        waitAllForSafeState(survivingInstances);
 
-            assertTrueEventually(new AssertTask() {
-                @Override
-                public void run()
-                        throws Exception {
-                    assertLostPartitions(log, listener, survivingPartitions, partitionTables);
-                }
-            });
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertLostPartitions(log, listener, survivingPartitions, partitionTables);
+            }
+        });
     }
 
     private void assertLostPartitions(final String log, final EventCollectingPartitionLostListener listener,
@@ -161,6 +160,43 @@ public class PartitionLostListenerStressTest
         final EventCollectingPartitionLostListener listener = new EventCollectingPartitionLostListener();
         instance.getPartitionService().addPartitionLostListener(listener);
         return listener;
+    }
+
+    private void collectMinReplicaIndicesAndPartitionTablesByPartitionId(final List<HazelcastInstance> instances,
+                                                                                 final Map<Integer, Integer> survivingPartitions,
+                                                                                 final Map<Integer, List<Address>> partitionTables) {
+        for (HazelcastInstance instance : instances) {
+            final Node survivingNode = getNode(instance);
+            final Address survivingNodeAddress = survivingNode.getThisAddress();
+
+            for (InternalPartition partition : survivingNode.getPartitionService().getPartitions()) {
+                if (partition.isOwnerOrBackup(survivingNodeAddress)) {
+                    final List<Address> replicas = new ArrayList<Address>();
+                    for (int replicaIndex = 0; replicaIndex < getNodeCount(); replicaIndex++) {
+                        replicas.add(partition.getReplicaAddress(replicaIndex));
+                    }
+                    partitionTables.put(partition.getPartitionId(), replicas);
+                }
+            }
+
+            for (InternalPartition partition : survivingNode.getPartitionService().getPartitions()) {
+                if (partition.isOwnerOrBackup(survivingNodeAddress)) {
+                    for (int replicaIndex = 0; replicaIndex < getNodeCount(); replicaIndex++) {
+                        if (survivingNodeAddress.equals(partition.getReplicaAddress(replicaIndex))) {
+                            final Integer replicaIndexOfOtherInstance = survivingPartitions.get(partition.getPartitionId());
+                            if (replicaIndexOfOtherInstance != null) {
+                                survivingPartitions
+                                        .put(partition.getPartitionId(), Math.min(replicaIndex, replicaIndexOfOtherInstance));
+                            } else {
+                                survivingPartitions.put(partition.getPartitionId(), replicaIndex);
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
 }
