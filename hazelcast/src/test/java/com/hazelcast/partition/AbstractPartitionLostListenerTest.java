@@ -129,7 +129,7 @@ public abstract class AbstractPartitionLostListenerTest
     final protected void waitAllForSafeStateAndLogReplicaVersions(final List<HazelcastInstance> instances)
             throws InterruptedException {
         try {
-            waitAllForSafeState(instances);
+            waitAllForSafeState(instances, 300);
         } catch (AssertionError e) {
             final Map<Node, List<Entry<Integer, long[]>>> replicaVersionsByNodes = new HashMap<Node, List<Entry<Integer, long[]>>>();
             final Map<Integer, List<Address>> partitionTables = new HashMap<Integer, List<Address>>();

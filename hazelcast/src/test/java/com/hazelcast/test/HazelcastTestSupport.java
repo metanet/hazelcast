@@ -448,6 +448,22 @@ public abstract class HazelcastTestSupport {
         });
     }
 
+    public static void waitAllForSafeState(final Collection<HazelcastInstance> instances, int timeoutSeconds) {
+        assertTrueEventually(new AssertTask() {
+            public void run() {
+                final Map<Address, InternalPartitionServiceState> states = new HashMap<Address, InternalPartitionServiceState>();
+                for (HazelcastInstance instance : instances) {
+                    final InternalPartitionServiceState state = getInternalPartitionServiceState(instance);
+                    if (state != InternalPartitionServiceState.OK) {
+                        states.put(getNode(instance).getThisAddress(), state);
+                    }
+                }
+
+                assertTrue("Instances not in safe state! " + states, states.isEmpty());
+            }
+        }, timeoutSeconds);
+    }
+
     public static InternalPartitionServiceState getInternalPartitionServiceState(HazelcastInstance instance) {
         final Node node = getNode(instance);
         final InternalPartitionService partitionService = node.getPartitionService();
