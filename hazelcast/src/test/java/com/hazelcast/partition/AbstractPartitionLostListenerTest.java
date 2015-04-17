@@ -5,8 +5,11 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
+import com.hazelcast.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.partition.impl.ReplicaSyncInfo;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
+import com.hazelcast.util.scheduler.ScheduledEntry;
 import org.junit.After;
 import org.junit.Before;
 
@@ -20,6 +23,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import static com.hazelcast.partition.PartitionReplicaVersionsCorrectnessStressTest.getReplicaVersions;
 
@@ -74,6 +79,7 @@ public abstract class AbstractPartitionLostListenerTest
 
     private Config createConfig(final int nodeCount) {
         final Config config = new Config();
+//        config.setProperty( "hazelcast.logging.type", "jdk" );
         for (int i = 0; i < nodeCount; i++) {
             config.getMapConfig(getIthMapName(i)).setBackupCount(i);
         }
@@ -130,6 +136,7 @@ public abstract class AbstractPartitionLostListenerTest
             collectPartitionReplicaVersions(instances, replicaVersionsByNodes, partitionTables);
             logReplicaVersions(replicaVersionsByNodes);
             logPartitionTables(instances, partitionTables);
+            logReplicaSyncInfos(instances);
             throw e;
         }
     }
@@ -193,6 +200,28 @@ public abstract class AbstractPartitionLostListenerTest
         final ILogger logger = node.getLogger(this.getClass());
         for (Map.Entry<Integer, List<Address>> entry : partitionTables.entrySet()) {
             logger.info("PartitionTable >> partitionId=" + entry.getKey() + " replicas=" + entry.getValue());
+        }
+    }
+
+    final protected void logReplicaSyncInfos(final List<HazelcastInstance> instances) {
+        for (HazelcastInstance instance : instances) {
+            final Node node = getNode(instance);
+            final ILogger logger = node.getLogger(this.getClass());
+
+            final InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) node.getPartitionService();
+            final AtomicReferenceArray<ReplicaSyncInfo> replicaSyncRequests = partitionService.getReplicaSyncRequests();
+            for (int i=0; i < replicaSyncRequests.length(); i++) {
+                final ReplicaSyncInfo replicaSyncInfo = replicaSyncRequests.get(i);
+                if (replicaSyncInfo != null) {
+                    logger.info("ReplicaSyncInfo >>> " + node.getThisAddress() + " partitionId=" + i + " replicaSyncInfo=" + replicaSyncInfo);
+                }
+            }
+
+            for(Map.Entry<Integer, ConcurrentMap<Object, ScheduledEntry<Integer, ReplicaSyncInfo>>> e1 : partitionService.getScheduledReplicaSyncRequests().entrySet()){
+                for (Map.Entry<Object, ScheduledEntry<Integer, ReplicaSyncInfo>> e2 : e1.getValue().entrySet()){
+                    logger.info("Scheduled >>> " + node.getThisAddress() + " timeKey=" + e1.getKey() + " " + " partitionId=" + e2.getKey() + " replicaSyncInfo=" + e2.getValue());
+                }
+            }
         }
     }
 

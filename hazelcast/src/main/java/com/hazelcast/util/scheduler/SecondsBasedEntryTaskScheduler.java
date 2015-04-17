@@ -455,6 +455,11 @@ final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskScheduler<K
     }
 
     @Override
+    public ConcurrentMap<Integer, ConcurrentMap<Object, ScheduledEntry<K, V>>> getScheduledEntries() {
+        return scheduledEntries;
+    }
+
+    @Override
     public String toString() {
         return "EntryTaskScheduler{"
                 + "secondsOfKeys="

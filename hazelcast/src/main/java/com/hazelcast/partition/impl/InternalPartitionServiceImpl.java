@@ -1515,6 +1515,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         partitionEventListener.onEvent(partitionEvent);
     }
 
+
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("PartitionManager[" + stateVersion + "] {\n");
@@ -1541,6 +1543,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         final Collection<EventRegistration> registrations = eventService
                 .getRegistrations(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC);
         eventService.publishEvent(SERVICE_NAME, registrations, partitionLostEvent, event.getPartitionId());
+    }
+
+    public AtomicReferenceArray<ReplicaSyncInfo> getReplicaSyncRequests() {
+        return replicaSyncRequests;
+    }
+
+    public ConcurrentMap<Integer, ConcurrentMap<Object, ScheduledEntry<Integer, ReplicaSyncInfo>>> getScheduledReplicaSyncRequests() {
+        return replicaSyncScheduler.getScheduledEntries();
     }
 
     private class SendClusterStateTask implements Runnable {

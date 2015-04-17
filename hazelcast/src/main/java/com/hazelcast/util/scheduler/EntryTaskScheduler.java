@@ -17,6 +17,7 @@
 package com.hazelcast.util.scheduler;
 
 import java.util.Set;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Schedules (or reschedules) the execution of given entry.
@@ -48,4 +49,6 @@ public interface EntryTaskScheduler<K, V> {
     void cancelAll();
 
     int size();
+
+    ConcurrentMap<Integer, ConcurrentMap<Object, ScheduledEntry<K, V>>> getScheduledEntries();
 }
