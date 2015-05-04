@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import static com.hazelcast.test.TestPartitionUtils.getAllReplicaAddresses;
+import static com.hazelcast.test.TestPartitionUtils.getAvailableReplicaSyncPermits;
 import static com.hazelcast.test.TestPartitionUtils.getOngoingReplicaSyncRequests;
 import static com.hazelcast.test.TestPartitionUtils.getOwnedReplicaVersions;
 import static com.hazelcast.test.TestPartitionUtils.getScheduledReplicaSyncRequests;
@@ -142,6 +143,7 @@ public abstract class AbstractPartitionLostListenerTest
         }
 
         for (HazelcastInstance instance : instances) {
+            System.out.println("AvailableReplicaSyncPermits >> " + getAvailableReplicaSyncPermits(instance));
             final Address address = getNode(instance).getThisAddress();
             for (Entry<Integer, long[]> entry : getOwnedReplicaVersions(instance).entrySet()) {
                 System.out.println(

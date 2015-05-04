@@ -147,6 +147,15 @@ public class TestPartitionUtils {
         return replicaAddresses;
     }
 
+    public static int getAvailableReplicaSyncPermits(HazelcastInstance instance) {
+        return getAvailableReplicaSyncPermits(getNode(instance));
+    }
+
+    public static int getAvailableReplicaSyncPermits(Node node) {
+        final InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) node.getPartitionService();
+        return partitionService.getAvailableReplicaSyncPermits();
+    }
+
     private static class GetReplicaVersionsRunnable
             implements PartitionSpecificRunnable {
 

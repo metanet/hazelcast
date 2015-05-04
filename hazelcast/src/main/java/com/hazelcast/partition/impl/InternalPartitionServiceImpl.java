@@ -1571,6 +1571,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return entries;
     }
 
+    public int getAvailableReplicaSyncPermits() {
+        return replicaSyncProcessLock.availablePermits();
+    }
+
     private class SendClusterStateTask implements Runnable {
         @Override
         public void run() {
