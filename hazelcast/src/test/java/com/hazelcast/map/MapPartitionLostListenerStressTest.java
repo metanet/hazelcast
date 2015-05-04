@@ -22,7 +22,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(SlowTest.class)
-@Repeat(10)
+@Repeat(3)
 public class MapPartitionLostListenerStressTest
         extends AbstractPartitionLostListenerTest {
 
@@ -61,19 +61,19 @@ public class MapPartitionLostListenerStressTest
         return 5000;
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when1NodeCrashed_withoutData()
             throws InterruptedException {
         testMapPartitionLostListener(1, false);
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when1NodeCrashed_withData()
             throws InterruptedException {
         testMapPartitionLostListener(1, true);
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when2NodesCrashed_withoutData()
             throws InterruptedException {
         testMapPartitionLostListener(2, false);
@@ -85,25 +85,25 @@ public class MapPartitionLostListenerStressTest
         testMapPartitionLostListener(2, true);
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when3NodesCrashed_withoutData()
             throws InterruptedException {
         testMapPartitionLostListener(3, false);
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when3NodesCrashed_withData()
             throws InterruptedException {
         testMapPartitionLostListener(3, true);
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when4NodesCrashed_withoutData()
             throws InterruptedException {
         testMapPartitionLostListener(4, false);
     }
 
-//    @Test
+    @Test
     public void test_mapPartitionLostListenerInvoked_when4NodesCrashed_withData()
             throws InterruptedException {
         testMapPartitionLostListener(4, true);
