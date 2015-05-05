@@ -143,8 +143,8 @@ public abstract class AbstractPartitionLostListenerTest
         }
 
         for (HazelcastInstance instance : instances) {
-            System.out.println("AvailableReplicaSyncPermits >> " + getAvailableReplicaSyncPermits(instance));
             final Address address = getNode(instance).getThisAddress();
+            System.out.println("AvailableReplicaSyncPermits >> " + address + " = " + getAvailableReplicaSyncPermits(instance));
             for (Entry<Integer, long[]> entry : getOwnedReplicaVersions(instance).entrySet()) {
                 System.out.println(
                         "ReplicaVersions >> " + address + " - partitionId=" + entry.getKey() + " replicaVersions=" + Arrays
