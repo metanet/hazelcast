@@ -5,6 +5,7 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.TestPartitionUtils;
+import com.hazelcast.test.annotation.Repeat;
 import com.hazelcast.test.annotation.SlowTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -20,6 +21,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(SlowTest.class)
+@Repeat(3)
 public class PartitionLostListenerStressTest
         extends AbstractPartitionLostListenerTest {
 
@@ -123,7 +125,7 @@ public class PartitionLostListenerStressTest
         final Map<Integer, List<Address>> partitionTables = TestPartitionUtils.getAllReplicaAddresses(survivingInstances);
 
         terminateInstances(terminatingInstances);
-        waitAllForSafeStateAndDumpPartitionServiceOnFailure(survivingInstances, 300);
+        waitAllForSafeStateAndDumpPartitionServiceOnFailure(survivingInstances, 120);
 
         assertTrueEventually(new AssertTask() {
             @Override

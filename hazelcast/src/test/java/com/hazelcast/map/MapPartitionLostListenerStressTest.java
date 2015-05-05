@@ -127,7 +127,7 @@ public class MapPartitionLostListenerStressTest
         final Map<Integer, Integer> survivingPartitions = getMinReplicaIndicesByPartitionId(survivingInstances);
 
         terminateInstances(terminatingInstances);
-        waitAllForSafeStateAndDumpPartitionServiceOnFailure(survivingInstances, 300);
+        waitAllForSafeStateAndDumpPartitionServiceOnFailure(survivingInstances, 120);
 
         for (int i = 0; i < getNodeCount(); i++) {
             assertListenerInvocationsEventually(numberOfNodesToCrash, log, survivingPartitions, listeners.get(i), i);

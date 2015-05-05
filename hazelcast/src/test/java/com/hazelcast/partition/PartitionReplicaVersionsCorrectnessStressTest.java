@@ -77,7 +77,7 @@ public class PartitionReplicaVersionsCorrectnessStressTest
         final Map<Integer, Integer> minSurvivingReplicaIndexByPartitionId = getMinReplicaIndicesByPartitionId(survivingInstances);
 
         terminateInstances(terminatingInstances);
-        waitAllForSafeStateAndDumpPartitionServiceOnFailure(survivingInstances, 300);
+        waitAllForSafeStateAndDumpPartitionServiceOnFailure(survivingInstances, 120);
 
         validateReplicaVersions(numberOfNodesToCrash, log, survivingInstances, replicaVersionsByPartitionId,
                 partitionReplicaAddresses, minSurvivingReplicaIndexByPartitionId);
