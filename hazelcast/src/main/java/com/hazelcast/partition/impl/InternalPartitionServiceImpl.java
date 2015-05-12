@@ -898,7 +898,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         int replicaIndex = syncInfo.replicaIndex;
 
 //        if (logger.isFinestEnabled()) {
-        logger.info("ZZZ " + delayMillis + " -> " + target + " p=" + partitionId + " ri=" + replicaIndex);
+//        logger.info("ZZZ " + delayMillis + " -> " + target + " p=" + partitionId + " ri=" + replicaIndex);
 //        }
         replicaSyncScheduler.schedule(delayMillis, partitionId, syncInfo);
     }
@@ -914,19 +914,19 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         Address thisAddress = nodeEngine.getThisAddress();
         if (target.equals(thisAddress)) {
-            if (logger.isFinestEnabled()) {
-                logger.finest("This node is now owner of partition, cannot sync replica -> partitionId=" + partitionId
+//            if (logger.isFinestEnabled()) {
+                logger.warning("This node is now owner of partition, cannot sync replica -> partitionId=" + partitionId
                         + ", replicaIndex=" + replicaIndex + ", partition-info="
                         + getPartitionImpl(partitionId));
-            }
+//            }
             return false;
         }
 
         if (!partition.isOwnerOrBackup(thisAddress)) {
-            if (logger.isFinestEnabled()) {
-                logger.finest("This node is not backup replica of partitionId=" + partitionId
+//            if (logger.isFinestEnabled()) {
+                logger.warning("This node is not backup replica of partitionId=" + partitionId
                         + ", replicaIndex=" + replicaIndex + " anymore.");
-            }
+//            }
             return false;
         }
         return true;
@@ -1349,9 +1349,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             releaseReplicaSyncPermit();
         } else if (currentSyncInfo != null) {
-            if (logger.isFinestEnabled()) {
-                logger.finest("Not able to cancel sync! " + syncInfo + " VS Current " + currentSyncInfo);
-            }
+//            if (logger.isFinestEnabled()) {
+                logger.warning("Not able to cancel sync! " + syncInfo + " VS Current " + currentSyncInfo);
+//            }
         }
     }
 
