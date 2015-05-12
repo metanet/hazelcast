@@ -48,4 +48,6 @@ public interface EntryTaskScheduler<K, V> {
     void cancelAll();
 
     int size();
+
+    void printInternal();
 }

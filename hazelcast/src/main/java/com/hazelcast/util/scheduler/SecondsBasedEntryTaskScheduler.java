@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
  * @param <K> entry key type
  * @param <V> entry value type
  */
-final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskScheduler<K, V> {
+public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskScheduler<K, V> {
 
     public static final int INITIAL_CAPACITY = 10;
 
@@ -464,5 +464,20 @@ final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskScheduler<K
                 + "] ="
                 + scheduledEntries.keySet()
                 + '}';
+    }
+
+    public void printInternal() {
+
+        int min = 0;
+        for(Integer key : scheduledTaskMap.keySet()) {
+            min = Math.min(min, key);
+        }
+
+        System.out.println(">>> MIN SECONDS: " + min);
+
+        for(Map.Entry<Object, Integer> entry : secondsOfKeys.entrySet()) {
+            System.out.println("Entry >>> partitionId=" + entry.getKey() + " second=" + entry.getValue());
+        }
+
     }
 }

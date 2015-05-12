@@ -66,6 +66,7 @@ import com.hazelcast.util.scheduler.EntryTaskSchedulerFactory;
 import com.hazelcast.util.scheduler.ScheduleType;
 import com.hazelcast.util.scheduler.ScheduledEntry;
 import com.hazelcast.util.scheduler.ScheduledEntryProcessor;
+import com.hazelcast.util.scheduler.SecondsBasedEntryTaskScheduler;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -924,8 +925,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         if (!partition.isOwnerOrBackup(thisAddress)) {
 //            if (logger.isFinestEnabled()) {
-                logger.warning("This node is not backup replica of partitionId=" + partitionId
-                        + ", replicaIndex=" + replicaIndex + " anymore.");
+                logger.warning("This node is not backup replica of partitionId=" + partitionId + ", replicaIndex=" + replicaIndex
+                        + " anymore.");
 //            }
             return false;
         }
@@ -1559,6 +1560,13 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
      * @return copy of scheduled replica-sync requests
      */
     public List<ScheduledEntry<Integer, ReplicaSyncInfo>> getScheduledReplicaSyncRequests() {
+
+        SecondsBasedEntryTaskScheduler<Integer, ReplicaSyncInfo> s =
+                (SecondsBasedEntryTaskScheduler<Integer, ReplicaSyncInfo>) replicaSyncScheduler;
+
+        s.printInternal();
+
+
         final List<ScheduledEntry<Integer, ReplicaSyncInfo>> entries = new ArrayList<ScheduledEntry<Integer, ReplicaSyncInfo>>();
         for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
             final ScheduledEntry<Integer, ReplicaSyncInfo> entry = replicaSyncScheduler.get(partitionId);
