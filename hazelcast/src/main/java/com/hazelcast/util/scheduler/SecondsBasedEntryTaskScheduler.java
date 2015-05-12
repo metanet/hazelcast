@@ -468,12 +468,9 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
 
     public void printInternal() {
 
-        int min = 0;
         for(Integer key : scheduledTaskMap.keySet()) {
-            min = Math.min(min, key);
+            System.out.println("SCHEDULED SECOND >>> " + key);
         }
-
-        System.out.println(">>> MIN SECONDS: " + min);
 
         for(Map.Entry<Object, Integer> entry : secondsOfKeys.entrySet()) {
             System.out.println("Entry >>> partitionId=" + entry.getKey() + " second=" + entry.getValue());
