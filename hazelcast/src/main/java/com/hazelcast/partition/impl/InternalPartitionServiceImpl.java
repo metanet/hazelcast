@@ -897,10 +897,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         int partitionId = syncInfo.partitionId;
         int replicaIndex = syncInfo.replicaIndex;
 
-        if (logger.isFinestEnabled()) {
-            logger.finest("Scheduling [" + delayMillis + "ms] sync replica request to -> " + target
-                    + "; for partitionId=" + partitionId + ", replicaIndex=" + replicaIndex);
-        }
+//        if (logger.isFinestEnabled()) {
+        logger.info("ZZZ " + delayMillis + " -> " + target + " p=" + partitionId + " ri=" + replicaIndex);
+//        }
         replicaSyncScheduler.schedule(delayMillis, partitionId, syncInfo);
     }
 
