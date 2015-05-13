@@ -38,20 +38,24 @@ public final class ScheduledEntry<K, V> implements Map.Entry<K, V> {
 
     private final long scheduleStartTimeInNanos;
 
+    private final int count;
+
     public ScheduledEntry(K key, V value, long scheduledDelayMillis, int actualDelaySeconds) {
         this.key = key;
         this.value = value;
         this.scheduledDelayMillis = scheduledDelayMillis;
         this.actualDelaySeconds = actualDelaySeconds;
         this.scheduleStartTimeInNanos = System.nanoTime();
+        this.count = 1;
     }
 
-    public ScheduledEntry(K key, V value, long scheduledDelayMillis, int actualDelaySeconds, long scheduleStartTimeInNanos) {
+    public ScheduledEntry(K key, V value, long scheduledDelayMillis, int actualDelaySeconds, long scheduleStartTimeInNanos, int count) {
         this.key = key;
         this.value = value;
         this.scheduledDelayMillis = scheduledDelayMillis;
         this.actualDelaySeconds = actualDelaySeconds;
         this.scheduleStartTimeInNanos = scheduleStartTimeInNanos;
+        this.count = count;
     }
 
     @Override
@@ -85,6 +89,10 @@ public final class ScheduledEntry<K, V> implements Map.Entry<K, V> {
         return TimeUnit.SECONDS.toMillis(actualDelaySeconds);
     }
 
+    public int getCount() {
+        return count;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -115,17 +123,13 @@ public final class ScheduledEntry<K, V> implements Map.Entry<K, V> {
 
     @Override
     public String toString() {
-        return "ScheduledEntry{"
-                + "key="
-                + key
-                + ", value="
-                + value
-                + ", scheduledDelayMillis="
-                + scheduledDelayMillis
-                + ", actualDelaySeconds="
-                + actualDelaySeconds
-                + ", scheduleStartTimeInNanos="
-                + scheduleStartTimeInNanos
-                + '}';
+        return "ScheduledEntry{" +
+                "key=" + key +
+                ", value=" + value +
+                ", scheduledDelayMillis=" + scheduledDelayMillis +
+                ", actualDelaySeconds=" + actualDelaySeconds +
+                ", scheduleStartTimeInNanos=" + scheduleStartTimeInNanos +
+                ", count=" + count +
+                '}';
     }
 }

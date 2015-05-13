@@ -264,6 +264,7 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         final Integer newSecond = findRelativeSecond(delayMillis);
         final Integer existingSecond = secondsOfKeys.put(key, newSecond);
         long time = System.nanoTime();
+        int count = 1;
         if (existingSecond != null) {
             if (existingSecond.equals(newSecond)) {
                 return false;
@@ -271,9 +272,10 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
             ScheduledEntry<K, V> previousEntry = removeKeyFromSecond(key, existingSecond);
             if (previousEntry != null) {
                 time = previousEntry.getScheduleStartTimeInNanos();
+                count += previousEntry.getCount();
             }
         }
-        doSchedule(key, new ScheduledEntry<K, V>(key, value, delayMillis, delaySeconds, time), newSecond);
+        doSchedule(key, new ScheduledEntry<K, V>(key, value, delayMillis, delaySeconds, time, count), newSecond);
         return true;
     }
 
@@ -283,7 +285,7 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         long time = System.nanoTime();
         TimeKey timeKey = new TimeKey(key, time);
         secondsOfKeys.put(timeKey, newSecond);
-        doSchedule(timeKey, new ScheduledEntry<K, V>(key, value, delayMillis, delaySeconds, time), newSecond);
+        doSchedule(timeKey, new ScheduledEntry<K, V>(key, value, delayMillis, delaySeconds, time, 1), newSecond);
         return true;
     }
 
