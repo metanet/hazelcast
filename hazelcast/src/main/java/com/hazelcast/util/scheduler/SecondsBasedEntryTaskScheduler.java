@@ -484,9 +484,9 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         for(Map.Entry<Object, Integer> e1 : secondsOfKeys.entrySet()) {
             Integer second = e1.getValue();
 
-            for (ScheduledEntry<K, V> e2 : scheduledEntries.get(second).values()) {
-                System.out.println("Entry >>> partitionId=" + e1.getKey() + " second=" + second + " time passed=" + ((time - e2.getScheduleStartTimeInNanos()) / 1000) + " entry=" + e2);
-            }
+            ScheduledEntry<K, V> e2 = scheduledEntries.get(second).get(e1.getKey());
+            System.out.println("Entry >>> partitionId=" + e2.getKey() + " second=" + second + " time passed="
+                    + ((time - e2.getScheduleStartTimeInNanos()) / 1000) + " entry=" + e2);
 
         }
 
