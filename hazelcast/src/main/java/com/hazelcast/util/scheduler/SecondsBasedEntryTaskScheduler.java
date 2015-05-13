@@ -402,7 +402,10 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         scheduledTaskMap.put(second, scheduledFuture);
     }
 
+    private static volatile Integer maxSecondProcessed;
+
     private final class EntryProcessorExecutor implements Runnable {
+
         private final Integer second;
 
         private EntryProcessorExecutor(Integer second) {
@@ -423,6 +426,7 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
                     values.add(entry.getValue());
                 }
             }
+            maxSecondProcessed = second;
             //sort entries asc by schedule times and send to processor.
             entryProcessor.process(SecondsBasedEntryTaskScheduler.this, sortForEntryProcessing(values));
         }
@@ -471,6 +475,8 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         for(Integer key : scheduledTaskMap.keySet()) {
             System.out.println("SCHEDULED SECOND >>> " + key);
         }
+
+        System.out.println("MAX SECOND PROCESSED >>> " + maxSecondProcessed);
 
         for(Map.Entry<Object, Integer> entry : secondsOfKeys.entrySet()) {
             System.out.println("Entry >>> partitionId=" + entry.getKey() + " second=" + entry.getValue());
