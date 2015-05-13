@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Schedule execution of an entry for seconds later.
@@ -402,7 +403,7 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         scheduledTaskMap.put(second, scheduledFuture);
     }
 
-    private static volatile Integer maxSecondProcessed;
+    private static AtomicInteger maxSecondProcessed = new AtomicInteger(0);
 
     private final class EntryProcessorExecutor implements Runnable {
 
@@ -426,7 +427,8 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
                     values.add(entry.getValue());
                 }
             }
-            maxSecondProcessed = second;
+
+            maxSecondProcessed.lazySet(second);
             //sort entries asc by schedule times and send to processor.
             entryProcessor.process(SecondsBasedEntryTaskScheduler.this, sortForEntryProcessing(values));
         }
