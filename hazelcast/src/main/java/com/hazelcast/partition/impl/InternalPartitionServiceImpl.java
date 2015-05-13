@@ -89,6 +89,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.Lock;
@@ -97,8 +98,8 @@ import java.util.logging.Level;
 
 import static com.hazelcast.partition.impl.InternalPartitionServiceState.MIGRATION_LOCAL;
 import static com.hazelcast.partition.impl.InternalPartitionServiceState.MIGRATION_ON_MASTER;
-import static com.hazelcast.partition.impl.InternalPartitionServiceState.SAFE;
 import static com.hazelcast.partition.impl.InternalPartitionServiceState.REPLICA_NOT_SYNC;
+import static com.hazelcast.partition.impl.InternalPartitionServiceState.SAFE;
 import static com.hazelcast.util.FutureUtil.logAllExceptions;
 import static com.hazelcast.util.FutureUtil.waitWithDeadline;
 
@@ -153,6 +154,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     // both reads and updates will be done under lock!
     private final LinkedList<MigrationInfo> completedMigrations = new LinkedList<MigrationInfo>();
+
+    private final AtomicIntegerArray replicaSyncCounts;
 
     public InternalPartitionServiceImpl(Node node) {
         this.partitionCount = node.groupProperties.PARTITION_COUNT.getInteger();
@@ -213,6 +216,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         maxParallelReplications = node.groupProperties.PARTITION_MAX_PARALLEL_REPLICATIONS.getInteger();
         replicaSyncProcessLock = new Semaphore(maxParallelReplications);
+
+        this.replicaSyncCounts = new AtomicIntegerArray(partitionCount);
     }
 
     private long calculateMaxMigrationDelayOnMemberRemoved() {
@@ -894,9 +899,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return false;
     }
 
+
+
     private void schedulePartitionReplicaSync(ReplicaSyncInfo syncInfo, Address target, long delayMillis) {
         int partitionId = syncInfo.partitionId;
         int replicaIndex = syncInfo.replicaIndex;
+
+        replicaSyncCounts.incrementAndGet(syncInfo.partitionId);
+
 
 //        if (logger.isFinestEnabled()) {
 //        logger.info("ZZZ " + delayMillis + " -> " + target + " p=" + partitionId + " ri=" + replicaIndex);
@@ -1565,6 +1575,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 (SecondsBasedEntryTaskScheduler<Integer, ReplicaSyncInfo>) replicaSyncScheduler;
 
         s.printInternal();
+
+        for(int i=0; i<replicaSyncCounts.length(); i++) {
+            System.out.println( "SYNC COUNTS >>> partitionId=" + i + " count="+replicaSyncCounts.get(i));
+        }
 
 
         final List<ScheduledEntry<Integer, ReplicaSyncInfo>> entries = new ArrayList<ScheduledEntry<Integer, ReplicaSyncInfo>>();
