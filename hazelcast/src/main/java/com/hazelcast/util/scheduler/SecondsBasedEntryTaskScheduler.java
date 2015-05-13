@@ -30,7 +30,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Schedule execution of an entry for seconds later.
@@ -264,13 +263,17 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         final int delaySeconds = ceilToSecond(delayMillis);
         final Integer newSecond = findRelativeSecond(delayMillis);
         final Integer existingSecond = secondsOfKeys.put(key, newSecond);
+        long time = System.nanoTime();
         if (existingSecond != null) {
             if (existingSecond.equals(newSecond)) {
                 return false;
             }
-            removeKeyFromSecond(key, existingSecond);
+            ScheduledEntry<K, V> previousEntry = removeKeyFromSecond(key, existingSecond);
+            if (previousEntry != null) {
+                time = previousEntry.getScheduleStartTimeInNanos();
+            }
         }
-        doSchedule(key, new ScheduledEntry<K, V>(key, value, delayMillis, delaySeconds), newSecond);
+        doSchedule(key, new ScheduledEntry<K, V>(key, value, delayMillis, delaySeconds, time), newSecond);
         return true;
     }
 
@@ -325,11 +328,12 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         }
     }
 
-    private void removeKeyFromSecond(Object key, Integer existingSecond) {
+    private ScheduledEntry<K, V> removeKeyFromSecond(Object key, Integer existingSecond) {
         ConcurrentMap<Object, ScheduledEntry<K, V>> scheduledKeys = scheduledEntries.get(existingSecond);
         if (scheduledKeys != null) {
-            cancelAndCleanUpIfEmpty(existingSecond, scheduledKeys, key);
+            return cancelAndCleanUpIfEmpty(existingSecond, scheduledKeys, key);
         }
+        return null;
     }
 
 
@@ -403,8 +407,6 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
         scheduledTaskMap.put(second, scheduledFuture);
     }
 
-    private static AtomicInteger maxSecondProcessed = new AtomicInteger(0);
-
     private final class EntryProcessorExecutor implements Runnable {
 
         private final Integer second;
@@ -428,7 +430,6 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
                 }
             }
 
-            maxSecondProcessed.lazySet(second);
             //sort entries asc by schedule times and send to processor.
             entryProcessor.process(SecondsBasedEntryTaskScheduler.this, sortForEntryProcessing(values));
         }
@@ -478,11 +479,17 @@ public final class SecondsBasedEntryTaskScheduler<K, V> implements EntryTaskSche
             System.out.println("SCHEDULED SECOND >>> " + key);
         }
 
-        System.out.println("MAX SECOND PROCESSED >>> " + maxSecondProcessed);
+        long time = System.nanoTime();
 
-        for(Map.Entry<Object, Integer> entry : secondsOfKeys.entrySet()) {
-            System.out.println("Entry >>> partitionId=" + entry.getKey() + " second=" + entry.getValue());
+        for(Map.Entry<Object, Integer> e1 : secondsOfKeys.entrySet()) {
+            Integer second = e1.getValue();
+
+            for (ScheduledEntry<K, V> e2 : scheduledEntries.get(second).values()) {
+                System.out.println("Entry >>> partitionId=" + e1.getKey() + " second=" + second + " time passed=" + ((time - e2.getScheduleStartTimeInNanos()) / 1000) + " entry=" + e2);
+            }
+
         }
 
     }
+
 }
