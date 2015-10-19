@@ -182,6 +182,7 @@ abstract class ClientInvocationServiceSupport implements ClientInvocationService
             final Map.Entry<Integer, ClientInvocation> entry = iter.next();
             final ClientInvocation invocation = entry.getValue();
             if (connection.equals(invocation.getSendConnection())) {
+                logger.info("Notifying invocation: " + connection.getEndPoint() + " Msg: " + invocation.getClientMessage().getMessageType());
                 iter.remove();
                 invocation.notifyException(responseCtor.createNew(null));
                 eventHandlerMap.remove(entry.getKey());
