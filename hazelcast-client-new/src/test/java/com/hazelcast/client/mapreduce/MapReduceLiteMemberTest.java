@@ -90,7 +90,7 @@ public class MapReduceLiteMemberTest {
         com.hazelcast.mapreduce.MapReduceLiteMemberTest.testMapperReducerCollator(client);
     }
 
-    @Repeat(50)
+    @Repeat(100)
     @Test(timeout = 60000)
     public void testMapReduceJobSubmissionWithNoDataNode() throws Exception {
         instance.shutdown();
