@@ -7,6 +7,7 @@ import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -89,6 +90,7 @@ public class MapReduceLiteMemberTest {
         com.hazelcast.mapreduce.MapReduceLiteMemberTest.testMapperReducerCollator(client);
     }
 
+    @Repeat(20)
     @Test(timeout = 60000)
     public void testMapReduceJobSubmissionWithNoDataNode() throws Exception {
         instance.shutdown();
