@@ -292,7 +292,7 @@ abstract class ClientInvocationServiceSupport implements ClientInvocationService
                 }
                 long elapsed = System.currentTimeMillis() - begin;
                 if (elapsed > WAIT_TIME_FOR_PACKETS_TO_BE_CONSUMED_THRESHOLD) {
-                    logger.warning("There are packets which are not processed " + count);
+                    logger.warning("There are packets which are not processed " + count + " for " + connection.getEndPoint());
                     break;
                 }
                 count = connection.getPacketCount();
