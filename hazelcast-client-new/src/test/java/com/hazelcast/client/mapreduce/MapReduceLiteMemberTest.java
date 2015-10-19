@@ -1,9 +1,11 @@
 package com.hazelcast.client.mapreduce;
 
+import com.hazelcast.client.config.ClientConfig;
 import com.hazelcast.client.test.TestHazelcastFactory;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ICompletableFuture;
+import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -42,17 +44,17 @@ public class MapReduceLiteMemberTest {
     @Before
     public void before() {
         factory = new TestHazelcastFactory();
-        lite = factory.newHazelcastInstance(new Config().setLiteMember(true));
-        lite2 = factory.newHazelcastInstance(new Config().setLiteMember(true));
-        instance = factory.newHazelcastInstance();
-        instance2 = factory.newHazelcastInstance();
+        lite = factory.newHazelcastInstance(new Config().setLiteMember(true).setProperty(GroupProperty.LOGGING_TYPE, "log4j"));
+        lite2 = factory.newHazelcastInstance(new Config().setLiteMember(true).setProperty(GroupProperty.LOGGING_TYPE, "log4j"));
+        instance = factory.newHazelcastInstance(new Config().setProperty(GroupProperty.LOGGING_TYPE, "log4j"));
+        instance2 = factory.newHazelcastInstance(new Config().setProperty(GroupProperty.LOGGING_TYPE, "log4j"));
 
         assertClusterSizeEventually(4, lite);
         assertClusterSizeEventually(4, lite2);
         assertClusterSizeEventually(4, instance);
         assertClusterSizeEventually(4, instance2);
 
-        client = factory.newHazelcastClient();
+        client = factory.newHazelcastClient(new ClientConfig().setProperty(GroupProperty.LOGGING_TYPE, "log4j"));
     }
 
     @After
