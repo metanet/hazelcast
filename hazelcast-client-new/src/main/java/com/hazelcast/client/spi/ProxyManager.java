@@ -68,6 +68,7 @@ import com.hazelcast.core.IAtomicLong;
 import com.hazelcast.core.Member;
 import com.hazelcast.executor.impl.DistributedExecutorService;
 import com.hazelcast.logging.ILogger;
+import com.hazelcast.logging.Logger;
 import com.hazelcast.map.impl.MapService;
 import com.hazelcast.mapreduce.impl.MapReduceService;
 import com.hazelcast.multimap.impl.MultiMapService;
@@ -109,6 +110,8 @@ public final class ProxyManager {
     private final ConcurrentMap<String, ClientProxyFactory> proxyFactories = new ConcurrentHashMap<String, ClientProxyFactory>();
     private final ConcurrentMap<ObjectNamespace, ClientProxyFuture> proxies
             = new ConcurrentHashMap<ObjectNamespace, ClientProxyFuture>();
+
+    private final ILogger logger = Logger.getLogger(ProxyManager.class);
 
     public ProxyManager(HazelcastClientInstanceImpl client) {
         this.client = client;
@@ -272,8 +275,6 @@ public final class ProxyManager {
     }
 
     private void initialize(ClientProxy clientProxy) throws Exception {
-        final ILogger logger = client.getLoggingService().getLogger(ProxyManager.class);
-
         final Address initializationTarget = findNextAddressToSendCreateRequest();
         final Connection connection = getTargetOrOwnerConnection(initializationTarget);
 
