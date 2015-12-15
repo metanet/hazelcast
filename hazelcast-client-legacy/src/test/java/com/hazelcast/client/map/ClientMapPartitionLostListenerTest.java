@@ -17,6 +17,7 @@ import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -107,6 +108,7 @@ public class ClientMapPartitionLostListenerTest {
         });
     }
 
+    @Repeat(100)
     @Test
     public void test_mapPartitionLostListener_invoked_fromOtherNode() {
         final String mapName = randomMapName();
