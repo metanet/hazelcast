@@ -118,11 +118,12 @@ public class ClientMapPartitionLostListenerTest {
 
         final HazelcastInstance instance1 = hazelcastFactory.newHazelcastInstance(config);
         final HazelcastInstance instance2 = hazelcastFactory.newHazelcastInstance(config);
-        warmUpPartitions(instance1, instance2);
 
         final ClientConfig clientConfig = new ClientConfig();
         clientConfig.getNetworkConfig().setSmartRouting(false);
         final HazelcastInstance client = hazelcastFactory.newHazelcastClient(clientConfig);
+
+        warmUpPartitions(instance1, instance2, client);
 
         final HazelcastClientInstanceImpl clientInstanceImpl = getHazelcastClientInstanceImpl(client);
         final Address clientOwnerAddress = clientInstanceImpl.getClientClusterService().getOwnerConnectionAddress();
