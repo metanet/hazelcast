@@ -32,6 +32,7 @@ import static com.hazelcast.test.HazelcastTestSupport.assertTrueEventually;
 import static com.hazelcast.test.HazelcastTestSupport.getAddress;
 import static com.hazelcast.test.HazelcastTestSupport.getNode;
 import static com.hazelcast.test.HazelcastTestSupport.randomMapName;
+import static com.hazelcast.test.HazelcastTestSupport.waitAllForSafeState;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -108,7 +109,7 @@ public class ClientMapPartitionLostListenerTest {
         });
     }
 
-    @Repeat(100)
+    @Repeat(500)
     @Test
     public void test_mapPartitionLostListener_invoked_fromOtherNode() {
         final String mapName = randomMapName();
@@ -117,6 +118,7 @@ public class ClientMapPartitionLostListenerTest {
 
         final HazelcastInstance instance1 = hazelcastFactory.newHazelcastInstance(config);
         final HazelcastInstance instance2 = hazelcastFactory.newHazelcastInstance(config);
+        waitAllForSafeState(instance1, instance2);
         final ClientConfig clientConfig = new ClientConfig();
         clientConfig.getNetworkConfig().setSmartRouting(false);
         final HazelcastInstance client = hazelcastFactory.newHazelcastClient(clientConfig);
