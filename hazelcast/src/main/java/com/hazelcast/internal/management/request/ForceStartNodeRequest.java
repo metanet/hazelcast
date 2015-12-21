@@ -30,8 +30,14 @@ import static com.hazelcast.util.JsonUtil.getString;
  */
 public class ForceStartNodeRequest implements ConsoleRequest {
 
+    /**
+     * Result sent within response when force start is triggered successfully
+     */
     public static final String SUCCESS_RESULT = "SUCCESS";
 
+    /**
+     * Result sent within response when force start triggering failed
+     */
     public static final String FAILED_RESULT = "FAILED";
 
     @Override
