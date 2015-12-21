@@ -12,7 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package com.hazelcast.internal.management.request;
@@ -31,6 +30,10 @@ import static com.hazelcast.util.JsonUtil.getString;
  */
 public class ForceStartNodeRequest implements ConsoleRequest {
 
+    public static final String SUCCESS_RESULT = "SUCCESS";
+
+    public static final String FAILED_RESULT = "FAILED";
+
     @Override
     public int getType() {
         return ConsoleRequestConstants.REQUEST_TYPE_FORCE_START_NODE;
@@ -43,10 +46,14 @@ public class ForceStartNodeRequest implements ConsoleRequest {
 
     @Override
     public void writeResponse(ManagementCenterService mcs, JsonObject out) throws Exception {
-        String resultString = "SUCCESS";
+        String resultString;
         HazelcastInstanceImpl instance = mcs.getHazelcastInstance();
         try {
-            instance.node.getNodeExtension().triggerForceStart();
+            if (instance.node.getNodeExtension().triggerForceStart()) {
+                resultString = SUCCESS_RESULT;
+            } else {
+                resultString = FAILED_RESULT;
+            }
         } catch (Exception e) {
             ILogger logger = instance.node.getLogger(getClass());
             logger.warning("Problem on force start: ", e);

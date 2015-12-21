@@ -36,7 +36,6 @@ import static org.junit.Assert.assertEquals;
 @Category({QuickTest.class, ParallelTest.class})
 public class ForceStartNodeRequestTest extends HazelcastTestSupport {
 
-    private static final String SUCCESS = "SUCCESS";
 
     private ForceStartNodeRequest request;
     private ManagementCenterService managementCenterService;
@@ -50,11 +49,11 @@ public class ForceStartNodeRequestTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testForceStart() throws Exception {
+    public void testForceStart_fails_withNoEnterprise() throws Exception {
         JsonObject jsonObject = new JsonObject();
         request.writeResponse(managementCenterService, jsonObject);
 
         JsonObject result = (JsonObject) jsonObject.get("result");
-        assertEquals(SUCCESS, request.readResponse(result));
+        assertEquals(ForceStartNodeRequest.FAILED_RESULT, request.readResponse(result));
     }
 }
