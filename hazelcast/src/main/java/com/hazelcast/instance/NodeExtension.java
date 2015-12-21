@@ -193,5 +193,5 @@ public interface NodeExtension {
      * Forces node to start by skipping hot-restart completely and removing all hot-restart data
      * even if node is still on validation phase or loading hot-restart data.
      */
-    void triggerForceStart();
+    boolean triggerForceStart();
 }

@@ -230,7 +230,8 @@ public class DefaultNodeExtension implements NodeExtension {
     }
 
     @Override
-    public void triggerForceStart() {
+    public boolean triggerForceStart() {
         logger.warning("Force start is available when hot restart is active!");
+        return false;
     }
 }
