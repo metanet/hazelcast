@@ -1997,10 +1997,11 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                             + info.getPartitionId() + " , " + partition + " -VS- " + info + " found owner=" + owner);
                     return;
                 }
-                sendMigrationEvent(migrationInfo, MigrationStatus.STARTED);
                 for (InternalMigrationListener listener : migrationListeners) {
                     listener.onMigrationStart(MigrationParticipant.MASTER, migrationInfo);
                 }
+                sendMigrationEvent(migrationInfo, MigrationStatus.STARTED);
+
                 Boolean result;
                 MemberImpl fromMember = getMember(migrationInfo.getSource());
                 if (logger.isFinestEnabled()) {
@@ -2060,6 +2061,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             } finally {
                 lock.unlock();
             }
+            for (InternalMigrationListener listener : migrationListeners) {
+                listener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, false);
+            }
             sendMigrationEvent(migrationInfo, MigrationStatus.FAILED);
 
             // Migration failed.
@@ -2084,6 +2088,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 syncPartitionRuntimeState();
             } finally {
                 lock.unlock();
+            }
+            for (InternalMigrationListener listener : migrationListeners) {
+                listener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, true);
             }
             sendMigrationEvent(migrationInfo, MigrationStatus.COMPLETED);
         }

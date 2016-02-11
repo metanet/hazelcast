@@ -19,6 +19,8 @@ package com.hazelcast.partition.impl;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.instance.Node;
+import com.hazelcast.internal.cluster.impl.InternalMigrationListener;
+import com.hazelcast.internal.cluster.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.partition.MigrationCycleOperation;
@@ -46,8 +48,13 @@ public abstract class BaseMigrationOperation extends AbstractOperation
 
     @Override
     public final void beforeRun() throws Exception {
-        super.beforeRun();
-        verifyClusterState();
+        try {
+            onMigrationStart();
+            verifyClusterState();
+        } catch (Exception e) {
+            onMigrationComplete(false);
+            throw e;
+        }
     }
 
     private void verifyClusterState() {
@@ -62,6 +69,26 @@ public abstract class BaseMigrationOperation extends AbstractOperation
                     + "Caller: " + getCallerAddress());
         }
     }
+
+    protected void onMigrationStart() {
+        InternalPartitionServiceImpl partitionService = getService();
+        for (InternalMigrationListener listener : partitionService.getMigrationListeners()) {
+            listener.onMigrationStart(getMigrationParticipantType(), migrationInfo);
+        }
+    }
+
+    protected void onMigrationComplete() {
+        onMigrationComplete(success);
+    }
+
+    protected void onMigrationComplete(boolean result) {
+        InternalPartitionServiceImpl partitionService = getService();
+        for (InternalMigrationListener listener : partitionService.getMigrationListeners()) {
+            listener.onMigrationComplete(getMigrationParticipantType(), migrationInfo, result);
+        }
+    }
+
+    protected abstract MigrationParticipant getMigrationParticipantType();
 
     public MigrationInfo getMigrationInfo() {
         return migrationInfo;

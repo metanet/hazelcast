@@ -19,7 +19,6 @@ package com.hazelcast.partition.impl;
 import com.hazelcast.core.HazelcastException;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
-import com.hazelcast.internal.cluster.impl.InternalMigrationListener;
 import com.hazelcast.internal.cluster.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.InternalPartition;
@@ -32,11 +31,11 @@ import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
-import com.hazelcast.spi.impl.SimpleExecutionCallback;
-import com.hazelcast.spi.impl.servicemanager.ServiceInfo;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.SimpleExecutionCallback;
+import com.hazelcast.spi.impl.servicemanager.ServiceInfo;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -66,9 +65,10 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         Address destination = migrationInfo.getDestination();
         verifyExistingTarget(nodeEngine, destination);
 
+
         if (destination.equals(source)) {
             getLogger().warning("Source and destination addresses are the same! => " + toString());
-            success = false;
+            setFailed();
             return;
         }
 
@@ -81,10 +81,7 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
 
         if (!migrationInfo.startProcessing()) {
             getLogger().warning("Migration is cancelled -> " + migrationInfo);
-            success = false;
-            for (InternalMigrationListener listener : partitionService.getMigrationListeners()) {
-                listener.onMigrationComplete(MigrationParticipant.TARGET, migrationInfo, false);
-            }
+            setFailed();
             return;
         }
 
@@ -97,10 +94,20 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
             returnResponse = false;
         } catch (Throwable e) {
             logThrowable(e);
-            success = false;
+            setFailed();
         } finally {
             migrationInfo.doneProcessing();
         }
+    }
+
+    private void setFailed() {
+        success = false;
+        onMigrationComplete();
+    }
+
+    @Override
+    protected MigrationParticipant getMigrationParticipantType() {
+        return MigrationParticipant.SOURCE;
     }
 
     private void logThrowable(Throwable t) {
@@ -181,21 +188,13 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
     }
 
     @Override
-    public Object getResponse() {
-        return success;
-    }
-
-    @Override
     public boolean returnsResponse() {
         return returnResponse;
     }
 
     public void handleMigrationResultFromTarget(Object result) {
         migrationInfo.doneProcessing();
-        InternalPartitionServiceImpl partitionService = getService();
-        for (InternalMigrationListener listener : partitionService.getMigrationListeners()) {
-            listener.onMigrationComplete(MigrationParticipant.SOURCE, migrationInfo, Boolean.TRUE.equals(result));
-        }
+        onMigrationComplete(Boolean.TRUE.equals(result));
         sendResponse(result);
     }
 
