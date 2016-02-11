@@ -72,7 +72,7 @@ public final class MigrationOperation extends BaseMigrationOperation {
 
     @Override
     protected MigrationParticipant getMigrationParticipantType() {
-        return MigrationParticipant.TARGET;
+        return MigrationParticipant.DESTINATION;
     }
 
     @Override

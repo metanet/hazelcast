@@ -25,7 +25,7 @@ public interface InternalMigrationListener {
     enum MigrationParticipant {
         MASTER,
         SOURCE,
-        TARGET
+        DESTINATION
     }
 
     void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo);
