@@ -17,7 +17,8 @@
 
 package com.hazelcast.internal.cluster.impl;
 
-import com.hazelcast.partition.MigrationInfo;
+
+import com.hazelcast.internal.partition.MigrationInfo;
 
 public interface InternalMigrationListener {
 
