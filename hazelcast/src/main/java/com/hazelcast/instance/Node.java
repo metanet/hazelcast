@@ -269,6 +269,7 @@ public class Node {
                 final InternalPartitionServiceImpl partitionService =
                         (InternalPartitionServiceImpl) nodeEngine.getPartitionService();
                 partitionService.setInternalMigrationListener((InternalMigrationListener) listener);
+                known = true;
             }
 
             if (nodeExtension.registerListener(listener)) {
