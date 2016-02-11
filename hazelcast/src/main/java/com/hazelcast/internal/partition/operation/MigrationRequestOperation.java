@@ -19,6 +19,8 @@ package com.hazelcast.internal.partition.operation;
 import com.hazelcast.core.HazelcastException;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
+import com.hazelcast.internal.cluster.impl.InternalMigrationListener;
+import com.hazelcast.internal.cluster.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.nio.Address;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
@@ -81,6 +83,9 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         if (!migrationInfo.startProcessing()) {
             getLogger().warning("Migration is cancelled -> " + migrationInfo);
             success = false;
+            for (InternalMigrationListener listener : partitionService.getMigrationListeners()) {
+                listener.onMigrationComplete(MigrationParticipant.TARGET, migrationInfo, false);
+            }
             return;
         }
 
@@ -186,6 +191,15 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         return returnResponse;
     }
 
+    public void handleMigrationResultFromTarget(Object result) {
+        migrationInfo.doneProcessing();
+        InternalPartitionServiceImpl partitionService = getService();
+        for (InternalMigrationListener listener : partitionService.getMigrationListeners()) {
+            listener.onMigrationComplete(MigrationParticipant.SOURCE, migrationInfo, Boolean.TRUE.equals(result));
+        }
+        sendResponse(result);
+    }
+
     private Collection<Operation> prepareMigrationTasks() {
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
         PartitionReplicationEvent replicationEvent = new PartitionReplicationEvent(migrationInfo.getPartitionId(), 0);
@@ -217,8 +231,7 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
 
         @Override
         public void notify(Object result) {
-            migrationInfo.doneProcessing();
-            op.sendResponse(result);
+            op.handleMigrationResultFromTarget(result);
         }
     }
 }
