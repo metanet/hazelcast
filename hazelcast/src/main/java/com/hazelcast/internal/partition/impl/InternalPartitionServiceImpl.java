@@ -31,6 +31,8 @@ import com.hazelcast.instance.NodeState;
 import com.hazelcast.instance.OutOfMemoryErrorDispatcher;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.internal.cluster.impl.InternalMigrationListener;
+import com.hazelcast.internal.cluster.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
@@ -82,6 +84,7 @@ import com.hazelcast.util.Clock;
 import com.hazelcast.util.ExceptionUtil;
 import com.hazelcast.util.FutureUtil.ExceptionHandler;
 import com.hazelcast.util.HashUtil;
+import com.hazelcast.util.Preconditions;
 import com.hazelcast.util.scheduler.CoalescingDelayedTrigger;
 import com.hazelcast.util.scheduler.EntryTaskScheduler;
 import com.hazelcast.util.scheduler.EntryTaskSchedulerFactory;
@@ -101,6 +104,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
@@ -182,6 +186,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     @Probe
     private final AtomicLong completedMigrationCounter = new AtomicLong();
+
+    private final List<InternalMigrationListener> migrationListeners = new CopyOnWriteArrayList<InternalMigrationListener>();
 
     public InternalPartitionServiceImpl(Node node) {
         this.partitionCount = node.groupProperties.getInteger(GroupProperty.PARTITION_COUNT);
@@ -1774,6 +1780,20 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         eventService.publishEvent(SERVICE_NAME, registrations, partitionLostEvent, event.getPartitionId());
     }
 
+    public void addMigrationListener(InternalMigrationListener listener) {
+        Preconditions.checkNotNull(listener);
+        migrationListeners.add(listener);
+    }
+
+    public void removeMigrationListener(InternalMigrationListener listener) {
+        Preconditions.checkNotNull(listener);
+        migrationListeners.remove(listener);
+    }
+
+    public List<InternalMigrationListener> getMigrationListeners() {
+        return Collections.unmodifiableList(migrationListeners);
+    }
+
     /**
      * @return copy of ongoing replica-sync operations
      */
@@ -1980,6 +2000,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     return;
                 }
                 sendMigrationEvent(migrationInfo, MigrationStatus.STARTED);
+                for (InternalMigrationListener listener : migrationListeners) {
+                    listener.onMigrationStart(MigrationParticipant.MASTER, migrationInfo);
+                }
                 Boolean result;
                 MemberImpl fromMember = getMember(migrationInfo.getSource());
                 if (logger.isFinestEnabled()) {
