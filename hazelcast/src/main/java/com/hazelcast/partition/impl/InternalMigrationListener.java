@@ -22,7 +22,7 @@ import com.hazelcast.internal.partition.MigrationInfo;
 
 import java.util.EventListener;
 
-public interface InternalMigrationListener extends EventListener {
+public abstract class InternalMigrationListener implements EventListener {
 
     enum MigrationParticipant {
         MASTER,
@@ -30,16 +30,17 @@ public interface InternalMigrationListener extends EventListener {
         DESTINATION
     }
 
-    void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo);
+    abstract void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo);
 
-    void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success);
+    abstract void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success);
 
-    void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo);
+    abstract void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo);
 
-    void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo);
+    abstract void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo);
 
 
-    class InternalMigrationListenerAdaptor implements InternalMigrationListener {
+    static class NopInternalMigrationListener extends InternalMigrationListener {
+
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
         }
@@ -56,6 +57,7 @@ public interface InternalMigrationListener extends EventListener {
         @Override
         public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
         }
+
     }
 
 }

@@ -93,7 +93,7 @@ public class InternalMigrationListenerTest
     }
 
     private static class InternalMigrationListenerImpl
-            implements InternalMigrationListener {
+            extends InternalMigrationListener {
 
         private final List<MigrationProgressNotification> notifications = new ArrayList<MigrationProgressNotification>();
 
