@@ -21,6 +21,7 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.partition.MigrationCycleOperation;
 import com.hazelcast.partition.MigrationEndpoint;
 import com.hazelcast.partition.MigrationInfo;
+import com.hazelcast.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.PartitionAwareOperation;
@@ -52,6 +53,15 @@ final class FinalizeMigrationOperation extends AbstractOperation
         }
 
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
+
+        MigrationParticipant participant =
+                endpoint == MigrationEndpoint.SOURCE ? MigrationParticipant.SOURCE : MigrationParticipant.DESTINATION;
+        InternalMigrationListener migrationListener = partitionService.getMigrationListener();
+        if (success) {
+            migrationListener.onMigrationCommit(participant, migrationInfo);
+        } else {
+            migrationListener.onMigrationRollback(participant, migrationInfo);
+        }
 
         PartitionMigrationEvent event = new PartitionMigrationEvent(endpoint, partitionId);
         for (MigrationAwareService service : nodeEngine.getServices(MigrationAwareService.class)) {
