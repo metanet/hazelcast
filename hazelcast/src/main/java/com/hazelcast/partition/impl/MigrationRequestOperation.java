@@ -19,7 +19,7 @@ package com.hazelcast.partition.impl;
 import com.hazelcast.core.HazelcastException;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
-import com.hazelcast.internal.cluster.impl.InternalMigrationListener.MigrationParticipant;
+import com.hazelcast.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.partition.InternalPartitionService;

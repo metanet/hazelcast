@@ -15,11 +15,11 @@
  *
  */
 
-package com.hazelcast.internal.cluster.impl;
+package com.hazelcast.partition.impl;
 
 import com.hazelcast.partition.MigrationInfo;
 
-public interface InternalMigrationListener {
+interface InternalMigrationListener {
 
     enum MigrationParticipant {
         MASTER,
@@ -34,5 +34,25 @@ public interface InternalMigrationListener {
     void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo);
 
     void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo);
+
+
+    class InternalMigrationListenerAdaptor implements InternalMigrationListener {
+        @Override
+        public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
+        }
+
+        @Override
+        public void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo,
+                boolean success) {
+        }
+
+        @Override
+        public void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo) {
+        }
+
+        @Override
+        public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
+        }
+    }
 
 }
