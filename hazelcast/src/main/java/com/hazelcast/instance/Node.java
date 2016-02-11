@@ -18,15 +18,6 @@ package com.hazelcast.instance;
 
 import com.hazelcast.client.impl.ClientEngineImpl;
 import com.hazelcast.cluster.ClusterState;
-import com.hazelcast.internal.cluster.Joiner;
-import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
-import com.hazelcast.internal.cluster.impl.ConfigCheck;
-import com.hazelcast.internal.cluster.impl.DiscoveryJoiner;
-import com.hazelcast.internal.cluster.impl.JoinMessage;
-import com.hazelcast.internal.cluster.impl.JoinRequest;
-import com.hazelcast.internal.cluster.impl.MulticastJoiner;
-import com.hazelcast.internal.cluster.impl.MulticastService;
-import com.hazelcast.internal.cluster.impl.TcpIpJoiner;
 import com.hazelcast.cluster.memberselector.MemberSelectors;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.DiscoveryConfig;
@@ -41,6 +32,15 @@ import com.hazelcast.core.MembershipListener;
 import com.hazelcast.core.MigrationListener;
 import com.hazelcast.internal.ascii.TextCommandService;
 import com.hazelcast.internal.ascii.TextCommandServiceImpl;
+import com.hazelcast.internal.cluster.Joiner;
+import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.internal.cluster.impl.ConfigCheck;
+import com.hazelcast.internal.cluster.impl.DiscoveryJoiner;
+import com.hazelcast.internal.cluster.impl.JoinMessage;
+import com.hazelcast.internal.cluster.impl.JoinRequest;
+import com.hazelcast.internal.cluster.impl.MulticastJoiner;
+import com.hazelcast.internal.cluster.impl.MulticastService;
+import com.hazelcast.internal.cluster.impl.TcpIpJoiner;
 import com.hazelcast.internal.management.ManagementCenterService;
 import com.hazelcast.internal.serialization.SerializationService;
 import com.hazelcast.logging.ILogger;
@@ -52,6 +52,7 @@ import com.hazelcast.nio.Packet;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.partition.PartitionLostListener;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.partition.impl.InternalMigrationListener;
 import com.hazelcast.security.Credentials;
 import com.hazelcast.security.SecurityContext;
 import com.hazelcast.spi.discovery.SimpleDiscoveryNode;
@@ -65,8 +66,8 @@ import com.hazelcast.spi.impl.proxyservice.impl.ProxyServiceImpl;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.EmptyStatement;
 import com.hazelcast.util.ExceptionUtil;
-import com.hazelcast.util.UuidUtil;
 import com.hazelcast.util.PhoneHome;
+import com.hazelcast.util.UuidUtil;
 
 import java.lang.reflect.Constructor;
 import java.nio.channels.ServerSocketChannel;
@@ -76,8 +77,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.hazelcast.internal.cluster.impl.MulticastService.createMulticastService;
 import static com.hazelcast.instance.NodeShutdownHelper.shutdownNodeByFiringEvents;
+import static com.hazelcast.internal.cluster.impl.MulticastService.createMulticastService;
 import static com.hazelcast.util.UuidUtil.createMemberUuid;
 
 public class Node {
@@ -262,6 +263,12 @@ public class Node {
                 String serviceName = ClientEngineImpl.SERVICE_NAME;
                 nodeEngine.getEventService().registerLocalListener(serviceName, serviceName, listener);
                 known = true;
+            }
+
+            if (listener instanceof InternalMigrationListener) {
+                final InternalPartitionServiceImpl partitionService =
+                        (InternalPartitionServiceImpl) nodeEngine.getPartitionService();
+                partitionService.setInternalMigrationListener((InternalMigrationListener) listener);
             }
 
             if (nodeExtension.registerListener(listener)) {
