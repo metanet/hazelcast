@@ -56,7 +56,7 @@ final class FinalizeMigrationOperation extends AbstractOperation
 
         MigrationParticipant participant =
                 endpoint == MigrationEndpoint.SOURCE ? MigrationParticipant.SOURCE : MigrationParticipant.DESTINATION;
-        InternalMigrationListener migrationListener = partitionService.getMigrationListener();
+        InternalMigrationListener migrationListener = partitionService.getInternalMigrationListener();
         if (success) {
             migrationListener.onMigrationCommit(participant, migrationInfo);
         } else {

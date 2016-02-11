@@ -19,7 +19,9 @@ package com.hazelcast.partition.impl;
 
 import com.hazelcast.partition.MigrationInfo;
 
-interface InternalMigrationListener {
+import java.util.EventListener;
+
+public interface InternalMigrationListener extends EventListener {
 
     enum MigrationParticipant {
         MASTER,

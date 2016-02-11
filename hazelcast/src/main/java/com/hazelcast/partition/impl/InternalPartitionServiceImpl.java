@@ -176,7 +176,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     @Probe
     private final AtomicLong completedMigrationCounter = new AtomicLong();
 
-    private volatile InternalMigrationListener migrationListener
+    private volatile InternalMigrationListener internalMigrationListener
             = new InternalMigrationListener.InternalMigrationListenerAdaptor();
 
     public InternalPartitionServiceImpl(Node node) {
@@ -1777,17 +1777,17 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         eventService.publishEvent(SERVICE_NAME, registrations, partitionLostEvent, event.getPartitionId());
     }
 
-    public void setMigrationListener(InternalMigrationListener listener) {
+    public void setInternalMigrationListener(InternalMigrationListener listener) {
         Preconditions.checkNotNull(listener);
-        migrationListener = listener;
+        internalMigrationListener = listener;
     }
 
-    public void removeMigrationListener() {
-        migrationListener = new InternalMigrationListener.InternalMigrationListenerAdaptor();
+    public void resetInternalMigrationListener() {
+        internalMigrationListener = new InternalMigrationListener.InternalMigrationListenerAdaptor();
     }
 
-    public InternalMigrationListener getMigrationListener() {
-        return migrationListener;
+    public InternalMigrationListener getInternalMigrationListener() {
+        return internalMigrationListener;
     }
 
     /**
@@ -1995,7 +1995,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                             + info.getPartitionId() + " , " + partition + " -VS- " + info + " found owner=" + owner);
                     return;
                 }
-                migrationListener.onMigrationStart(MigrationParticipant.MASTER, migrationInfo);
+                internalMigrationListener.onMigrationStart(MigrationParticipant.MASTER, migrationInfo);
                 sendMigrationEvent(migrationInfo, MigrationStatus.STARTED);
 
                 Boolean result;
@@ -2053,12 +2053,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             try {
                 addCompletedMigration(migrationInfo);
                 finalizeActiveMigration(migrationInfo);
-                migrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
+                internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 publishPartitionRuntimeState();
             } finally {
                 lock.unlock();
             }
-            migrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, false);
+            internalMigrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, false);
             sendMigrationEvent(migrationInfo, MigrationStatus.FAILED);
 
             // Migration failed.
@@ -2080,12 +2080,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 partition.setReplicaAddresses(addresses);
                 addCompletedMigration(migrationInfo);
                 finalizeActiveMigration(migrationInfo);
-                migrationListener.onMigrationCommit(MigrationParticipant.MASTER, migrationInfo);
+                internalMigrationListener.onMigrationCommit(MigrationParticipant.MASTER, migrationInfo);
                 syncPartitionRuntimeState();
             } finally {
                 lock.unlock();
             }
-            migrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, true);
+            internalMigrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, true);
             sendMigrationEvent(migrationInfo, MigrationStatus.COMPLETED);
         }
 
