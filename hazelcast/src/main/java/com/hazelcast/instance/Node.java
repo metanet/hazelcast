@@ -52,6 +52,7 @@ import com.hazelcast.nio.Packet;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.partition.PartitionLostListener;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.partition.impl.InternalMigrationListener;
 import com.hazelcast.security.Credentials;
 import com.hazelcast.security.SecurityContext;
 import com.hazelcast.spi.discovery.SimpleDiscoveryNode;
@@ -65,8 +66,8 @@ import com.hazelcast.spi.impl.proxyservice.impl.ProxyServiceImpl;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.EmptyStatement;
 import com.hazelcast.util.ExceptionUtil;
-import com.hazelcast.util.UuidUtil;
 import com.hazelcast.util.PhoneHome;
+import com.hazelcast.util.UuidUtil;
 
 import java.lang.reflect.Constructor;
 import java.nio.channels.ServerSocketChannel;
@@ -76,8 +77,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.hazelcast.internal.cluster.impl.MulticastService.createMulticastService;
 import static com.hazelcast.instance.NodeShutdownHelper.shutdownNodeByFiringEvents;
+import static com.hazelcast.internal.cluster.impl.MulticastService.createMulticastService;
 import static com.hazelcast.util.UuidUtil.createMemberUuid;
 
 public class Node {
@@ -262,6 +263,12 @@ public class Node {
                 String serviceName = ClientEngineImpl.SERVICE_NAME;
                 nodeEngine.getEventService().registerLocalListener(serviceName, serviceName, listener);
                 known = true;
+            }
+
+            if (listener instanceof InternalMigrationListener) {
+                final InternalPartitionServiceImpl partitionService =
+                        (InternalPartitionServiceImpl) nodeEngine.getPartitionService();
+                partitionService.setInternalMigrationListener((InternalMigrationListener) listener);
             }
 
             if (nodeExtension.registerListener(listener)) {

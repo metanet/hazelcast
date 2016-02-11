@@ -20,7 +20,9 @@ package com.hazelcast.partition.impl;
 
 import com.hazelcast.internal.partition.MigrationInfo;
 
-public interface InternalMigrationListener {
+import java.util.EventListener;
+
+public interface InternalMigrationListener extends EventListener {
 
     enum MigrationParticipant {
         MASTER,
@@ -37,7 +39,7 @@ public interface InternalMigrationListener {
     void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo);
 
 
-    public class InternalMigrationListenerAdaptor implements InternalMigrationListener {
+    class InternalMigrationListenerAdaptor implements InternalMigrationListener {
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
         }

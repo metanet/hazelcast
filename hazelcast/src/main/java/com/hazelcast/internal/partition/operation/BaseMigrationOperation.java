@@ -72,7 +72,7 @@ public abstract class BaseMigrationOperation extends AbstractOperation
 
     protected void onMigrationStart() {
         InternalPartitionServiceImpl partitionService = getService();
-        InternalMigrationListener migrationListener = partitionService.getMigrationListener();
+        InternalMigrationListener migrationListener = partitionService.getInternalMigrationListener();
         migrationListener.onMigrationStart(getMigrationParticipantType(), migrationInfo);
     }
 
@@ -82,7 +82,7 @@ public abstract class BaseMigrationOperation extends AbstractOperation
 
     protected void onMigrationComplete(boolean result) {
         InternalPartitionServiceImpl partitionService = getService();
-        InternalMigrationListener migrationListener = partitionService.getMigrationListener();
+        InternalMigrationListener migrationListener = partitionService.getInternalMigrationListener();
         migrationListener.onMigrationComplete(getMigrationParticipantType(), migrationInfo, result);
     }
 
