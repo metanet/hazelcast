@@ -188,7 +188,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     private final AtomicLong completedMigrationCounter = new AtomicLong();
 
     private volatile InternalMigrationListener internalMigrationListener
-            = new InternalMigrationListener.InternalMigrationListenerAdaptor();
+            = new InternalMigrationListener.NopInternalMigrationListener();
 
     public InternalPartitionServiceImpl(Node node) {
         this.partitionCount = node.groupProperties.getInteger(GroupProperty.PARTITION_COUNT);
@@ -1787,7 +1787,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     }
 
     public void resetInternalMigrationListener() {
-        internalMigrationListener = new InternalMigrationListener.InternalMigrationListenerAdaptor();
+        internalMigrationListener = new InternalMigrationListener.NopInternalMigrationListener();
     }
 
     public InternalMigrationListener getInternalMigrationListener() {
