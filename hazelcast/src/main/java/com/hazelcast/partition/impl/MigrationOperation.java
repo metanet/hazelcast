@@ -117,7 +117,7 @@ public final class MigrationOperation extends BaseMigrationOperation {
     }
 
     private boolean startMigration() {
-        return migrationInfo.startProcessing();
+        return migrationInfo.startProcessing() && addActiveMigration();
     }
 
     private void logMigrationCancelled() {
@@ -152,8 +152,6 @@ public final class MigrationOperation extends BaseMigrationOperation {
     }
 
     private void migrate() throws Exception {
-        addActiveMigration();
-
         for (Operation op : tasks) {
             prepareOperation(op);
             try {
@@ -168,9 +166,9 @@ public final class MigrationOperation extends BaseMigrationOperation {
         success = true;
     }
 
-    private void addActiveMigration() {
+    private boolean addActiveMigration() {
         InternalPartitionServiceImpl partitionService = getService();
-        partitionService.addActiveMigration(migrationInfo);
+        return partitionService.addActiveMigration(migrationInfo);
     }
 
     private void runMigrationTask(Operation op) throws Exception {

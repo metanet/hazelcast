@@ -16,15 +16,14 @@
 
 package com.hazelcast.partition.impl;
 
-import com.hazelcast.core.HazelcastException;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
-import com.hazelcast.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.partition.InternalPartitionService;
 import com.hazelcast.partition.MigrationEndpoint;
 import com.hazelcast.partition.MigrationInfo;
+import com.hazelcast.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.NodeEngine;
@@ -85,9 +84,19 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
             return;
         }
 
+        if (!source.equals(owner)) {
+            getLogger().warning("Cannot migrate! This node is not owner of the partition => "
+                    + migrationInfo + " -> partitionId=" + partition.getPartitionId() + " , " + partition);
+            setFailed();
+            return;
+        }
+
+        if (!partitionService.addActiveMigration(migrationInfo)) {
+            setFailed();
+            return;
+        }
+
         try {
-            verifyOwner(source, partition, owner);
-            partitionService.addActiveMigration(migrationInfo);
             Collection<Operation> tasks = prepareMigrationTasks();
             long[] replicaVersions = partitionService.getPartitionReplicaVersions(migrationInfo.getPartitionId());
             invokeMigrationOperation(destination, replicaVersions, tasks);
@@ -134,13 +143,6 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         if (owner == null) {
             throw new RetryableHazelcastException("Cannot migrate at the moment! Owner of the partition is null => "
                     + migrationInfo);
-        }
-    }
-
-    private void verifyOwner(Address source, InternalPartition partition, Address owner) {
-        if (!source.equals(owner)) {
-            throw new HazelcastException("Cannot migrate! This node is not owner of the partition => "
-                    + migrationInfo + " -> partitionId=" + partition.getPartitionId() + " , " + partition);
         }
     }
 
