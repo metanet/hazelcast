@@ -887,10 +887,13 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     nodeEngine.getExecutionService().schedule(new Runnable() {
                         @Override
                         public void run() {
-                            finalizeActiveMigration(activeMigrationInfo);
+                            finalizeActiveMigration(migrationInfo);
                         }
                     }, 3, TimeUnit.SECONDS);
                 }
+            } else {
+                logger.warning("Active migration failed to finalize! active migration: " + activeMigrationInfo
+                        + " migration to finalize: " + migrationInfo);
             }
         } finally {
             lock.unlock();
