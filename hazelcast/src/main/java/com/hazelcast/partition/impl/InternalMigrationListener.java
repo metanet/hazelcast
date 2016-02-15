@@ -24,22 +24,22 @@ import java.util.EventListener;
 
 public abstract class InternalMigrationListener implements EventListener {
 
-    enum MigrationParticipant {
+    public enum MigrationParticipant {
         MASTER,
         SOURCE,
         DESTINATION
     }
 
-    abstract void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo);
+    public abstract void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo);
 
-    abstract void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success);
+    public abstract void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success);
 
-    abstract void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo);
+    public abstract void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo);
 
-    abstract void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo);
+    public abstract void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo);
 
 
-    static class NopInternalMigrationListener extends InternalMigrationListener {
+    public static class NopInternalMigrationListener extends InternalMigrationListener {
 
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {

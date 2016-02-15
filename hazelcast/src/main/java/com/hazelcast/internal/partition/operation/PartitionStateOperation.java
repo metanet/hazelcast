@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.partition.operation;
 
+import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.internal.cluster.impl.operations.JoinOperation;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
@@ -24,6 +25,8 @@ import com.hazelcast.internal.partition.MigrationCycleOperation;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.spi.AbstractOperation;
+import com.hazelcast.spi.ExceptionAction;
+import com.hazelcast.spi.exception.TargetNotMemberException;
 
 import java.io.IOException;
 
@@ -65,6 +68,15 @@ public final class PartitionStateOperation extends AbstractOperation
     @Override
     public String getServiceName() {
         return InternalPartitionService.SERVICE_NAME;
+    }
+
+    @Override
+    public ExceptionAction onInvocationException(Throwable throwable) {
+        if (throwable instanceof MemberLeftException
+                || throwable instanceof TargetNotMemberException) {
+            return ExceptionAction.THROW_EXCEPTION;
+        }
+        return super.onInvocationException(throwable);
     }
 
     @Override
