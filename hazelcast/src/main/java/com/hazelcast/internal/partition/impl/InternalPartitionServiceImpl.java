@@ -803,15 +803,15 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             stateVersion.set(partitionState.getVersion());
             initialized = true;
 
-            PartitionInfo[] state = partitionState.getPartitions();
-            filterAndLogUnknownAddressesInPartitionTable(sender, state);
-            finalizeOrRollbackMigration(partitionState, state);
+            filterAndLogUnknownAddressesInPartitionTable(sender, partitionState.getPartitions());
+            applyPartitionRuntimeState(partitionState);
         } finally {
             lock.unlock();
         }
     }
 
-    private void finalizeOrRollbackMigration(PartitionRuntimeState partitionState, PartitionInfo[] state) {
+    private void applyPartitionRuntimeState(PartitionRuntimeState partitionState) {
+        PartitionInfo[] state = partitionState.getPartitions();
         Collection<MigrationInfo> completedMigrations = partitionState.getCompletedMigrations();
         for (MigrationInfo completedMigration : completedMigrations) {
             addCompletedMigration(completedMigration);
@@ -823,8 +823,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             // because we have a `migrating` flag in partition which is cleared during migration finalization.
             // But from API point of view, we should provide explicit guarantees.
             // For the time being, leaving this stuff as is to not to change behaviour.
+
+            // TODO BASRI IS THIS STILL NECESSARY? CAN WE MOVE UPDATEALLPARTITIONS(state) BEFORE FOR LOOP AND REMOVE NEXT LINE?
             updatePartition(partitionInfo);
-            finalizeActiveMigration(completedMigration);
+            scheduleActiveMigrationFinalization(completedMigration);
         }
 
         updateAllPartitions(state);
@@ -885,24 +887,24 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    private void finalizeActiveMigration(final MigrationInfo migrationInfo) {
+    private void scheduleActiveMigrationFinalization(final MigrationInfo migrationInfo) {
         lock.lock();
         try {
             if (migrationInfo.equals(activeMigrationInfo)) {
                 if (activeMigrationInfo.startProcessing()) {
-                    processMigrationInfo(activeMigrationInfo);
+                    finalizeMigrationInfo(activeMigrationInfo);
                 } else {
                     logger.info("Scheduling finalization of " + migrationInfo
                             + ", because migration process is currently running.");
                     nodeEngine.getExecutionService().schedule(new Runnable() {
                         @Override
                         public void run() {
-                            finalizeActiveMigration(migrationInfo);
+                            scheduleActiveMigrationFinalization(migrationInfo);
                         }
                     }, 3, TimeUnit.SECONDS);
                 }
-            } else {
-                logger.warning("Active migration failed to finalize! active migration: " + activeMigrationInfo
+            } else if (logger.isFinestEnabled()) {
+                logger.finest("Active migration failed to finalize! active migration: " + activeMigrationInfo
                         + " migration to finalize: " + migrationInfo);
             }
         } finally {
@@ -910,7 +912,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    private void processMigrationInfo(MigrationInfo migrationInfo) {
+    private void finalizeMigrationInfo(MigrationInfo migrationInfo) {
         try {
             Address thisAddress = node.getThisAddress();
             boolean source = thisAddress.equals(migrationInfo.getSource());
@@ -928,7 +930,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                         .setService(this);
                 nodeEngine.getOperationService().executeOperation(op);
             } else {
-                logger.warning("Failed to finalize migration because this member " + thisAddress
+                logger.severe("Failed to finalize migration because this member " + thisAddress
                         + " is not a participant of the migration: " + migrationInfo);
             }
         } catch (Exception e) {
@@ -2032,7 +2034,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     // Partition is lost! Assign new owner and exit.
                     logger.warning("Partition is lost! Assign new owner and exit... partitionId=" + info.getPartitionId());
                     result = Boolean.TRUE;
-                    // TODO BASRI UNDERSTAND HOW THIS PART WILL WORK
+                    // TODO BASRI UNDERSTAND HOW THIS PART WILL WORK. THIS CASE SHOULD CAN BE TESTED WITH OUR MIGRATION LISTENER
                 } else {
                     result = executeMigrateOperation(migrationRequestOp, fromMember);
                 }
