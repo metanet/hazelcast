@@ -715,7 +715,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         try {
             PartitionRuntimeState partitionState = createMigrationCommitPartitionState(migrationInfo, newAddresses);
             PartitionStateOperation operation = new PartitionStateOperation(partitionState, true);
-            Future<PartitionRuntimeState> future = nodeEngine.getOperationService()
+            Future<Boolean> future = nodeEngine.getOperationService()
                                                              .createInvocationBuilder(SERVICE_NAME, operation,
                                                                      migrationInfo.getDestination())
                                                              .setTryCount(Integer.MAX_VALUE)
@@ -923,6 +923,13 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 InternalPartitionImpl migratingPartition = getPartitionImpl(partitionId);
                 Address ownerAddress = migratingPartition.getOwnerOrNull();
                 boolean success = migrationInfo.getDestination().equals(ownerAddress);
+                MigrationParticipant participant = source ? MigrationParticipant.SOURCE : MigrationParticipant.DESTINATION;
+                if (success) {
+                    internalMigrationListener.onMigrationCommit(participant, migrationInfo);
+                } else {
+                    internalMigrationListener.onMigrationRollback(participant, migrationInfo);
+                }
+
                 MigrationEndpoint endpoint = source ? MigrationEndpoint.SOURCE : MigrationEndpoint.DESTINATION;
                 FinalizeMigrationOperation op = new FinalizeMigrationOperation(endpoint, success);
                 op.setPartitionId(partitionId)
@@ -961,7 +968,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return node.clusterService.getMember(node.getMasterAddress());
     }
 
-    MigrationInfo getActiveMigration(int partitionId) {
+    public MigrationInfo getActiveMigration(int partitionId) {
         MigrationInfo activeMigrationInfo = this.activeMigrationInfo;
         if (activeMigrationInfo != null && activeMigrationInfo.getPartitionId() == partitionId) {
             return activeMigrationInfo;
@@ -970,7 +977,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return null;
     }
 
-    boolean removeActiveMigration(int partitionId) {
+    public boolean removeActiveMigration(int partitionId) {
         boolean success = false;
         lock.lock();
         try {
