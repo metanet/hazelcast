@@ -645,7 +645,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 MemberInfo memberInfo = new MemberInfo(member.getAddress(), member.getUuid(), member.getAttributes());
                 memberInfos.add(memberInfo);
             }
-            ArrayList<MigrationInfo> migrationInfos = new ArrayList<MigrationInfo>(completedMigrations);
+            ArrayList<MigrationInfo> completedMigrations = new ArrayList<MigrationInfo>(this.completedMigrations);
             ILogger logger = node.getLogger(PartitionRuntimeState.class);
 
             InternalPartitionImpl[] partitions = new InternalPartitionImpl[partitionCount];
@@ -656,7 +656,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             int partitionId = migrationInfo.getPartitionId();
             partitions[partitionId].setReplicaAddresses(newAddresses);
 
-            return new PartitionRuntimeState(logger, memberInfos, partitions, migrationInfos, stateVersion.get());
+            return new PartitionRuntimeState(logger, memberInfos, partitions, completedMigrations, stateVersion.get());
         } finally {
             lock.unlock();
         }
@@ -706,6 +706,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     private boolean commitMigrationToDestination(MigrationInfo migrationInfo, Address[] newAddresses) {
         if (!node.isMaster()) {
             return false;
+        }
+
+        if (node.getThisAddress().equals(migrationInfo.getDestination())) {
+            return true;
         }
 
         try {
@@ -825,22 +829,22 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             // For the time being, leaving this stuff as is to not to change behaviour.
 
             // TODO BASRI IS THIS STILL NECESSARY? CAN WE MOVE UPDATEALLPARTITIONS(state) BEFORE FOR LOOP AND REMOVE NEXT LINE?
-            updatePartition(partitionInfo);
+            updatePartitionReplicaAddresses(partitionInfo.getPartitionId(), partitionInfo.getReplicaAddresses());
             scheduleActiveMigrationFinalization(completedMigration);
         }
 
         updateAllPartitions(state);
     }
 
-    private void updatePartition(PartitionInfo partitionInfo) {
-        InternalPartitionImpl partition = partitions[partitionInfo.getPartitionId()];
-        Address[] replicas = partitionInfo.getReplicaAddresses();
-        partition.setReplicaAddresses(replicas);
+    private void updatePartitionReplicaAddresses(int partitionId, Address[] replicaAddresses) {
+        InternalPartitionImpl partition = partitions[partitionId];
+        partition.setReplicaAddresses(replicaAddresses);
     }
 
     private void updateAllPartitions(PartitionInfo[] state) {
         for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-            updatePartition(state[partitionId]);
+            final PartitionInfo partitionInfo = state[partitionId];
+            updatePartitionReplicaAddresses(partitionInfo.getPartitionId(), partitionInfo.getReplicaAddresses());
         }
     }
 
@@ -903,9 +907,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                         }
                     }, 3, TimeUnit.SECONDS);
                 }
-            } else if (logger.isFinestEnabled()) {
-                logger.finest("Active migration failed to finalize! active migration: " + activeMigrationInfo
-                        + " migration to finalize: " + migrationInfo);
             }
         } finally {
             lock.unlock();
@@ -978,12 +979,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     partitions[partitionId].setMigrating(false);
                     this.activeMigrationInfo = null;
                     success = true;
-                } else {
-                    logger.warning("active migration not remove because it has different partitionId! partitionId=" + partitionId
+                } else if (logger.isFinestEnabled()) {
+                    logger.finest("active migration not remove because it has different partitionId! partitionId=" + partitionId
                     + " active migration=" + activeMigrationInfo);
                 }
-            } else {
-                logger.warning("no active migration to remove for partitionId=" + partitionId);
             }
         } finally {
             lock.unlock();
@@ -2082,6 +2081,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             try {
                 addCompletedMigration(migrationInfo);
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
+                scheduleActiveMigrationFinalization(migrationInfo);
                 syncPartitionRuntimeState();
             } finally {
                 lock.unlock();
@@ -2101,21 +2101,20 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         private void migrationOperationSucceeded() {
             internalMigrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, true);
+            addCompletedMigration(migrationInfo);
 
             boolean commitSuccessful = commitMigrationToDestination(migrationInfo, addresses);
 
             lock.lock();
             try {
-                addCompletedMigration(migrationInfo);
                 if (commitSuccessful) {
-                    int partitionId = migrationInfo.getPartitionId();
-                    InternalPartitionImpl partition = partitions[partitionId];
-                    partition.setReplicaAddresses(addresses);
+                    updatePartitionReplicaAddresses(migrationInfo.getPartitionId(), addresses);
                     internalMigrationListener.onMigrationCommit(MigrationParticipant.MASTER, migrationInfo);
                 } else {
                     internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 }
 
+                scheduleActiveMigrationFinalization(migrationInfo);
                 syncPartitionRuntimeState();
             } finally {
                 lock.unlock();
