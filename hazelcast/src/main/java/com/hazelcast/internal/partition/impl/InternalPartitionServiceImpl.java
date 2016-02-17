@@ -656,7 +656,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             int partitionId = migrationInfo.getPartitionId();
             partitions[partitionId].setReplicaAddresses(newAddresses);
 
-            return new PartitionRuntimeState(logger, memberInfos, partitions, completedMigrations, stateVersion.get());
+            return new PartitionRuntimeState(logger, memberInfos, partitions, completedMigrations, stateVersion.get() + 1);
         } finally {
             lock.unlock();
         }
@@ -714,7 +714,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         try {
             PartitionRuntimeState partitionState = createMigrationCommitPartitionState(migrationInfo, newAddresses);
-            PartitionStateOperation operation = new PartitionStateOperation(partitionState, true);
+            MigrationCommitOperation operation = new MigrationCommitOperation(partitionState);
             Future<Boolean> future = nodeEngine.getOperationService()
                                                              .createInvocationBuilder(SERVICE_NAME, operation,
                                                                      migrationInfo.getDestination())
