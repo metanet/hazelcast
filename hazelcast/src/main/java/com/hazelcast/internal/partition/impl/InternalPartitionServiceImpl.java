@@ -134,20 +134,28 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     private final Node node;
     private final NodeEngineImpl nodeEngine;
     private final ILogger logger;
+
     private final int partitionCount;
+
     private final InternalPartitionImpl[] partitions;
+
     private final MigrationThread migrationThread;
+
     private final long partitionMigrationInterval;
     private final long partitionMigrationTimeout;
     private final long backupSyncCheckInterval;
-    private final int maxParallelReplications;
+
     private final PartitionStateGenerator partitionStateGenerator;
     private final MemberGroupFactory memberGroupFactory;
+
     private final PartitionServiceProxy proxy;
     private final Lock lock = new ReentrantLock();
     private final InternalPartitionListener partitionListener;
 
+    private final PartitionStateManager stateManager = null;
+    private final MigrationManager migrationManager = null;
     private final PartitionReplicaManager replicaManager;
+
 
     @Probe
     private final AtomicInteger stateVersion = new AtomicInteger();
@@ -632,7 +640,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    private PartitionRuntimeState createMigrationCommitPartitionState(MigrationInfo migrationInfo, Address[] newAddresses) {
+    PartitionRuntimeState createMigrationCommitPartitionState(MigrationInfo migrationInfo, Address[] newAddresses) {
         if (!initialized) {
             return null;
         }
@@ -661,7 +669,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    private void publishPartitionRuntimeState() {
+    void publishPartitionRuntimeState() {
         if (!initialized) {
             // do not send partition state until initialized!
             return;
@@ -698,7 +706,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    private void syncPartitionRuntimeState() {
+    void syncPartitionRuntimeState() {
         syncPartitionRuntimeState(node.clusterService.getMemberImpls());
     }
 
@@ -967,7 +975,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    private MemberImpl getMasterMember() {
+    MemberImpl getMasterMember() {
         return node.clusterService.getMember(node.getMasterAddress());
     }
 
@@ -1350,7 +1358,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 return canTakeBackup;
             }
         }
-        int replicaSyncProcesses = maxParallelReplications - replicaManager.availableParallelReplicationSlots();
+        int replicaSyncProcesses = replicaManager.onGoingReplicationProcesses();
         if (replicaSyncProcesses > 0) {
             if (logger.isLoggable(level)) {
                 logger.log(level, "Processing replica sync requests: " + replicaSyncProcesses);
@@ -1535,7 +1543,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return proxy;
     }
 
-    private void sendMigrationEvent(final MigrationInfo migrationInfo, final MigrationStatus status) {
+    void sendMigrationEvent(final MigrationInfo migrationInfo, final MigrationStatus status) {
         MemberImpl current = getMember(migrationInfo.getSource());
         MemberImpl newOwner = getMember(migrationInfo.getDestination());
         MigrationEvent event = new MigrationEvent(migrationInfo.getPartitionId(), current, newOwner, status);

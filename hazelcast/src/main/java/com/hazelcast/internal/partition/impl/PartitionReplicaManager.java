@@ -298,8 +298,8 @@ public class PartitionReplicaManager {
         replicaSyncProcessLock.release();
     }
 
-    int availableParallelReplicationSlots() {
-        return replicaSyncProcessLock.availablePermits();
+    int onGoingReplicationProcesses() {
+        return maxParallelReplications - replicaSyncProcessLock.availablePermits();
     }
 
     /**

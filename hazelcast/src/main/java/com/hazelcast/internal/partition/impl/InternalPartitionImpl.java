@@ -131,7 +131,6 @@ public class InternalPartitionImpl implements InternalPartition {
         Address[] oldAddresses = addresses;
         addresses = newAddresses;
         callPartitionListener(newAddresses, oldAddresses, PartitionReplicaChangeReason.ASSIGNMENT);
-
     }
 
     private void callPartitionListener(Address[] newAddresses, Address[] oldAddresses,
