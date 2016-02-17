@@ -90,13 +90,13 @@ public class ReplicaSyncResponse extends Operation
         int replicaIndex = getReplicaIndex();
 
         if (replicaIndex == currentReplicaIndex) {
-            partitionService.finalizeReplicaSync(partitionId, replicaIndex, replicaVersions);
+            partitionService.getReplicaManager().finalizeReplicaSync(partitionId, replicaIndex, replicaVersions);
         } else {
-            partitionService.clearReplicaSyncRequest(partitionId, replicaIndex);
+            partitionService.getReplicaManager().clearReplicaSyncRequest(partitionId, replicaIndex);
             if (currentReplicaIndex < 0) {
                 partitionService.clearPartitionReplicaVersions(partitionId);
             } else if (currentReplicaIndex > 0) {
-                partitionService.triggerPartitionReplicaSync(partitionId, currentReplicaIndex, 0);
+                partitionService.getReplicaManager().triggerPartitionReplicaSync(partitionId, currentReplicaIndex, 0);
             }
         }
     }
