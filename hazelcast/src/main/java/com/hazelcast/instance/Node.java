@@ -52,7 +52,7 @@ import com.hazelcast.nio.Packet;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.partition.PartitionLostListener;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
-import com.hazelcast.partition.impl.InternalMigrationListener;
+import com.hazelcast.internal.partition.impl.InternalMigrationListener;
 import com.hazelcast.security.Credentials;
 import com.hazelcast.security.SecurityContext;
 import com.hazelcast.spi.discovery.SimpleDiscoveryNode;

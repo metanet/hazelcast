@@ -47,7 +47,7 @@ public class ReplicaSyncRetryResponse extends Operation
         final int partitionId = getPartitionId();
         final int replicaIndex = getReplicaIndex();
 
-        partitionService.clearReplicaSyncRequest(partitionId, replicaIndex);
+        partitionService.getReplicaManager().clearReplicaSyncRequest(partitionId, replicaIndex);
 
         InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
         Address thisAddress = getNodeEngine().getThisAddress();
@@ -59,7 +59,7 @@ public class ReplicaSyncRetryResponse extends Operation
                 logger.finest("Retrying replica sync request for partitionId=" + partitionId
                     + ", initial-replicaIndex=" + replicaIndex + ", current-replicaIndex=" + currentReplicaIndex);
             }
-            partitionService.triggerPartitionReplicaSync(partitionId, currentReplicaIndex,
+            partitionService.getReplicaManager().triggerPartitionReplicaSync(partitionId, currentReplicaIndex,
                     InternalPartitionService.REPLICA_SYNC_RETRY_DELAY);
 
         } else if (logger.isFinestEnabled()) {

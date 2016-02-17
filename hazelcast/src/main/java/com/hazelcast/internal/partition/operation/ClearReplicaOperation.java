@@ -54,7 +54,7 @@ public final class ClearReplicaOperation extends AbstractOperation
         int currentReplicaIndex = partition.getReplicaIndex(thisAddress);
         if (currentReplicaIndex == -1 || currentReplicaIndex > oldReplicaIndex) {
             if (currentReplicaIndex == -1) {
-                partitionService.cancelReplicaSync(partitionId);
+                partitionService.getReplicaManager().cancelReplicaSync(partitionId);
             }
             ILogger logger = getLogger();
             if (logger.isFinestEnabled()) {
