@@ -92,6 +92,25 @@ public class InternalPartitionImpl implements InternalPartition {
         return false;
     }
 
+    // This method is called under InternalPartitionServiceImpl.lock,
+    // so there's no need to guard `addresses` field or to use a CAS.
+    boolean removeAddress(Address deadAddress) {
+        Address[] currentAddresses = addresses;
+        Address[] newAddresses = Arrays.copyOf(addresses, MAX_REPLICA_COUNT);
+
+        for (int i = 0; i < MAX_REPLICA_COUNT; i++) {
+            if (!deadAddress.equals(currentAddresses[i])) {
+                continue;
+            }
+
+            newAddresses[i] = null;
+            addresses = newAddresses;
+            callPartitionListener(i, deadAddress, null, PartitionReplicaChangeReason.MEMBER_REMOVED);
+            return true;
+        }
+        return false;
+    }
+
     // Not doing a defensive copy of given Address[]
     // This method is called under InternalPartitionServiceImpl.lock,
     // so there's no need to guard `addresses` field or to use a CAS.
