@@ -68,7 +68,7 @@ public final class ClearReplicaOperation extends AbstractOperation
     }
 
     private void clearPartition(int partitionId, InternalPartitionServiceImpl partitionService) {
-        NodeEngineImpl nodeEngine = partitionService.getNode().getNodeEngine();
+        NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
         final Collection<MigrationAwareService> services = nodeEngine.getServices(MigrationAwareService.class);
         for (MigrationAwareService service : services) {
             try {

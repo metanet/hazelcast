@@ -141,7 +141,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         partitionMigrationTimeout = node.groupProperties.getMillis(GroupProperty.PARTITION_MIGRATION_TIMEOUT);
 
-        proxy = new PartitionServiceProxy(this);
+        proxy = new PartitionServiceProxy(nodeEngine, this);
 
         nodeEngine.getMetricsRegistry().scanAndRegister(this, "partitions");
     }
@@ -822,10 +822,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     public String toString() {
         return "PartitionManager[" + getPartitionStateVersion() + "] {\n\n"
                 + "migrationQ: " + getMigrationQueueSize() + "\n}";
-    }
-
-    public Node getNode() {
-        return node;
     }
 
     @Override
