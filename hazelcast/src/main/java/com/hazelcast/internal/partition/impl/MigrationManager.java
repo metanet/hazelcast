@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.hazelcast.partition.impl;
+package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.MemberLeftException;
@@ -24,11 +24,14 @@ import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.OutOfMemoryErrorDispatcher;
 import com.hazelcast.internal.metrics.Probe;
+import com.hazelcast.internal.partition.MigrationInfo;
+import com.hazelcast.internal.partition.PartitionRuntimeState;
+import com.hazelcast.internal.partition.operation.FinalizeMigrationOperation;
+import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
+import com.hazelcast.internal.partition.operation.PartitionStateOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationEndpoint;
-import com.hazelcast.partition.MigrationInfo;
-import com.hazelcast.partition.PartitionRuntimeState;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
@@ -46,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
 
-import static com.hazelcast.partition.InternalPartitionService.SERVICE_NAME;
+import static com.hazelcast.partition.IPartitionService.SERVICE_NAME;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
@@ -300,7 +303,8 @@ public class MigrationManager {
         }
 
         try {
-            PartitionRuntimeState partitionState = partitionService.createMigrationCommitPartitionState(migrationInfo, newAddresses);
+            PartitionRuntimeState
+                    partitionState = partitionService.createMigrationCommitPartitionState(migrationInfo, newAddresses);
             PartitionStateOperation operation = new PartitionStateOperation(partitionState, true);
             Future<Boolean> future = nodeEngine.getOperationService()
                     .createInvocationBuilder(SERVICE_NAME, operation,
@@ -567,7 +571,7 @@ public class MigrationManager {
             lock.lock();
             try {
                 if (commitSuccessful) {
-                    partitionStateManager.updatePartitionReplicaAddresses(migrationInfo.getPartitionId(), addresses);
+                    partitionStateManager.updateReplicaAddresses(migrationInfo.getPartitionId(), addresses);
                     internalMigrationListener.onMigrationCommit(InternalMigrationListener.MigrationParticipant.MASTER, migrationInfo);
                 } else {
                     internalMigrationListener.onMigrationRollback(InternalMigrationListener.MigrationParticipant.MASTER, migrationInfo);

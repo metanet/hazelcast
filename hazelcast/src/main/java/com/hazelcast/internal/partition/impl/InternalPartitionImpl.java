@@ -159,7 +159,7 @@ public class InternalPartitionImpl implements InternalPartition {
         }
     }
 
-    public InternalPartitionImpl copy() {
+    InternalPartitionImpl copy() {
         final InternalPartitionImpl copy = new InternalPartitionImpl(partitionId, null, thisAddress);
         final Address[] addressesCopy = new Address[addresses.length];
         System.arraycopy(addresses, 0, addressesCopy, 0, addresses.length);
