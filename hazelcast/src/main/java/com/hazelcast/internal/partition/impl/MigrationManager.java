@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
 
-import static com.hazelcast.partition.IPartitionService.SERVICE_NAME;
+import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 

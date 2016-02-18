@@ -42,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 
 import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
-import static com.hazelcast.partition.IPartitionService.SERVICE_NAME;
+import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
 
 /**
  * TODO: Javadoc Pending...
