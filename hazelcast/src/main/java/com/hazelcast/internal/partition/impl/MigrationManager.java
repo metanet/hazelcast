@@ -205,7 +205,7 @@ public class MigrationManager {
         }
     }
 
-    boolean addActiveMigration(MigrationInfo migrationInfo) {
+    public boolean addActiveMigration(MigrationInfo migrationInfo) {
         lock.lock();
         try {
             if (activeMigrationInfo == null) {
@@ -221,7 +221,7 @@ public class MigrationManager {
         }
     }
 
-    MigrationInfo getActiveMigration(int partitionId) {
+    public MigrationInfo getActiveMigration(int partitionId) {
         MigrationInfo activeMigrationInfo = this.activeMigrationInfo;
         if (activeMigrationInfo != null && activeMigrationInfo.getPartitionId() == partitionId) {
             return activeMigrationInfo;
@@ -234,7 +234,7 @@ public class MigrationManager {
         return activeMigrationInfo;
     }
 
-    boolean removeActiveMigration(int partitionId) {
+    public boolean removeActiveMigration(int partitionId) {
         boolean success = false;
         lock.lock();
         try {

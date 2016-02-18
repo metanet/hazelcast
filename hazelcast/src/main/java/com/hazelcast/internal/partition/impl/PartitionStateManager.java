@@ -319,7 +319,7 @@ public class PartitionStateManager {
         return result;
     }
 
-    InternalPartitionImpl getPartitionImpl(int partitionId) {
+    public InternalPartitionImpl getPartitionImpl(int partitionId) {
         return partitions[partitionId];
     }
 

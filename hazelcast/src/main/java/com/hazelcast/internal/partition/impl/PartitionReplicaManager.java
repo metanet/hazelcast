@@ -102,7 +102,7 @@ public class PartitionReplicaManager {
     // This method is called in backup node. Given all other conditions are satisfied,
     // this method initiates a replica sync operation and registers it to replicaSyncRequest.
     // If another sync request is already registered, it schedules the new replica sync request to a further time.
-    void triggerPartitionReplicaSync(int partitionId, int replicaIndex, long delayMillis) {
+    public void triggerPartitionReplicaSync(int partitionId, int replicaIndex, long delayMillis) {
         if (replicaIndex < 0 || replicaIndex > InternalPartition.MAX_REPLICA_COUNT) {
             throw new IllegalArgumentException("Invalid replica index! replicaIndex=" + replicaIndex
                     + " for partitionId=" + partitionId);
@@ -253,7 +253,7 @@ public class PartitionReplicaManager {
     }
 
     // called in operation threads
-    void finalizeReplicaSync(int partitionId, int replicaIndex, long[] versions) {
+    public void finalizeReplicaSync(int partitionId, int replicaIndex, long[] versions) {
         PartitionReplicaVersions replicaVersion = replicaVersions[partitionId];
         replicaVersion.clear();
         replicaVersion.set(versions, replicaIndex);
@@ -261,7 +261,7 @@ public class PartitionReplicaManager {
     }
 
     // called in operation threads
-    void clearReplicaSyncRequest(int partitionId, int replicaIndex) {
+    public void clearReplicaSyncRequest(int partitionId, int replicaIndex) {
         ReplicaSyncInfo syncInfo = new ReplicaSyncInfo(partitionId, replicaIndex, null);
         ReplicaSyncInfo currentSyncInfo = replicaSyncRequests.get(partitionId);
 
@@ -287,7 +287,7 @@ public class PartitionReplicaManager {
         }
     }
 
-    void cancelReplicaSync(int partitionId) {
+    public void cancelReplicaSync(int partitionId) {
         ReplicaSyncInfo syncInfo = replicaSyncRequests.get(partitionId);
         if (syncInfo != null && replicaSyncRequests.compareAndSet(partitionId, syncInfo, null)) {
             replicaSyncScheduler.cancel(partitionId);
@@ -295,11 +295,11 @@ public class PartitionReplicaManager {
         }
     }
 
-    boolean tryToAcquireReplicaSyncPermit() {
+    public boolean tryToAcquireReplicaSyncPermit() {
         return replicaSyncProcessLock.tryAcquire();
     }
 
-    void releaseReplicaSyncPermit() {
+    public void releaseReplicaSyncPermit() {
         replicaSyncProcessLock.release();
     }
 
