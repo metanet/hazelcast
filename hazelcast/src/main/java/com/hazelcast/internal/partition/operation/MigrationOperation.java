@@ -17,15 +17,16 @@
 package com.hazelcast.internal.partition.operation;
 
 import com.hazelcast.core.HazelcastException;
+import com.hazelcast.internal.partition.InternalPartitionService;
+import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
+import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.internal.partition.impl.MigrationManager;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.partition.MigrationEndpoint;
-import com.hazelcast.internal.partition.MigrationInfo;
-import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationAccessor;
