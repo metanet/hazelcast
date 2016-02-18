@@ -92,7 +92,8 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
             return;
         }
 
-        if (!partitionService.addActiveMigration(migrationInfo)) {
+        MigrationManager migrationManager = partitionService.getMigrationManager();
+        if (!migrationManager.addActiveMigration(migrationInfo)) {
             setFailed();
             return;
         }

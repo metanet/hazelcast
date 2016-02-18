@@ -20,6 +20,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.core.MigrationEvent.MigrationStatus;
 import com.hazelcast.instance.MemberImpl;
+import com.hazelcast.internal.partition.impl.PartitionStateManager;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
@@ -215,7 +216,8 @@ public final class PromoteFromBackupOperation
 
     private void clearPartitionMigratingFlag() {
         final InternalPartitionServiceImpl service = getService();
-        final InternalPartitionImpl partition = service.getPartitionImpl(getPartitionId());
+        PartitionStateManager partitionStateManager = service.getPartitionStateManager();
+        final InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(getPartitionId());
         partition.setMigrating(false);
     }
 

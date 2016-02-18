@@ -169,7 +169,8 @@ public final class MigrationOperation extends BaseMigrationOperation {
 
     private boolean addActiveMigration() {
         InternalPartitionServiceImpl partitionService = getService();
-        return partitionService.addActiveMigration(migrationInfo);
+        MigrationManager migrationManager = partitionService.getMigrationManager();
+        return migrationManager.addActiveMigration(migrationInfo);
     }
 
     private void runMigrationTask(Operation op) throws Exception {

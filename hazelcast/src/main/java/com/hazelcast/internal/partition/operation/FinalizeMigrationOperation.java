@@ -47,7 +47,8 @@ public final class FinalizeMigrationOperation extends AbstractOperation
         InternalPartitionServiceImpl partitionService = getService();
 
         int partitionId = getPartitionId();
-        MigrationInfo migrationInfo = partitionService.getActiveMigration(partitionId);
+        MigrationManager migrationManager = partitionService.getMigrationManager();
+        MigrationInfo migrationInfo = migrationManager.getActiveMigration(partitionId);
         if (migrationInfo == null) {
             return;
         }
@@ -65,7 +66,7 @@ public final class FinalizeMigrationOperation extends AbstractOperation
             partitionService.clearPartitionReplicaVersions(partitionId);
         }
 
-        partitionService.removeActiveMigration(partitionId);
+        migrationManager.removeActiveMigration(partitionId);
         if (success) {
             nodeEngine.onPartitionMigrate(migrationInfo);
         }

@@ -93,7 +93,8 @@ public class InternalPartitionServiceImplTest extends HazelcastTestSupport {
             addresses[i][0] = thisAddress;
         }
 
-        partitionService.setInitialState(addresses, partitionCount);
+        PartitionStateManager partitionStateManager = partitionService.getPartitionStateManager();
+        partitionStateManager.setInitialState(addresses, partitionCount);
         for (int i = 0; i < partitionCount; i++) {
             assertTrue(partitionService.isPartitionOwner(i));
         }
@@ -107,8 +108,9 @@ public class InternalPartitionServiceImplTest extends HazelcastTestSupport {
             addresses[i][0] = thisAddress;
         }
 
-        partitionService.setInitialState(addresses, 0);
-        partitionService.setInitialState(addresses, 0);
+        PartitionStateManager partitionStateManager = partitionService.getPartitionStateManager();
+        partitionStateManager.setInitialState(addresses, 0);
+        partitionStateManager.setInitialState(addresses, 0);
     }
 
     @Test
@@ -121,7 +123,8 @@ public class InternalPartitionServiceImplTest extends HazelcastTestSupport {
         TestPartitionListener listener = new TestPartitionListener();
         partitionService.addPartitionListener(listener);
 
-        partitionService.setInitialState(addresses, 0);
+        PartitionStateManager partitionStateManager = partitionService.getPartitionStateManager();
+        partitionStateManager.setInitialState(addresses, 0);
         assertEquals(0, listener.eventCount);
     }
 

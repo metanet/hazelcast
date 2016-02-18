@@ -50,6 +50,7 @@ public class PartitionReplicaManager {
     private final NodeEngineImpl nodeEngine;
     private final ILogger logger;
     private final InternalPartitionServiceImpl partitionService;
+    private final PartitionStateManager partitionStateManager;
 
     private final PartitionReplicaVersions[] replicaVersions;
     private final AtomicReferenceArray<ReplicaSyncInfo> replicaSyncRequests;
@@ -68,6 +69,7 @@ public class PartitionReplicaManager {
         this.partitionService = partitionService;
 
         partitionCount = partitionService.getPartitionCount();
+        partitionStateManager = partitionService.getPartitionStateManager();
 
         partitionMigrationTimeout = node.groupProperties.getMillis(GroupProperty.PARTITION_MIGRATION_TIMEOUT);
         maxParallelReplications = node.groupProperties.getInteger(GroupProperty.PARTITION_MAX_PARALLEL_REPLICATIONS);
@@ -107,7 +109,7 @@ public class PartitionReplicaManager {
             return;
         }
 
-        InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+        InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
         Address target = partition.getOwnerOrNull();
         ReplicaSyncInfo syncInfo = new ReplicaSyncInfo(partitionId, replicaIndex, target);
 
@@ -141,7 +143,7 @@ public class PartitionReplicaManager {
     }
 
     private boolean checkSyncPartitionTarget(int partitionId, int replicaIndex) {
-        final InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+        final InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
         final Address target = partition.getOwnerOrNull();
         if (target == null) {
             logger.info("Sync replica target is null, no need to sync -> partitionId=" + partitionId + ", replicaIndex="
@@ -154,7 +156,7 @@ public class PartitionReplicaManager {
             if (logger.isFinestEnabled()) {
                 logger.finest("This node is now owner of partition, cannot sync replica -> partitionId=" + partitionId
                         + ", replicaIndex=" + replicaIndex + ", partition-info="
-                        + partitionService.getPartitionImpl(partitionId));
+                        + partitionStateManager.getPartitionImpl(partitionId));
             }
             return false;
         }
@@ -172,7 +174,7 @@ public class PartitionReplicaManager {
     private long getReplicaSyncScheduleDelay(int partitionId) {
         long scheduleDelay = DEFAULT_REPLICA_SYNC_DELAY;
         Address thisAddress = node.getThisAddress();
-        InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+        InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
         ReplicaSyncInfo currentSyncInfo = replicaSyncRequests.get(partitionId);
         if (currentSyncInfo != null
                 && !thisAddress.equals(partition.getReplicaAddress(currentSyncInfo.replicaIndex))) {
@@ -358,7 +360,7 @@ public class PartitionReplicaManager {
                     releaseReplicaSyncPermit();
                 }
 
-                InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+                InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
                 int currentReplicaIndex = partition.getReplicaIndex(node.getThisAddress());
                 if (currentReplicaIndex > 0) {
                     triggerPartitionReplicaSync(partitionId, currentReplicaIndex, 0L);

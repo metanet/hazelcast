@@ -49,7 +49,8 @@ public class ReplicaSyncRetryResponse extends Operation
 
         partitionService.getReplicaManager().clearReplicaSyncRequest(partitionId, replicaIndex);
 
-        InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+        PartitionStateManager partitionStateManager = partitionService.getPartitionStateManager();
+        InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
         Address thisAddress = getNodeEngine().getThisAddress();
         ILogger logger = getLogger();
 
