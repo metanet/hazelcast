@@ -68,7 +68,8 @@ public class ReplicaSyncResponse extends Operation
         int partitionId = getPartitionId();
         int replicaIndex = getReplicaIndex();
 
-        InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+        PartitionStateManager partitionStateManager = partitionService.getPartitionStateManager();
+        InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
         Address thisAddress = nodeEngine.getThisAddress();
         int currentReplicaIndex = partition.getReplicaIndex(thisAddress);
         try {

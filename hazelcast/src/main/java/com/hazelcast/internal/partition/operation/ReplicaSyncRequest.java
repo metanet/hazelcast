@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.partition.operation;
 
+import com.hazelcast.internal.partition.impl.PartitionStateManager;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
@@ -95,7 +96,8 @@ public final class ReplicaSyncRequest extends Operation implements PartitionAwar
 
     private boolean preCheckReplicaSync(NodeEngineImpl nodeEngine, int partitionId, int replicaIndex) throws IOException {
         InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) nodeEngine.getPartitionService();
-        InternalPartitionImpl partition = partitionService.getPartitionImpl(partitionId);
+        PartitionStateManager partitionStateManager = partitionService.getPartitionStateManager();
+        InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
         Address owner = partition.getOwnerOrNull();
         long[] replicaVersions = partitionService.getPartitionReplicaVersions(partitionId);
         long currentVersion = replicaVersions[replicaIndex - 1];

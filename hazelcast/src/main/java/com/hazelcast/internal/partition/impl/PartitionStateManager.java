@@ -74,18 +74,20 @@ public class PartitionStateManager {
     // can be read and written concurrently...
     private volatile int memberGroupsSize;
 
-    private Lock lock;
+    // TODO: ?
+    private final Lock lock;
 
-    public PartitionStateManager(Node node, InternalPartitionServiceImpl service, PartitionListener listener) {
+    public PartitionStateManager(Node node, InternalPartitionServiceImpl service, PartitionListener listener, Lock lock) {
         this.node = node;
         this.nodeEngine = node.nodeEngine;
         this.partitionService = service;
         this.logger = node.getLogger(getClass());
+        this.lock = lock;
 
         partitionCount = partitionService.getPartitionCount();
         this.partitions = new InternalPartitionImpl[partitionCount];
 
-        Address thisAddress = null;
+        Address thisAddress = node.getThisAddress();
         for (int i = 0; i < partitionCount; i++) {
             this.partitions[i] = new InternalPartitionImpl(i, listener, thisAddress);
         }
@@ -105,7 +107,6 @@ public class PartitionStateManager {
         return count;
     }
 
-//    @Override
     public Address getPartitionOwner(int partitionId) {
         if (!initialized) {
             firstArrangement();
@@ -118,7 +119,6 @@ public class PartitionStateManager {
         return partitions[partitionId].getOwnerOrNull();
     }
 
-//    @Override
     public Address getPartitionOwnerOrWait(int partitionId) {
         Address owner;
         while ((owner = getPartitionOwner(partitionId)) == null) {
@@ -170,7 +170,6 @@ public class PartitionStateManager {
         }
     }
 
-//    @Override
     public void firstArrangement() {
         if (initialized) {
             return;
