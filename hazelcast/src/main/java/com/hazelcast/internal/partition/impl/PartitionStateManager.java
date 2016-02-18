@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-package com.hazelcast.partition.impl;
+package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.HazelcastException;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.core.Member;
 import com.hazelcast.instance.Node;
-import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
+import com.hazelcast.internal.partition.InternalPartition;
+import com.hazelcast.internal.partition.PartitionListener;
+import com.hazelcast.internal.partition.PartitionStateGenerator;
+import com.hazelcast.internal.partition.operation.AssignPartitions;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.InternalPartition;
 import com.hazelcast.partition.NoDataMemberInClusterException;
 import com.hazelcast.partition.membergroup.MemberGroup;
 import com.hazelcast.partition.membergroup.MemberGroupFactory;
@@ -40,7 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 
 import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
-import static com.hazelcast.partition.InternalPartitionService.SERVICE_NAME;
+import static com.hazelcast.partition.IPartitionService.SERVICE_NAME;
 
 /**
  * TODO: Javadoc Pending...
@@ -92,13 +94,24 @@ public class PartitionStateManager {
         partitionStateGenerator = new PartitionStateGeneratorImpl();
     }
 
+    @Probe
+    private int localPartitionCount() {
+        int count = 0;
+        for (InternalPartition partition : partitions) {
+            if (partition.isLocal()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
 //    @Override
     public Address getPartitionOwner(int partitionId) {
         if (!initialized) {
             firstArrangement();
         }
         if (partitions[partitionId].getOwnerOrNull() == null && !node.isMaster() && node.joined()) {
-            if (!isClusterFormedByOnlyLiteMembers()) {
+            if (!partitionService.isClusterFormedByOnlyLiteMembers()) {
                 notifyMasterToAssignPartitions();
             }
         }
@@ -117,7 +130,7 @@ public class PartitionStateManager {
             if (clusterState != ClusterState.ACTIVE) {
                 throw new IllegalStateException("Partitions can't be assigned since cluster-state: " + clusterState);
             }
-            if (isClusterFormedByOnlyLiteMembers()) {
+            if (partitionService.isClusterFormedByOnlyLiteMembers()) {
                 throw new NoDataMemberInClusterException(
                         "Partitions can't be assigned since all nodes in the cluster are lite members");
             }
@@ -252,12 +265,7 @@ public class PartitionStateManager {
         }
     }
 
-    private boolean isClusterFormedByOnlyLiteMembers() {
-        final ClusterServiceImpl clusterService = node.getClusterService();
-        return clusterService.getMembers(DATA_MEMBER_SELECTOR).isEmpty();
-    }
-
-    private void updateMemberGroupsSize() {
+    void updateMemberGroupsSize() {
         final Collection<MemberGroup> groups = createMemberGroups();
         int size = 0;
         for (MemberGroup group : groups) {
@@ -280,12 +288,35 @@ public class PartitionStateManager {
         return node.isLiteMember() ? 0 : 1;
     }
 
+    void removeDeadAddress(Address deadAddress) {
+        for (InternalPartitionImpl partition : partitions) {
+            //            if (deadAddress.equals(partition.getOwnerOrNull()) && thisAddress.equals(partition.getReplicaAddress(1))) {
+            //                partition.setMigrating(true);
+            //            }
+
+            // shift partition table up.
+            //            partition.onDeadAddress(deadAddress);
+
+            // safety check!
+            //            if (partition.onDeadAddress(deadAddress)) {
+            //                throw new IllegalStateException("Duplicate address found in partition replicas!");
+            //            }
+
+            // set null for replica assignments to this address
+            partition.removeAddress(deadAddress);
+        }
+    }
 
     //    @Override
-    public InternalPartition[] getPartitions() {
-        //a defensive copy is made to prevent breaking with the old approach, but imho not needed
+    InternalPartition[] getPartitions() {
+        return partitions;
+    }
+
+    InternalPartition[] getPartitionsCopy() {
         InternalPartition[] result = new InternalPartition[partitions.length];
-        System.arraycopy(partitions, 0, result, 0, partitions.length);
+        for (int i = 0; i < partitionCount; i++) {
+            result[i] = partitions[i].copy();
+        }
         return result;
     }
 
@@ -329,8 +360,40 @@ public class PartitionStateManager {
         partitions[partitionId].setMigrating(migrating);
     }
 
-    void updatePartitionReplicaAddresses(int partitionId, Address[] replicaAddresses) {
+    void updateReplicaAddresses(int partitionId, Address[] replicaAddresses) {
         InternalPartitionImpl partition = partitions[partitionId];
         partition.setReplicaAddresses(replicaAddresses);
+    }
+
+    void setReplicaAddresses(InternalPartition partition, Address[] replicaAddresses) {
+        ((InternalPartitionImpl) partition).setReplicaAddresses(replicaAddresses);
+    }
+
+    void setVersion(int version) {
+        stateVersion.set(version);
+    }
+
+    public int getVersion() {
+        return stateVersion.get();
+    }
+
+    void incrementVersion() {
+        stateVersion.incrementAndGet();
+    }
+
+    void setInitialized() {
+        initialized = true;
+    }
+
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+    void reset() {
+        initialized = false;
+        stateVersion.set(0);
+        for (InternalPartitionImpl partition : partitions) {
+            partition.reset();
+        }
     }
 }
