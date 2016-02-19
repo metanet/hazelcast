@@ -187,7 +187,7 @@ public class MigrationManager {
                 op.setPartitionId(partitionId)
                         .setNodeEngine(nodeEngine)
                         .setValidateTarget(false)
-                        .setService(this);
+                        .setService(partitionService);
                 nodeEngine.getOperationService().executeOperation(op);
             } else {
                 logger.severe("Failed to finalize migration because this member " + thisAddress
@@ -370,7 +370,11 @@ public class MigrationManager {
         completedMigrations.clear();
     }
 
-    public void stop() {
+    void start() {
+        migrationThread.start();
+    }
+
+    void stop() {
         migrationThread.stopNow();
     }
 

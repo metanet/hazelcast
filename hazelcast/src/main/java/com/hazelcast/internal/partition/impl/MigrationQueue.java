@@ -83,4 +83,9 @@ class MigrationQueue {
         return queue.size();
     }
 
+    @Override
+    public String toString() {
+        return "MigrationQueue{" + "migrateTaskCount=" + migrateTaskCount
+                + ", queue=" + queue + '}';
+    }
 }
