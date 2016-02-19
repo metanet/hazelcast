@@ -62,6 +62,7 @@ import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.PartitionAwareService;
+import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.FutureUtil.ExceptionHandler;
 import com.hazelcast.util.HashUtil;
@@ -235,7 +236,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             migrationManager.onMemberRemove(member);
 
             if (node.isMaster() && !thisAddress.equals(lastMaster)) {
-                Runnable runnable = new FixPartitionTableTask();
+                Runnable runnable = new FetchMostRecentPartitionTableTask();
                 migrationManager.execute(runnable);
             }
             lastMaster = node.getMasterAddress();
@@ -1020,8 +1021,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    // TODO: need a better task name!
-    private class FixPartitionTableTask implements Runnable {
+    private class FetchMostRecentPartitionTableTask implements Runnable {
         private final Address thisAddress = node.getThisAddress();
 
         public void run() {
@@ -1043,6 +1043,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             int version = getPartitionStateVersion();
             PartitionRuntimeState newState = null;
 
+            // TODO BASRI HANDLE ACTIVE MIGRATION
+            // There might be 0, 1 (only for source -dest already committed-) or 2 (from source and dest) active migration objects
             Collection<MigrationInfo> activeMigrations = new ArrayList<MigrationInfo>();
             Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
 
@@ -1058,6 +1060,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     if (state.getActiveMigration() != null) {
                         activeMigrations.add(state.getActiveMigration());
                     }
+                } catch (TargetNotMemberException e) {
+                    // ignore
                 } catch (MemberLeftException e) {
                     // ignore
                 } catch (InterruptedException e) {
