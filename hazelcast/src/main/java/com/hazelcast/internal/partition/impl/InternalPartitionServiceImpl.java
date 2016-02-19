@@ -1075,21 +1075,26 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 }
             }
 
-            if (newState != null) {
-                applyNewState(newState, thisAddress);
-            }
-
             lock.lock();
             try {
+                if (migrationManager.getActiveMigration() != null) {
+                    activeMigrations.add(migrationManager.getActiveMigration());
+                }
+
                 // TODO: merge completed migrations
                 allCompletedMigrations.addAll(migrationManager.getCompletedMigrations());
                 migrationManager.setCompletedMigrations(allCompletedMigrations);
 
-                // TODO: or should we ask all members about status of an ongoing migration?
-                // TODO: handle & rollback active migrations started but not completed yet
-//                        rollbackActiveMigrationsFromPreviousMaster(node.getLocalMember().getUuid());
+                if (newState != null) {
+                    applyNewState(newState, thisAddress);
+                }
 
-
+                // TODO: iterate over active migrations and decide either to commit or to rollback
+                // we can (should ?) store status of active migration on both source and destination
+                // that way, we can see complete picture of a migration and decide whether we should commit
+                // or rollback.
+                for (MigrationInfo activeMigration : activeMigrations) {
+                }
 
             } finally {
                 lock.unlock();
