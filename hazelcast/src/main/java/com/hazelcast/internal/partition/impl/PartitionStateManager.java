@@ -23,6 +23,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
+import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionStateGenerator;
 import com.hazelcast.internal.partition.operation.AssignPartitions;
@@ -35,6 +36,7 @@ import com.hazelcast.partition.membergroup.MemberGroupFactoryFactory;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.util.ExceptionUtil;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -288,23 +290,35 @@ public class PartitionStateManager {
         return node.isLiteMember() ? 0 : 1;
     }
 
-    void removeDeadAddress(Address deadAddress) {
+    Collection<MigrationInfo> removeDeadAddress(Address deadAddress) {
+        Collection<MigrationInfo> migrations = new ArrayList<MigrationInfo>();
         for (InternalPartitionImpl partition : partitions) {
-            //            if (deadAddress.equals(partition.getOwnerOrNull()) && thisAddress.equals(partition.getReplicaAddress(1))) {
-            //                partition.setMigrating(true);
-            //            }
+            final int index = partition.removeAddress(deadAddress);
 
-            // shift partition table up.
-            //            partition.onDeadAddress(deadAddress);
+            // if owner is null, promote 1.backup to owner
+            // don't touch to the other backups
+            if (index == 0) {
+                partition.swapAddresses(0, 1);
+            }
 
-            // safety check!
-            //            if (partition.onDeadAddress(deadAddress)) {
-            //                throw new IllegalStateException("Duplicate address found in partition replicas!");
-            //            }
+            Address owner;
+            if ((owner = partition.getOwnerOrNull()) == null) {
+                // we lost the partition!
+                continue;
+            }
 
-            // set null for replica assignments to this address
-            partition.removeAddress(deadAddress);
+            // search for a destination to assign empty index
+            Address destination = null;
+            for (int i = InternalPartition.MAX_REPLICA_COUNT - 1; i > index; i--) {
+                destination = partition.getReplicaAddress(i);
+                if (destination != null) {
+                    // create a new migration from owner to destination for replica-index
+                    migrations.add(new MigrationInfo(partition.getPartitionId(), owner, destination/*, index*/));
+                    break;
+                }
+            }
         }
+        return migrations;
     }
 
     //    @Override

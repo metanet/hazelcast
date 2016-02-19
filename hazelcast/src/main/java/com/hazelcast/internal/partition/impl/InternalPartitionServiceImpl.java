@@ -252,19 +252,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             replicaManager.cancelReplicaSyncRequestsTo(deadAddress);
 
             if (node.isMaster()) {
-                migrationManager.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!partitionStateManager.isInitialized()) {
-                            return;
-                        }
-
-                        partitionStateManager.removeDeadAddress(deadAddress);
-
-                        syncPartitionRuntimeState();
-                    }
-                });
-
+                migrationManager.execute(new RepairPartitionTableTask(deadAddress));
                 migrationManager.triggerRepartitioning();
             }
 
@@ -1025,6 +1013,26 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
+    private class RepairPartitionTableTask implements Runnable {
+        private final Address deadAddress;
+
+        public RepairPartitionTableTask(Address deadAddress) {this.deadAddress = deadAddress;}
+
+        @Override
+        public void run() {
+            if (!partitionStateManager.isInitialized()) {
+                return;
+            }
+
+            Collection<MigrationInfo> migrationInfos = partitionStateManager.removeDeadAddress(deadAddress);
+            for (MigrationInfo migrationInfo : migrationInfos) {
+                // schedule migrations
+            }
+
+            syncPartitionRuntimeState();
+        }
+    }
+
     private class FetchMostRecentPartitionTableTask implements Runnable {
         private final Address thisAddress = node.getThisAddress();
 
@@ -1093,8 +1101,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 // we can (should ?) store status of active migration on both source and destination
                 // that way, we can see complete picture of a migration and decide whether we should commit
                 // or rollback.
+
+                // TODO: for now, just add activeMigrations into the completed migrations list
+                // eventually they'll be rolled back
                 for (MigrationInfo activeMigration : activeMigrations) {
+                    migrationManager.addCompletedMigration(activeMigration);
                 }
+                // TODO: remove local active migration?
+//                migrationManager.removeActiveMigration();
 
             } finally {
                 lock.unlock();
