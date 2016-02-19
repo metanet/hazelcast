@@ -93,7 +93,8 @@ public class MigrationManager {
     private volatile InternalMigrationListener internalMigrationListener
             = new InternalMigrationListener.NopInternalMigrationListener();
 
-    // TODO: ?
+    // TODO: clarify lock usages.
+    // One option is to remove lock from this class and caller to guarantee thread safety.
     private final Lock lock;
 
     public MigrationManager(Node node, InternalPartitionServiceImpl service, Lock lock) {

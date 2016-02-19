@@ -74,7 +74,8 @@ public class PartitionStateManager {
     // can be read and written concurrently...
     private volatile int memberGroupsSize;
 
-    // TODO: ?
+    // TODO: clarify lock usages.
+    // One option is to remove lock from this class and caller to guarantee thread safety.
     private final Lock lock;
 
     public PartitionStateManager(Node node, InternalPartitionServiceImpl service, PartitionListener listener, Lock lock) {
