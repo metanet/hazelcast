@@ -898,6 +898,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         public void run() {
             if (node.isMaster() && node.getState() == NodeState.ACTIVE) {
                 if (migrationManager.hasOnGoingMigration() && isMigrationAllowed()) {
+                    // TODO: DEBUG
+//                    logger.info("Remaining migration tasks in queue => " + getMigrationQueueSize());
                     logger.info("Remaining migration tasks in queue => " + migrationManager.migrationQueue
                     + ", status: " + isMigrationAllowed());
                 }
