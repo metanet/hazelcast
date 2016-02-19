@@ -25,12 +25,11 @@ import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.ExceptionAction;
-import com.hazelcast.spi.UrgentSystemOperation;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 
 import java.io.IOException;
 
-public class MigrationCommitOperation extends AbstractOperation implements MigrationCycleOperation, UrgentSystemOperation {
+public class MigrationCommitOperation extends AbstractOperation implements MigrationCycleOperation {
 
     private PartitionRuntimeState partitionState;
 
