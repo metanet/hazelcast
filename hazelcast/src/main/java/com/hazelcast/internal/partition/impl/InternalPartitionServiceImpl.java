@@ -156,6 +156,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         ExecutionService executionService = nodeEngine.getExecutionService();
         executionService.scheduleWithRepetition(new SendPartitionRuntimeStateTask(),
                 partitionTableSendInterval, partitionTableSendInterval, TimeUnit.SECONDS);
+
+        migrationManager.start();
+        replicaManager.scheduleReplicaVersionSync(executionService);
     }
 
     @Override
@@ -895,7 +898,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         public void run() {
             if (node.isMaster() && node.getState() == NodeState.ACTIVE) {
                 if (migrationManager.hasOnGoingMigration() && isMigrationAllowed()) {
-                    logger.info("Remaining migration tasks in queue => " + getMigrationQueueSize());
+                    logger.info("Remaining migration tasks in queue => " + migrationManager.migrationQueue
+                    + ", status: " + isMigrationAllowed());
                 }
                 publishPartitionRuntimeState();
             }
@@ -1082,6 +1086,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 // TODO: or should we ask all members about status of an ongoing migration?
                 // TODO: handle & rollback active migrations started but not completed yet
 //                        rollbackActiveMigrationsFromPreviousMaster(node.getLocalMember().getUuid());
+
+
 
             } finally {
                 lock.unlock();
