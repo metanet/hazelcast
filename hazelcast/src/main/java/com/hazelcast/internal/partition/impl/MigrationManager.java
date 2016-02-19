@@ -16,12 +16,12 @@
 
 package com.hazelcast.internal.partition.impl;
 
+import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
-import com.hazelcast.instance.OutOfMemoryErrorDispatcher;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
@@ -50,7 +50,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
 
 import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
-import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 /**
@@ -68,7 +67,7 @@ public class MigrationManager {
 
     private final PartitionStateManager partitionStateManager;
 
-    private final MigrationQueue migrationQueue = new MigrationQueue();
+    final MigrationQueue migrationQueue = new MigrationQueue();
 
     private final MigrationThread migrationThread;
 
@@ -79,7 +78,7 @@ public class MigrationManager {
 
     private final CoalescingDelayedTrigger delayedResumeMigrationTrigger;
 
-    private final long partitionMigrationInterval;
+    final long partitionMigrationInterval;
     private final long partitionMigrationTimeout;
 
     // updates will be done under lock, but reads will be multithreaded.
@@ -108,13 +107,11 @@ public class MigrationManager {
 
         ExecutionService executionService = nodeEngine.getExecutionService();
 
-        migrationThread = new MigrationThread(node);
+        migrationThread = new MigrationThread(this, node.getHazelcastThreadGroup(), node.getLogger(MigrationThread.class));
 
         long intervalMillis = node.groupProperties.getMillis(GroupProperty.PARTITION_MIGRATION_INTERVAL);
         partitionMigrationInterval = (intervalMillis > 0 ? intervalMillis : 0);
-
         partitionMigrationTimeout = node.groupProperties.getMillis(GroupProperty.PARTITION_MIGRATION_TIMEOUT);
-
 
         long maxMigrationDelayMs = calculateMaxMigrationDelayOnMemberRemoved();
         long minMigrationDelayMs = calculateMigrationDelayOnMemberRemoved(maxMigrationDelayMs);
@@ -125,7 +122,6 @@ public class MigrationManager {
                 resumeMigration();
             }
         });
-
     }
 
     private long calculateMaxMigrationDelayOnMemberRemoved() {
@@ -151,7 +147,6 @@ public class MigrationManager {
     private int migrationActiveProbe() {
         return migrationAllowed.get() ? 1 : 0;
     }
-
 
     public void pauseMigration() {
         migrationAllowed.set(false);
@@ -321,7 +316,7 @@ public class MigrationManager {
         }
     }
 
-    private void evictCompletedMigrations() {
+    void evictCompletedMigrations() {
         lock.lock();
         try {
             if (!completedMigrations.isEmpty()) {
@@ -481,7 +476,7 @@ public class MigrationManager {
         }
     }
 
-    private MemberImpl getMasterMember() {
+    private Member getMasterMember() {
         return node.clusterService.getMember(node.getMasterAddress());
     }
 
@@ -492,7 +487,7 @@ public class MigrationManager {
         public MigrateTask(MigrationInfo migrationInfo, Address[] addresses) {
             this.migrationInfo = migrationInfo;
             this.addresses = addresses;
-            final MemberImpl masterMember = getMasterMember();
+            final Member masterMember = getMasterMember();
             if (masterMember != null) {
                 migrationInfo.setMasterUuid(masterMember.getUuid());
                 migrationInfo.setMaster(masterMember.getAddress());
@@ -506,20 +501,11 @@ public class MigrationManager {
             }
             final MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo);
             try {
-                MigrationInfo info = migrationInfo;
-                InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(info.getPartitionId());
-                Address owner = partition.getOwnerOrNull();
-                if (owner == null) {
-                    logger.severe("ERROR: partition owner is not set! -> partitionId=" + info.getPartitionId()
-                            + " , " + partition + " -VS- " + info);
+                if (!checkPartitionOwner()) {
                     return;
                 }
-                if (!owner.equals(info.getSource())) {
-                    logger.severe("ERROR: partition owner is not the source of migration! -> partitionId="
-                            + info.getPartitionId() + " , " + partition + " -VS- " + info + " found owner=" + owner);
-                    return;
-                }
-                internalMigrationListener.onMigrationStart(InternalMigrationListener.MigrationParticipant.MASTER, migrationInfo);
+                internalMigrationListener.onMigrationStart(InternalMigrationListener.MigrationParticipant.MASTER,
+                        migrationInfo);
                 partitionService.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
 
                 Boolean result;
@@ -529,7 +515,7 @@ public class MigrationManager {
                 }
                 if (fromMember == null) {
                     // Partition is lost! Assign new owner and exit.
-                    logger.warning("Partition is lost! Assign new owner and exit... partitionId=" + info.getPartitionId());
+                    logger.warning("Partition is lost! Assign new owner and exit... partitionId=" + migrationInfo.getPartitionId());
                     result = Boolean.TRUE;
                     // TODO BASRI UNDERSTAND HOW THIS PART WILL WORK. THIS CASE SHOULD CAN BE TESTED WITH OUR MIGRATION LISTENER
                 } else {
@@ -542,6 +528,22 @@ public class MigrationManager {
                 logger.finest(t);
                 migrationOperationFailed();
             }
+        }
+
+        private boolean checkPartitionOwner() {
+            InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
+            Address owner = partition.getOwnerOrNull();
+            if (owner == null) {
+                logger.severe("ERROR: partition owner is not set! -> partitionId=" + migrationInfo.getPartitionId()
+                        + " , " + partition + " -VS- " + migrationInfo);
+                return false;
+            }
+            if (!owner.equals(migrationInfo.getSource())) {
+                logger.severe("ERROR: partition owner is not the source of migration! -> partitionId="
+                        + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo + " found owner=" + owner);
+                return false;
+            }
+            return true;
         }
 
         private void processMigrationResult(Boolean result) {
@@ -632,80 +634,4 @@ public class MigrationManager {
     }
 
 
-    private class MigrationThread extends Thread implements Runnable {
-        private final long sleepTime = max(250L, partitionMigrationInterval);
-
-        MigrationThread(Node node) {
-            super(node.getHazelcastThreadGroup().getInternalThreadGroup(),
-                    node.getHazelcastThreadGroup().getThreadNamePrefix("migration"));
-        }
-
-        @Override
-        public void run() {
-            try {
-                while (!isInterrupted()) {
-                    doRun();
-                }
-            } catch (InterruptedException e) {
-                if (logger.isFinestEnabled()) {
-                    logger.finest("MigrationThread is interrupted: " + e.getMessage());
-                }
-            } catch (OutOfMemoryError e) {
-                OutOfMemoryErrorDispatcher.onOutOfMemory(e);
-            } finally {
-                migrationQueue.clear();
-            }
-        }
-
-        private void doRun() throws InterruptedException {
-            boolean migrating = false;
-            for (; ;) {
-                if (!isMigrationAllowed()) {
-                    break;
-                }
-                Runnable r = migrationQueue.poll(1, TimeUnit.SECONDS);
-                if (r == null) {
-                    break;
-                }
-
-                migrating |= r instanceof MigrateTask;
-                processTask(r);
-                if (partitionMigrationInterval > 0) {
-                    Thread.sleep(partitionMigrationInterval);
-                }
-            }
-            boolean hasNoTasks = !migrationQueue.hasMigrationTasks();
-            if (hasNoTasks) {
-                if (migrating) {
-                    logger.info("All migration tasks have been completed, queues are empty.");
-                }
-                evictCompletedMigrations();
-                Thread.sleep(sleepTime);
-            } else if (!isMigrationAllowed()) {
-                Thread.sleep(sleepTime);
-            }
-        }
-
-        boolean processTask(Runnable r) {
-            try {
-                if (r == null || isInterrupted()) {
-                    return false;
-                }
-
-                r.run();
-            } catch (Throwable t) {
-                logger.warning(t);
-            } finally {
-                migrationQueue.afterTaskCompletion(r);
-            }
-
-            return true;
-        }
-
-        void stopNow() {
-            migrationQueue.clear();
-            interrupt();
-        }
-
-    }
 }
