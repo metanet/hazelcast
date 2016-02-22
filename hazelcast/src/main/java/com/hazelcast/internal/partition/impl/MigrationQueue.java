@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.partition.impl;
 
+import com.hazelcast.internal.partition.MigrationInfo;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
@@ -63,6 +64,16 @@ class MigrationQueue {
         if (task instanceof MigrationManager.MigrateTask) {
             if (migrateTaskCount.decrementAndGet() < 0) {
                 throw new IllegalStateException();
+            }
+        }
+    }
+
+    public void invalidatePendingMigrations() {
+        for (Runnable runnable : queue) {
+            if (runnable instanceof MigrationManager.MigrateTask) {
+                MigrationManager.MigrateTask task = (MigrationManager.MigrateTask) runnable;
+                MigrationInfo migrationInfo = task.migrationInfo;
+                migrationInfo.invalidate();
             }
         }
     }
