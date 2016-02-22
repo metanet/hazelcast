@@ -29,7 +29,6 @@ import com.hazelcast.spi.NodeEngine;
 
 /**
  * TODO: Javadoc Pending...
- *
  */
 final class InternalPartitionListener implements PartitionListener {
     private final Node node;
@@ -101,7 +100,8 @@ final class InternalPartitionListener implements PartitionListener {
         nodeEngine.getOperationService().executeOperation(op);
     }
 
-    private void synchronizePartition(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason, boolean initialAssignment) {
+    private void synchronizePartition(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
+            boolean initialAssignment) {
         // if not initialized yet, no need to sync, since this is the initial partition assignment
         if (partitionService.getPartitionStateManager().isInitialized()) {
             long delayMillis = 0L;
@@ -109,8 +109,8 @@ final class InternalPartitionListener implements PartitionListener {
                 // immediately trigger replica synchronization for the first backups
                 // postpone replica synchronization for greater backups to a later time
                 // high priority is 1st backups
-                delayMillis = (long) (
-                        InternalPartitionService.REPLICA_SYNC_RETRY_DELAY + (Math.random() * InternalPartitionService.DEFAULT_REPLICA_SYNC_DELAY));
+                delayMillis = (long) (InternalPartitionService.REPLICA_SYNC_RETRY_DELAY + (Math.random()
+                        * InternalPartitionService.DEFAULT_REPLICA_SYNC_DELAY));
             }
 
             resetReplicaVersion(partitionId, replicaIndex, reason, initialAssignment);
@@ -118,10 +118,12 @@ final class InternalPartitionListener implements PartitionListener {
         }
     }
 
-    private void resetReplicaVersion(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason, boolean initialAssignment) {
+    private void resetReplicaVersion(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
+            boolean initialAssignment) {
         NodeEngine nodeEngine = node.nodeEngine;
         ResetReplicaVersionOperation op = new ResetReplicaVersionOperation(reason, initialAssignment);
-        op.setPartitionId(partitionId).setReplicaIndex(replicaIndex).setNodeEngine(nodeEngine).setService(partitionService);
+        op.setPartitionId(partitionId).setReplicaIndex(replicaIndex).setNodeEngine(nodeEngine)
+                .setService(partitionService);
         nodeEngine.getOperationService().executeOperation(op);
     }
 
@@ -133,7 +135,9 @@ final class InternalPartitionListener implements PartitionListener {
     }
 
     private void logOwnerOfPartitionIsRemoved(PartitionReplicaChangeEvent event) {
-        String warning = "Owner of partition is being removed! " + "Possible data loss for partitionId=" + event.getPartitionId() + " , " + event;
+        String warning =
+                "Owner of partition is being removed! " + "Possible data loss for partitionId=" + event.getPartitionId()
+                        + " , " + event;
         logger.warning(warning);
     }
 

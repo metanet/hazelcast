@@ -349,6 +349,7 @@ public class MigrationManager {
 
     void onMemberRemove(MemberImpl member) {
         // TODO: should not clear all! but only migration tasks? only to/from dead member?
+        // should not remove FetchMostRecentPartitionTableTask or RepairPartitionTableTask!
         migrationQueue.clear();
 
         // TODO: if it's source...?
@@ -473,7 +474,7 @@ public class MigrationManager {
         }
 
         private void migratePartitionToNewOwner(int partitionId, Address[] replicas, Address currentOwner, Address newOwner) {
-            MigrationInfo info = new MigrationInfo(partitionId, currentOwner, newOwner);
+            MigrationInfo info = new MigrationInfo(partitionId, 0, currentOwner, newOwner);
             MigrateTask migrateTask = new MigrateTask(info, replicas);
             migrationQueue.add(migrateTask);
         }
@@ -481,7 +482,7 @@ public class MigrationManager {
         private void assignNewPartitionOwner(int partitionId, Address[] replicas, InternalPartitionImpl currentPartition,
                 Address newOwner) {
             currentPartition.setReplicaAddresses(replicas);
-            MigrationInfo migrationInfo = new MigrationInfo(partitionId, null, newOwner);
+            MigrationInfo migrationInfo = new MigrationInfo(partitionId, 0, null, newOwner);
             PartitionEventManager partitionEventManager = partitionService.getPartitionEventManager();
             partitionEventManager.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
             partitionEventManager.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);

@@ -198,12 +198,12 @@ public class PartitionStateManager {
             }
 
             // search for a destination to assign empty index
-            Address destination = null;
+            Address destination;
             for (int i = InternalPartition.MAX_REPLICA_COUNT - 1; i > index; i--) {
                 destination = partition.getReplicaAddress(i);
                 if (destination != null) {
                     // create a new migration from owner to destination for replica-index
-                    migrations.add(new MigrationInfo(partition.getPartitionId(), owner, destination/*, index*/));
+                    migrations.add(new MigrationInfo(partition.getPartitionId(), index, owner, destination));
                     break;
                 }
             }
