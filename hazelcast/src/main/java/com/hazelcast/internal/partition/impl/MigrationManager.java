@@ -332,8 +332,12 @@ public class MigrationManager {
     }
 
     void triggerRepartitioning() {
-        migrationQueue.clear();
+        invalidateAllPendingMigrations();
         migrationQueue.add(new RepartitioningTask());
+    }
+
+    void invalidateAllPendingMigrations() {
+        migrationQueue.invalidatePendingMigrations();
     }
 
     public InternalMigrationListener getInternalMigrationListener() {
@@ -350,10 +354,6 @@ public class MigrationManager {
     }
 
     void onMemberRemove(MemberImpl member) {
-        // TODO: should not clear all! but only migration tasks? only to/from dead member?
-        // should not remove FetchMostRecentPartitionTableTask or RepairPartitionTableTask!
-        migrationQueue.clear();
-
         // TODO: if it's source...?
         Address deadAddress = member.getAddress();
         if (activeMigrationInfo != null) {
@@ -424,9 +424,6 @@ public class MigrationManager {
                 }
 
                 lastRepartitionTime.set(Clock.currentTimeMillis());
-
-                // TODO: ?
-                migrationQueue.clear();
 
                 processNewPartitionState(newState);
                 partitionService.syncPartitionRuntimeState();
@@ -568,6 +565,11 @@ public class MigrationManager {
             if (!node.isMaster()) {
                 return;
             }
+
+            if (!migrationInfo.isValid()) {
+                return;
+            }
+
             final MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo);
             try {
                 if (!checkPartitionOwner()) {
