@@ -179,8 +179,8 @@ public class InternalPartitionImpl implements InternalPartition {
         }
     }
 
-    InternalPartitionImpl copy() {
-        final InternalPartitionImpl copy = new InternalPartitionImpl(partitionId, null, thisAddress);
+    InternalPartitionImpl copy(PartitionListener listener) {
+        final InternalPartitionImpl copy = new InternalPartitionImpl(partitionId, listener, thisAddress);
         final Address[] addressesCopy = new Address[addresses.length];
         System.arraycopy(addresses, 0, addressesCopy, 0, addresses.length);
         copy.setInitialReplicaAddresses(addressesCopy);

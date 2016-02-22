@@ -215,9 +215,10 @@ public class PartitionStateManager {
     }
 
     InternalPartition[] getPartitionsCopy() {
+        NopPartitionListener listener = new NopPartitionListener();
         InternalPartition[] result = new InternalPartition[partitions.length];
         for (int i = 0; i < partitionCount; i++) {
-            result[i] = partitions[i].copy();
+            result[i] = partitions[i].copy(listener);
         }
         return result;
     }
