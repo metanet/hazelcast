@@ -390,7 +390,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    PartitionRuntimeState createMigrationCommitPartitionState(MigrationInfo migrationInfo, Address[] newAddresses) {
+    PartitionRuntimeState createMigrationCommitPartitionState(MigrationInfo migrationInfo) {
         if (!partitionStateManager.isInitialized()) {
             return null;
         }
@@ -408,7 +408,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             InternalPartition[] partitions = partitionStateManager.getPartitionsCopy();
 
             int partitionId = migrationInfo.getPartitionId();
-            partitionStateManager.setReplicaAddresses(partitions[partitionId], newAddresses);
+            InternalPartitionImpl partition = (InternalPartitionImpl) partitions[partitionId];
+            partition.setReplicaAddress(migrationInfo.getReplicaIndex(), migrationInfo.getDestination());
 
             return new PartitionRuntimeState(logger, memberInfos, partitions, completedMigrations, getPartitionStateVersion() + 1);
         } finally {
@@ -616,7 +617,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     @Override
     public InternalPartition[] getPartitions() {
-        //a defensive copy is made to prevent breaking with the old approach, but imho not needed
         InternalPartition[] result = new InternalPartition[partitionCount];
         System.arraycopy(partitionStateManager.getPartitions(), 0, result, 0, partitionCount);
         return result;

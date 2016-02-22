@@ -114,16 +114,6 @@ public class PartitionEventManager {
         return eventService.deregisterListener(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC, registrationId);
     }
 
-//    public void addPartitionListener(PartitionListener listener) {
-//        lock.lock();
-//        try {
-//            PartitionListenerNode head = partitionListener.listenerHead;
-//            partitionListener.listenerHead = new PartitionListenerNode(listener, head);
-//        } finally {
-//            lock.unlock();
-//        }
-//    }
-
     public void onPartitionLost(IPartitionLostEvent event) {
         final PartitionLostEvent partitionLostEvent = new PartitionLostEvent(event.getPartitionId(), event.getLostReplicaIndex(),
                 event.getEventSource());

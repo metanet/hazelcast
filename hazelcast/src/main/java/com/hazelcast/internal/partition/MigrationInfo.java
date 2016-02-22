@@ -33,6 +33,9 @@ public class MigrationInfo implements DataSerializable {
     private Address master;
     private String masterUuid;
 
+    private int copyBackReplicaIndex = -1;
+    private MigrationType type = MigrationType.MOVE;
+
     private final AtomicBoolean processing = new AtomicBoolean(false);
     private volatile boolean valid = true;
 
@@ -40,10 +43,21 @@ public class MigrationInfo implements DataSerializable {
     }
 
     public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination) {
+        this(partitionId, replicaIndex, source, destination, MigrationType.MOVE, -1);
+    }
+
+    public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination, MigrationType type) {
+        this(partitionId, replicaIndex, source, destination, type, -1);
+    }
+
+    public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination,
+            MigrationType type, int copyBackReplicaIndex) {
         this.partitionId = partitionId;
         this.replicaIndex = replicaIndex;
         this.source = source;
         this.destination = destination;
+        this.type = type;
+        this.copyBackReplicaIndex = copyBackReplicaIndex;
     }
 
     public Address getSource() {
@@ -60,6 +74,22 @@ public class MigrationInfo implements DataSerializable {
 
     public int getReplicaIndex() {
         return replicaIndex;
+    }
+
+    public int getCopyBackReplicaIndex() {
+        return copyBackReplicaIndex;
+    }
+
+    public void setCopyBackReplicaIndex(int copyBackReplicaIndex) {
+        this.copyBackReplicaIndex = copyBackReplicaIndex;
+    }
+
+    public MigrationType getType() {
+        return type;
+    }
+
+    public void setType(MigrationType type) {
+        this.type = type;
     }
 
     public void setMasterUuid(String uuid) {
@@ -101,6 +131,7 @@ public class MigrationInfo implements DataSerializable {
     @Override
     public void writeData(ObjectDataOutput out) throws IOException {
         out.writeInt(partitionId);
+        out.writeInt(replicaIndex);
         boolean hasFrom = source != null;
         out.writeBoolean(hasFrom);
         if (hasFrom) {
@@ -114,11 +145,14 @@ public class MigrationInfo implements DataSerializable {
         if (b) {
             master.writeData(out);
         }
+
+        // TODO: add new fields
     }
 
     @Override
     public void readData(ObjectDataInput in) throws IOException {
         partitionId = in.readInt();
+        replicaIndex = in.readInt();
         boolean hasFrom = in.readBoolean();
         if (hasFrom) {
             source = new Address();
@@ -132,6 +166,8 @@ public class MigrationInfo implements DataSerializable {
             master = new Address();
             master.readData(in);
         }
+
+        // TODO: add new fields
     }
 
     //CHECKSTYLE:OFF
@@ -147,7 +183,12 @@ public class MigrationInfo implements DataSerializable {
 
         MigrationInfo that = (MigrationInfo) o;
 
+        // TODO: add new fields
+
         if (partitionId != that.partitionId) {
+            return false;
+        }
+        if (replicaIndex != that.replicaIndex) {
             return false;
         }
         if (destination != null ? !destination.equals(that.destination) : that.destination != null) {
@@ -166,7 +207,9 @@ public class MigrationInfo implements DataSerializable {
 
     @Override
     public int hashCode() {
+        // TODO: add new fields
         int result = partitionId;
+        result = 31 * result + replicaIndex;
         result = 31 * result + (source != null ? source.hashCode() : 0);
         result = 31 * result + (destination != null ? destination.hashCode() : 0);
         result = 31 * result + (masterUuid != null ? masterUuid.hashCode() : 0);
@@ -175,7 +218,8 @@ public class MigrationInfo implements DataSerializable {
 
     @Override
     public String toString() {
-        return getClass().getName() + "{partitionId=" + partitionId + ", source=" + source + ", destination=" + destination
-                + ", master=" + master + ", valid=" + valid + ", processing=" + processing.get() + '}';
+        return getClass().getName() + "{partitionId=" + partitionId + ", replicaIndex=" + replicaIndex + ", source="
+                + source + ", destination=" + destination + ", master=" + master + ", valid=" + valid + ", processing="
+                + processing.get() + '}';
     }
 }
