@@ -19,12 +19,13 @@ package com.hazelcast.internal.partition.operation;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.instance.Node;
+import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationCycleOperation;
 import com.hazelcast.internal.partition.MigrationInfo;
+import com.hazelcast.internal.partition.impl.InternalMigrationListener;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.internal.partition.impl.InternalMigrationListener;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.PartitionAwareOperation;
@@ -87,6 +88,12 @@ public abstract class BaseMigrationOperation extends AbstractOperation
     }
 
     protected abstract InternalMigrationListener.MigrationParticipant getMigrationParticipantType();
+
+    InternalPartition getPartition() {
+        InternalPartitionServiceImpl partitionService = getService();
+        return partitionService.getPartitionStateManager()
+                .getPartitionImpl(migrationInfo.getPartitionId());
+    }
 
     public MigrationInfo getMigrationInfo() {
         return migrationInfo;

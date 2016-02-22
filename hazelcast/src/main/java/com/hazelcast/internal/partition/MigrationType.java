@@ -16,6 +16,10 @@
 
 package com.hazelcast.internal.partition;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+
 /**
  * TODO: Javadoc Pending...
  *
@@ -24,6 +28,26 @@ public enum MigrationType {
 
     MOVE(0), COPY(1), MOVE_COPY_BACK(2);
 
-    MigrationType(int id) {
+    private final int code;
+
+    MigrationType(int code) {
+        this.code = code;
+    }
+
+    public static void writeTo(MigrationType type, DataOutput out) throws IOException {
+        out.writeByte(type.code);
+    }
+
+    public static MigrationType readFrom(DataInput in) throws IOException {
+        final byte code = in.readByte();
+        switch (code) {
+            case 0:
+                return MOVE;
+            case 1:
+                return COPY;
+            case 2:
+                return MOVE_COPY_BACK;
+        }
+        throw new IllegalArgumentException("Code: " + code);
     }
 }
