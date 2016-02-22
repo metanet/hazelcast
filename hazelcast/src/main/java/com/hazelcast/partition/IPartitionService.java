@@ -155,4 +155,6 @@ public interface IPartitionService extends CoreService {
      * @return true if it owns the partition. false if it doesn't or partition hasn't been assigned yet.
      */
     boolean isPartitionOwner(int partitionId);
+
+    IPartition[] getPartitions();
 }
