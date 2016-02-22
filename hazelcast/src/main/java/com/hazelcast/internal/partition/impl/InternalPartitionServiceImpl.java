@@ -32,16 +32,12 @@ import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.PartitionInfo;
 import com.hazelcast.internal.partition.PartitionListener;
-import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.PartitionServiceProxy;
 import com.hazelcast.internal.partition.operation.AssignPartitions;
-import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
 import com.hazelcast.internal.partition.operation.FetchPartitionStateOperation;
 import com.hazelcast.internal.partition.operation.HasOngoingMigration;
 import com.hazelcast.internal.partition.operation.PartitionStateOperation;
-import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation;
-import com.hazelcast.internal.partition.operation.ResetReplicaVersionOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
@@ -129,7 +125,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         this.nodeEngine = node.nodeEngine;
         this.logger = node.getLogger(InternalPartitionService.class);
 
-        partitionListener = new InternalPartitionListener(this, node.getThisAddress());
+        partitionListener = new InternalPartitionListener(node, this);
 
         partitionStateManager = new PartitionStateManager(node, this, partitionListener);
         migrationManager = new MigrationManager(node, this, lock);
@@ -858,8 +854,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     public void addPartitionListener(PartitionListener listener) {
         lock.lock();
         try {
-            PartitionListenerNode head = partitionListener.listenerHead;
-            partitionListener.listenerHead = new PartitionListenerNode(listener, head);
+            partitionListener.addChildListener(listener);
         } finally {
             lock.unlock();
         }
@@ -921,123 +916,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     public PartitionEventManager getPartitionEventManager() {
         return partitionEventManager;
-    }
-
-    private static final class InternalPartitionListener implements PartitionListener {
-        final Address thisAddress;
-        final InternalPartitionServiceImpl partitionService;
-        volatile PartitionListenerNode listenerHead;
-
-        private InternalPartitionListener(InternalPartitionServiceImpl partitionService, Address thisAddress) {
-            this.thisAddress = thisAddress;
-            this.partitionService = partitionService;
-        }
-
-        @Override
-        public void replicaChanged(PartitionReplicaChangeEvent event) {
-            final int partitionId = event.getPartitionId();
-            final int replicaIndex = event.getReplicaIndex();
-            final Address newAddress = event.getNewAddress();
-            final Address oldAddress = event.getOldAddress();
-            final PartitionReplicaChangeReason reason = event.getReason();
-
-            final boolean initialAssignment = event.getOldAddress() == null;
-
-            if (replicaIndex > 0) {
-                // backup replica owner changed!
-                if (thisAddress.equals(oldAddress)) {
-                    clearPartition(partitionId, replicaIndex);
-                } else if (thisAddress.equals(newAddress)) {
-                    synchronizePartition(partitionId, replicaIndex, reason, initialAssignment);
-                }
-            } else {
-                if (!initialAssignment && thisAddress.equals(newAddress)) {
-                    // it is possible that I might become owner while waiting for sync request from the previous owner.
-                    // I should check whether if have failed to get backups from the owner and lost the partition for
-                    // some backups.
-                    promoteFromBackups(partitionId, reason, oldAddress);
-                }
-                partitionService.replicaManager.cancelReplicaSync(partitionId);
-            }
-
-            Node node = partitionService.node;
-            if (replicaIndex == 0 && newAddress == null && node.isRunning() && node.joined()) {
-                logOwnerOfPartitionIsRemoved(event);
-            }
-            if (node.isMaster()) {
-                partitionService.partitionStateManager.incrementVersion();
-            }
-
-            callListeners(event);
-        }
-
-        private void callListeners(PartitionReplicaChangeEvent event) {
-            PartitionListenerNode listenerNode = listenerHead;
-            while (listenerNode != null) {
-                try {
-                    listenerNode.listener.replicaChanged(event);
-                } catch (Throwable e) {
-                    partitionService.logger.warning("While calling PartitionListener: " + listenerNode.listener, e);
-                }
-                listenerNode = listenerNode.next;
-            }
-        }
-
-        private void clearPartition(final int partitionId, final int oldReplicaIndex) {
-            NodeEngine nodeEngine = partitionService.nodeEngine;
-            ClearReplicaOperation op = new ClearReplicaOperation(oldReplicaIndex);
-            op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
-            nodeEngine.getOperationService().executeOperation(op);
-        }
-
-        private void synchronizePartition(int partitionId, int replicaIndex,
-                                          PartitionReplicaChangeReason reason, boolean initialAssignment) {
-            // if not initialized yet, no need to sync, since this is the initial partition assignment
-            if (partitionService.partitionStateManager.isInitialized()) {
-                long delayMillis = 0L;
-                if (replicaIndex > 1) {
-                    // immediately trigger replica synchronization for the first backups
-                    // postpone replica synchronization for greater backups to a later time
-                    // high priority is 1st backups
-                    delayMillis = (long) (REPLICA_SYNC_RETRY_DELAY + (Math.random() * DEFAULT_REPLICA_SYNC_DELAY));
-                }
-
-                resetReplicaVersion(partitionId, replicaIndex, reason, initialAssignment);
-                partitionService.replicaManager.triggerPartitionReplicaSync(partitionId, replicaIndex, delayMillis);
-            }
-        }
-
-        private void resetReplicaVersion(int partitionId, int replicaIndex,
-                                         PartitionReplicaChangeReason reason, boolean initialAssignment) {
-            NodeEngine nodeEngine = partitionService.nodeEngine;
-            ResetReplicaVersionOperation op = new ResetReplicaVersionOperation(reason, initialAssignment);
-            op.setPartitionId(partitionId).setReplicaIndex(replicaIndex)
-                    .setNodeEngine(nodeEngine).setService(partitionService);
-            nodeEngine.getOperationService().executeOperation(op);
-        }
-
-        private void promoteFromBackups(int partitionId, PartitionReplicaChangeReason reason, Address oldAddress) {
-            NodeEngine nodeEngine = partitionService.nodeEngine;
-            PromoteFromBackupOperation op = new PromoteFromBackupOperation(reason, oldAddress);
-            op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
-            nodeEngine.getOperationService().executeOperation(op);
-        }
-
-        private void logOwnerOfPartitionIsRemoved(PartitionReplicaChangeEvent event) {
-            String warning = "Owner of partition is being removed! "
-                    + "Possible data loss for partitionId=" + event.getPartitionId() + " , " + event;
-            partitionService.logger.warning(warning);
-        }
-    }
-
-    private static final class PartitionListenerNode {
-        final PartitionListener listener;
-        final PartitionListenerNode next;
-
-        PartitionListenerNode(PartitionListener listener, PartitionListenerNode next) {
-            this.listener = listener;
-            this.next = next;
-        }
     }
 
     private class RepairPartitionTableTask implements Runnable {
