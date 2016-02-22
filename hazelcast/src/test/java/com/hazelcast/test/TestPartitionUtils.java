@@ -2,12 +2,13 @@ package com.hazelcast.test;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
-import com.hazelcast.nio.Address;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceState;
 import com.hazelcast.internal.partition.impl.ReplicaSyncInfo;
+import com.hazelcast.nio.Address;
+import com.hazelcast.partition.IPartition;
 import com.hazelcast.spi.impl.PartitionSpecificRunnable;
 import com.hazelcast.util.scheduler.ScheduledEntry;
 
@@ -61,7 +62,7 @@ public class TestPartitionUtils {
     private static void collectOwnedReplicaVersions(Node node, Map<Integer, long[]> replicaVersions) throws InterruptedException {
         InternalPartitionService partitionService = node.getPartitionService();
         Address nodeAddress = node.getThisAddress();
-        for (InternalPartition partition : partitionService.getPartitions()) {
+        for (IPartition partition : partitionService.getPartitions()) {
             if (nodeAddress.equals(partition.getOwnerOrNull())) {
                 int partitionId = partition.getPartitionId();
                 replicaVersions.put(partitionId, getReplicaVersions(node, partitionId));

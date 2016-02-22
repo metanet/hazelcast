@@ -42,6 +42,7 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.spi.partition.IPartition;
 import com.hazelcast.spi.partition.IPartitionLostEvent;
 import com.hazelcast.partition.NoDataMemberInClusterException;
 import com.hazelcast.partition.PartitionEvent;
@@ -616,10 +617,15 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     }
 
     @Override
-    public InternalPartition[] getPartitions() {
-        InternalPartition[] result = new InternalPartition[partitionCount];
+    public IPartition[] getPartitions() {
+        IPartition[] result = new IPartition[partitionCount];
         System.arraycopy(partitionStateManager.getPartitions(), 0, result, 0, partitionCount);
         return result;
+    }
+
+    @Override
+    public InternalPartition[] getInternalPartitions() {
+        return partitionStateManager.getPartitions();
     }
 
     MemberImpl getMember(Address address) {
