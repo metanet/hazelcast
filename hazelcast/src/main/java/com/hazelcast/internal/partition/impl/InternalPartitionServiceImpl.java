@@ -877,11 +877,15 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     }
 
     public void setInternalMigrationListener(InternalMigrationListener listener) {
-        partitionEventManager.setInternalMigrationListener(listener);
+        migrationManager.setInternalMigrationListener(listener);
     }
 
     public InternalMigrationListener getInternalMigrationListener() {
-        return partitionEventManager.getInternalMigrationListener();
+        return migrationManager.getInternalMigrationListener();
+    }
+
+    public void resetInternalMigrationListener() {
+        migrationManager.resetInternalMigrationListener();
     }
 
     /**
