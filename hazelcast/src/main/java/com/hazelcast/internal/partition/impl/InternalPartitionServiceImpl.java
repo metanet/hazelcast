@@ -327,7 +327,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             migrationManager.onMemberRemove(member);
 
             if (node.isMaster() && !thisAddress.equals(lastMaster)) {
-                Runnable runnable = new FetchMostRecentPartitionTableTask();
                 migrationManager.execute(new FetchMostRecentPartitionTableTask());
             }
             lastMaster = node.getMasterAddress();
