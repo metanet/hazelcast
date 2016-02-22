@@ -131,7 +131,10 @@ public class MigrationInfo implements DataSerializable {
     @Override
     public void writeData(ObjectDataOutput out) throws IOException {
         out.writeInt(partitionId);
-        out.writeInt(replicaIndex);
+        out.writeByte(replicaIndex);
+        out.writeByte(copyBackReplicaIndex);
+        MigrationType.writeTo(type, out);
+
         boolean hasFrom = source != null;
         out.writeBoolean(hasFrom);
         if (hasFrom) {
@@ -145,14 +148,15 @@ public class MigrationInfo implements DataSerializable {
         if (b) {
             master.writeData(out);
         }
-
-        // TODO: add new fields
     }
 
     @Override
     public void readData(ObjectDataInput in) throws IOException {
         partitionId = in.readInt();
-        replicaIndex = in.readInt();
+        replicaIndex = in.readByte();
+        copyBackReplicaIndex = in.readByte();
+        type = MigrationType.readFrom(in);
+
         boolean hasFrom = in.readBoolean();
         if (hasFrom) {
             source = new Address();
@@ -166,60 +170,53 @@ public class MigrationInfo implements DataSerializable {
             master = new Address();
             master.readData(in);
         }
-
-        // TODO: add new fields
     }
 
     //CHECKSTYLE:OFF
     // This equals method is to complex for our rules due to many internal object type members
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
 
         MigrationInfo that = (MigrationInfo) o;
 
-        // TODO: add new fields
-
-        if (partitionId != that.partitionId) {
-            return false;
-        }
-        if (replicaIndex != that.replicaIndex) {
-            return false;
-        }
-        if (destination != null ? !destination.equals(that.destination) : that.destination != null) {
-            return false;
-        }
-        if (masterUuid != null ? !masterUuid.equals(that.masterUuid) : that.masterUuid != null) {
-            return false;
-        }
-        if (source != null ? !source.equals(that.source) : that.source != null) {
-            return false;
-        }
-
-        return true;
+        if (partitionId != that.partitionId) return false;
+        if (replicaIndex != that.replicaIndex) return false;
+        if (copyBackReplicaIndex != that.copyBackReplicaIndex) return false;
+        if (source != null ? !source.equals(that.source) : that.source != null) return false;
+        if (destination != null ? !destination.equals(that.destination) : that.destination != null) return false;
+        if (masterUuid != null ? !masterUuid.equals(that.masterUuid) : that.masterUuid != null) return false;
+        return type == that.type;
     }
-    //CHECKSTYLE:ON
 
     @Override
     public int hashCode() {
-        // TODO: add new fields
         int result = partitionId;
         result = 31 * result + replicaIndex;
         result = 31 * result + (source != null ? source.hashCode() : 0);
         result = 31 * result + (destination != null ? destination.hashCode() : 0);
         result = 31 * result + (masterUuid != null ? masterUuid.hashCode() : 0);
+        result = 31 * result + copyBackReplicaIndex;
+        result = 31 * result + type.hashCode();
         return result;
     }
+    //CHECKSTYLE:ON
 
     @Override
     public String toString() {
-        return getClass().getName() + "{partitionId=" + partitionId + ", replicaIndex=" + replicaIndex + ", source="
-                + source + ", destination=" + destination + ", master=" + master + ", valid=" + valid + ", processing="
-                + processing.get() + '}';
+        final StringBuilder sb = new StringBuilder("MigrationInfo{");
+        sb.append("partitionId=").append(partitionId);
+        sb.append(", replicaIndex=").append(replicaIndex);
+        sb.append(", source=").append(source);
+        sb.append(", destination=").append(destination);
+        sb.append(", master=").append(master);
+        sb.append(", masterUuid='").append(masterUuid).append('\'');
+        sb.append(", copyBackReplicaIndex=").append(copyBackReplicaIndex);
+        sb.append(", type=").append(type);
+        sb.append(", processing=").append(processing);
+        sb.append(", valid=").append(valid);
+        sb.append('}');
+        return sb.toString();
     }
 }

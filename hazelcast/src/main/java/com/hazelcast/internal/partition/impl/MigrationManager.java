@@ -498,6 +498,8 @@ public class MigrationManager {
                     } else if (currentOwner != null && newOwner == null) {
                         // A member is dead, this replica should not have an owner!
                         migrations.add(new MigrationInfo(partitionId, replicaIndex, currentOwner, null));
+                    } else if (replicaIndex == 0 && currentOwner == null) {
+                        // TODO: LOST!
                     }
                 }
             }
@@ -575,15 +577,16 @@ public class MigrationManager {
                 if (!checkPartitionOwner()) {
                     return;
                 }
-                internalMigrationListener.onMigrationStart(MigrationParticipant.MASTER,
-                        migrationInfo);
-                partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
+                internalMigrationListener.onMigrationStart(MigrationParticipant.MASTER, migrationInfo);
+                partitionService.getPartitionEventManager()
+                        .sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
 
                 Boolean result;
-                MemberImpl fromMember = partitionService.getMember(migrationInfo.getSource());
-                if (logger.isFinestEnabled()) {
-                    logger.finest("Starting Migration: " + migrationInfo);
-                }
+//                if (logger.isFinestEnabled()) {
+                    logger.info("Starting Migration: " + migrationInfo);
+//                }
+
+                MemberImpl fromMember = getSourceMember();
                 if (fromMember == null) {
                     // Partition is lost! Assign new owner and exit.
                     logger.warning("Partition is lost! Assign new owner and exit... partitionId=" + migrationInfo.getPartitionId());
@@ -601,6 +604,18 @@ public class MigrationManager {
             }
         }
 
+        private MemberImpl getSourceMember() {
+            Address source;
+            if (migrationInfo.getType() == MigrationType.COPY) {
+                InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
+                source = partition.getOwnerOrNull();
+            } else {
+                 source = migrationInfo.getSource();
+            }
+            return partitionService.getMember(source);
+        }
+
+        // TODO: needs cleanup
         private boolean checkPartitionOwner() {
             InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
             Address owner = partition.getOwnerOrNull();
@@ -609,19 +624,35 @@ public class MigrationManager {
                         + " , " + partition + " -VS- " + migrationInfo);
                 return false;
             }
-            if (!owner.equals(migrationInfo.getSource())) {
-                logger.severe("ERROR: partition owner is not the source of migration! -> partitionId="
-                        + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo + " found owner=" + owner);
-                return false;
+
+            if (migrationInfo.getType() == MigrationType.MOVE || migrationInfo.getType() == MigrationType.MOVE_COPY_BACK) {
+                Address replica = partition.getReplicaAddress(migrationInfo.getReplicaIndex());
+                if (replica == null) {
+                    logger.severe("ERROR: partition replica owner is not set! -> partitionId="
+                            + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo);
+                    return false;
+                }
+
+                if (!replica.equals(migrationInfo.getSource())) {
+                    logger.severe("ERROR: partition replica owner is not the source of migration! -> partitionId="
+                            + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo
+                            + " found owner= " + replica);
+                    return false;
+                }
             }
+
+            if (migrationInfo.getType() == MigrationType.COPY) {
+                // TODO: anything?
+            }
+
             return true;
         }
 
         private void processMigrationResult(Boolean result) {
             if (Boolean.TRUE.equals(result)) {
-                if (logger.isFinestEnabled()) {
-                    logger.finest("Finished Migration: " + migrationInfo);
-                }
+//                if (logger.isFinestEnabled()) {
+                    logger.info("Finished Migration: " + migrationInfo);
+//                }
                 migrationOperationSucceeded();
             } else {
                 final Level level = migrationEndpointsActive() ? Level.WARNING : Level.FINEST;
@@ -632,7 +663,7 @@ public class MigrationManager {
 
         private Boolean executeMigrateOperation(MigrationRequestOperation migrationRequestOp, MemberImpl fromMember) {
             Future future = nodeEngine.getOperationService().createInvocationBuilder(SERVICE_NAME, migrationRequestOp,
-                    migrationInfo.getSource())
+                    fromMember.getAddress())
                     .setCallTimeout(partitionMigrationTimeout)
                     .setTryPauseMillis(DEFAULT_PAUSE_MILLIS).invoke();
 
