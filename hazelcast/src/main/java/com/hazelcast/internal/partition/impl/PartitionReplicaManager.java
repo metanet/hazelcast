@@ -248,6 +248,7 @@ public class PartitionReplicaManager {
         replicaVersions[partitionId].set(versions, replicaOffset);
     }
 
+    // called in operation threads
     public void clearPartitionReplicaVersions(int partitionId) {
         replicaVersions[partitionId].clear();
     }

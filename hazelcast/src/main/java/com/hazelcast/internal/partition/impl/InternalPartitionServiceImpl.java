@@ -17,10 +17,9 @@
 package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.cluster.ClusterState;
+import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
-import com.hazelcast.core.MigrationEvent;
-import com.hazelcast.core.MigrationEvent.MigrationStatus;
 import com.hazelcast.core.MigrationListener;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.MemberImpl;
@@ -37,6 +36,7 @@ import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.PartitionServiceProxy;
+import com.hazelcast.internal.partition.operation.AssignPartitions;
 import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
 import com.hazelcast.internal.partition.operation.FetchPartitionStateOperation;
 import com.hazelcast.internal.partition.operation.HasOngoingMigration;
@@ -48,13 +48,11 @@ import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.partition.IPartitionLostEvent;
+import com.hazelcast.partition.NoDataMemberInClusterException;
 import com.hazelcast.partition.PartitionEvent;
 import com.hazelcast.partition.PartitionEventListener;
-import com.hazelcast.partition.PartitionLostEvent;
 import com.hazelcast.partition.PartitionLostListener;
 import com.hazelcast.spi.EventPublishingService;
-import com.hazelcast.spi.EventRegistration;
-import com.hazelcast.spi.EventService;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.InvocationBuilder;
 import com.hazelcast.spi.ManagedService;
@@ -64,9 +62,9 @@ import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.PartitionAwareService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.util.ExceptionUtil;
 import com.hazelcast.util.FutureUtil.ExceptionHandler;
 import com.hazelcast.util.HashUtil;
-import com.hazelcast.util.Preconditions;
 import com.hazelcast.util.scheduler.ScheduledEntry;
 
 import java.util.ArrayList;
@@ -81,6 +79,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
@@ -97,6 +96,7 @@ import static java.lang.Math.min;
 public class InternalPartitionServiceImpl implements InternalPartitionService, ManagedService,
         EventPublishingService<PartitionEvent, PartitionEventListener<PartitionEvent>>, PartitionAwareService {
 
+    private static final int PARTITION_OWNERSHIP_WAIT_MILLIS = 10;
     private static final String EXCEPTION_MSG_PARTITION_STATE_SYNC_TIMEOUT = "Partition state sync invocation timed out";
 
     private final Node node;
@@ -115,11 +115,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     private final MigrationManager migrationManager;
     private final PartitionReplicaManager replicaManager;
     private final PartitionReplicaChecker partitionReplicaChecker;
+    private final PartitionEventManager partitionEventManager;
 
     private final ExceptionHandler partitionStateSyncTimeoutHandler;
 
-    private volatile InternalMigrationListener internalMigrationListener
-            = new InternalMigrationListener.NopInternalMigrationListener();
+    // used to limit partition assignment requests sent to master
+    private final AtomicBoolean triggerMasterFlag = new AtomicBoolean(false);
 
     private volatile Address lastMaster;
 
@@ -131,11 +132,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         partitionListener = new InternalPartitionListener(this, node.getThisAddress());
 
-        partitionStateManager = new PartitionStateManager(node, this, partitionListener, lock);
+        partitionStateManager = new PartitionStateManager(node, this, partitionListener);
         migrationManager = new MigrationManager(node, this, lock);
         replicaManager = new PartitionReplicaManager(node, this);
 
         partitionReplicaChecker = new PartitionReplicaChecker(node, this);
+        partitionEventManager = new PartitionEventManager(node, this);
 
         partitionStateSyncTimeoutHandler =
                 logAllExceptions(logger, EXCEPTION_MSG_PARTITION_STATE_SYNC_TIMEOUT, Level.FINEST);
@@ -163,12 +165,100 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     @Override
     public Address getPartitionOwner(int partitionId) {
-       return partitionStateManager.getPartitionOwner(partitionId);
+        if (!partitionStateManager.isInitialized()) {
+            firstArrangement();
+        }
+        final InternalPartition partition = partitionStateManager.getPartitionImpl(partitionId);
+        if (partition.getOwnerOrNull() == null && !node.isMaster()) {
+            if (!isClusterFormedByOnlyLiteMembers()) {
+                triggerMasterToAssignPartitions();
+            }
+        }
+        return partition.getOwnerOrNull();
     }
 
     @Override
     public Address getPartitionOwnerOrWait(int partitionId) {
-        return partitionStateManager.getPartitionOwnerOrWait(partitionId);
+        Address owner;
+        while ((owner = getPartitionOwner(partitionId)) == null) {
+            if (!nodeEngine.isRunning()) {
+                throw new HazelcastInstanceNotActiveException();
+            }
+
+            ClusterState clusterState = node.getClusterService().getClusterState();
+            if (clusterState != ClusterState.ACTIVE) {
+                throw new IllegalStateException("Partitions can't be assigned since cluster-state: " + clusterState);
+            }
+            if (isClusterFormedByOnlyLiteMembers()) {
+                throw new NoDataMemberInClusterException(
+                        "Partitions can't be assigned since all nodes in the cluster are lite members");
+            }
+
+            try {
+                Thread.sleep(PARTITION_OWNERSHIP_WAIT_MILLIS);
+            } catch (InterruptedException e) {
+                throw ExceptionUtil.rethrow(e);
+            }
+        }
+        return owner;
+    }
+
+    @Override
+    public void firstArrangement() {
+        if (partitionStateManager.isInitialized()) {
+            return;
+        }
+
+        if (!node.isMaster()) {
+            triggerMasterToAssignPartitions();
+            return;
+        }
+
+        lock.lock();
+        try {
+            if (partitionStateManager.isInitialized()) {
+                return;
+            }
+            if (!partitionStateManager.initializePartitionAssignments()) {
+                return;
+            }
+            publishPartitionRuntimeState();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void triggerMasterToAssignPartitions() {
+        if (partitionStateManager.isInitialized()) {
+            return;
+        }
+
+        if (!node.joined()) {
+            return;
+        }
+
+        ClusterState clusterState = node.getClusterService().getClusterState();
+        if (clusterState != ClusterState.ACTIVE) {
+            logger.warning("Partitions can't be assigned since cluster-state= " + clusterState);
+            return;
+        }
+
+        if (!triggerMasterFlag.compareAndSet(false, true)) {
+            return;
+        }
+
+        try {
+            final Address masterAddress = node.getMasterAddress();
+            if (masterAddress != null && !masterAddress.equals(node.getThisAddress())) {
+                Future f = nodeEngine.getOperationService().createInvocationBuilder(SERVICE_NAME, new AssignPartitions(),
+                        masterAddress).setTryCount(1).invoke();
+                f.get(1, TimeUnit.SECONDS);
+            }
+        } catch (Exception e) {
+            logger.finest(e);
+        } finally {
+            triggerMasterFlag.set(false);
+        }
     }
 
     boolean isClusterFormedByOnlyLiteMembers() {
@@ -176,9 +266,13 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return clusterService.getMembers(DATA_MEMBER_SELECTOR).isEmpty();
     }
 
-    @Override
-    public void firstArrangement() {
-        partitionStateManager.firstArrangement();
+    public void setInitialState(Address[][] newState, int partitionStateVersion) {
+        lock.lock();
+        try {
+            partitionStateManager.setInitialState(newState, partitionStateVersion);
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
@@ -533,7 +627,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return result;
     }
 
-    public MemberImpl getMember(Address address) {
+    MemberImpl getMember(Address address) {
         return node.clusterService.getMember(address);
     }
 
@@ -544,7 +638,13 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     @Override
     public InternalPartition getPartition(int partitionId, boolean triggerOwnerAssignment) {
-        return partitionStateManager.getPartition(partitionId, triggerOwnerAssignment);
+        InternalPartitionImpl p = partitionStateManager.getPartitionImpl(partitionId);
+        if (triggerOwnerAssignment && p.getOwnerOrNull() == null) {
+            // probably ownerships are not set yet.
+            // force it.
+            getPartitionOwner(partitionId);
+        }
+        return p;
     }
 
     @Override
@@ -726,73 +826,29 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return proxy;
     }
 
-    void sendMigrationEvent(final MigrationInfo migrationInfo, final MigrationStatus status) {
-        MemberImpl current = getMember(migrationInfo.getSource());
-        MemberImpl newOwner = getMember(migrationInfo.getDestination());
-        MigrationEvent event = new MigrationEvent(migrationInfo.getPartitionId(), current, newOwner, status);
-        EventService eventService = nodeEngine.getEventService();
-        Collection<EventRegistration> registrations = eventService.getRegistrations(SERVICE_NAME, MIGRATION_EVENT_TOPIC);
-        eventService.publishEvent(SERVICE_NAME, registrations, event, event.getPartitionId());
-    }
-
     @Override
     public String addMigrationListener(MigrationListener listener) {
-        if (listener == null) {
-            throw new NullPointerException("listener can't be null");
-        }
-
-        final MigrationListenerAdapter adapter = new MigrationListenerAdapter(listener);
-
-        EventService eventService = nodeEngine.getEventService();
-        EventRegistration registration = eventService.registerListener(SERVICE_NAME, MIGRATION_EVENT_TOPIC, adapter);
-        return registration.getId();
+        return partitionEventManager.addMigrationListener(listener);
     }
 
     @Override
     public boolean removeMigrationListener(String registrationId) {
-        if (registrationId == null) {
-            throw new NullPointerException("registrationId can't be null");
-        }
-
-        EventService eventService = nodeEngine.getEventService();
-        return eventService.deregisterListener(SERVICE_NAME, MIGRATION_EVENT_TOPIC, registrationId);
+        return partitionEventManager.removeMigrationListener(registrationId);
     }
 
     @Override
     public String addPartitionLostListener(PartitionLostListener listener) {
-        if (listener == null) {
-            throw new NullPointerException("listener can't be null");
-        }
-
-        final PartitionLostListenerAdapter adapter = new PartitionLostListenerAdapter(listener);
-
-        EventService eventService = nodeEngine.getEventService();
-        EventRegistration registration = eventService.registerListener(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC, adapter);
-        return registration.getId();
+        return partitionEventManager.addPartitionLostListener(listener);
     }
 
     @Override
     public String addLocalPartitionLostListener(PartitionLostListener listener) {
-        if (listener == null) {
-            throw new NullPointerException("listener can't be null");
-        }
-
-        final PartitionLostListenerAdapter adapter = new PartitionLostListenerAdapter(listener);
-
-        EventService eventService = nodeEngine.getEventService();
-        EventRegistration registration =
-                eventService.registerLocalListener(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC, adapter);
-        return registration.getId();
+        return partitionEventManager.addLocalPartitionLostListener(listener);
     }
 
     @Override
     public boolean removePartitionLostListener(String registrationId) {
-        if (registrationId == null) {
-            throw new NullPointerException("registrationId can't be null");
-        }
-
-        EventService eventService = nodeEngine.getEventService();
-        return eventService.deregisterListener(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC, registrationId);
+        return partitionEventManager.removePartitionLostListener(registrationId);
     }
 
     @Override
@@ -811,12 +867,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     }
 
     @Override
-    public String toString() {
-        return "PartitionManager[" + getPartitionStateVersion() + "] {\n\n"
-                + "migrationQ: " + getMigrationQueueSize() + "\n}";
-    }
-
-    @Override
     public boolean isPartitionOwner(int partitionId) {
         InternalPartition partition = partitionStateManager.getPartitionImpl(partitionId);
         return partition.isLocal();
@@ -829,25 +879,15 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     @Override
     public void onPartitionLost(IPartitionLostEvent event) {
-        final PartitionLostEvent partitionLostEvent = new PartitionLostEvent(event.getPartitionId(), event.getLostReplicaIndex(),
-                event.getEventSource());
-        final EventService eventService = nodeEngine.getEventService();
-        final Collection<EventRegistration> registrations = eventService
-                .getRegistrations(SERVICE_NAME, PARTITION_LOST_EVENT_TOPIC);
-        eventService.publishEvent(SERVICE_NAME, registrations, partitionLostEvent, event.getPartitionId());
+        partitionEventManager.onPartitionLost(event);
     }
 
     public void setInternalMigrationListener(InternalMigrationListener listener) {
-        Preconditions.checkNotNull(listener);
-        internalMigrationListener = listener;
-    }
-
-    public void resetInternalMigrationListener() {
-        internalMigrationListener = new InternalMigrationListener.NopInternalMigrationListener();
+        partitionEventManager.setInternalMigrationListener(listener);
     }
 
     public InternalMigrationListener getInternalMigrationListener() {
-        return internalMigrationListener;
+        return partitionEventManager.getInternalMigrationListener();
     }
 
     /**
@@ -878,6 +918,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     public PartitionReplicaChecker getPartitionReplicaChecker() {
         return partitionReplicaChecker;
+    }
+
+    public PartitionEventManager getPartitionEventManager() {
+        return partitionEventManager;
     }
 
     private class SendPartitionRuntimeStateTask
@@ -1026,7 +1070,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             Collection<MigrationInfo> migrationInfos = partitionStateManager.removeDeadAddress(deadAddress);
             for (MigrationInfo migrationInfo : migrationInfos) {
-                // schedule migrations
+                // TODO: schedule migrations
             }
 
             syncPartitionRuntimeState();
@@ -1114,5 +1158,11 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 lock.unlock();
             }
         }
+    }
+
+    @Override
+    public String toString() {
+        return "PartitionManager[" + getPartitionStateVersion() + "] {\n\n"
+                + "migrationQ: " + getMigrationQueueSize() + "\n}";
     }
 }

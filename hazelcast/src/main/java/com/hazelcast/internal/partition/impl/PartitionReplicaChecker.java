@@ -205,7 +205,7 @@ public class PartitionReplicaChecker {
         return true;
     }
 
-    // TODO: not guaranteed to read latest value!
+    // TODO: VISIBILITY PROBLEM! Replica versions are updated & read only by partition threads!
     private long getCurrentReplicaVersion(int replicaIndex, int partitionId) {
         final long[] versions = replicaManager.getPartitionReplicaVersions(partitionId);
         return versions[replicaIndex - 1];

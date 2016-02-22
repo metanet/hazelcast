@@ -95,14 +95,14 @@ public class MigrationManager {
 
     // TODO: clarify lock usages.
     // One option is to remove lock from this class and caller to guarantee thread safety.
-    private final Lock lock;
+    private final Lock partitionServiceLock;
 
-    public MigrationManager(Node node, InternalPartitionServiceImpl service, Lock lock) {
+    public MigrationManager(Node node, InternalPartitionServiceImpl service, Lock partitionServiceLock) {
         this.node = node;
         this.nodeEngine = node.nodeEngine;
         this.partitionService = service;
         this.logger = node.getLogger(getClass());
-        this.lock = lock;
+        this.partitionServiceLock = partitionServiceLock;
 
         partitionStateManager = partitionService.getPartitionStateManager();
 
@@ -202,7 +202,7 @@ public class MigrationManager {
     }
 
     public boolean addActiveMigration(MigrationInfo migrationInfo) {
-        lock.lock();
+        partitionServiceLock.lock();
         try {
             if (activeMigrationInfo == null) {
                 partitionStateManager.setMigrating(migrationInfo.getPartitionId(), true);
@@ -213,7 +213,7 @@ public class MigrationManager {
             logger.warning(migrationInfo + " not added! Already existing active migration: " + activeMigrationInfo);
             return false;
         } finally {
-            lock.unlock();
+            partitionServiceLock.unlock();
         }
     }
 
@@ -232,7 +232,7 @@ public class MigrationManager {
 
     public boolean removeActiveMigration(int partitionId) {
         boolean success = false;
-        lock.lock();
+        partitionServiceLock.lock();
         try {
             if (activeMigrationInfo != null) {
                 if (activeMigrationInfo.getPartitionId() == partitionId) {
@@ -245,14 +245,14 @@ public class MigrationManager {
                 }
             }
         } finally {
-            lock.unlock();
+            partitionServiceLock.unlock();
         }
 
         return success;
     }
 
     void scheduleActiveMigrationFinalization(final MigrationInfo migrationInfo) {
-        lock.lock();
+        partitionServiceLock.lock();
         try {
             if (migrationInfo.equals(activeMigrationInfo)) {
                 if (activeMigrationInfo.startProcessing()) {
@@ -269,7 +269,7 @@ public class MigrationManager {
                 }
             }
         } finally {
-            lock.unlock();
+            partitionServiceLock.unlock();
         }
     }
 
@@ -306,25 +306,25 @@ public class MigrationManager {
     void addCompletedMigration(MigrationInfo migrationInfo) {
         completedMigrationCounter.incrementAndGet();
 
-        lock.lock();
+        partitionServiceLock.lock();
         try {
             if (completedMigrations.size() > 25) {
                 completedMigrations.removeFirst();
             }
             completedMigrations.add(migrationInfo);
         } finally {
-            lock.unlock();
+            partitionServiceLock.unlock();
         }
     }
 
     void evictCompletedMigrations() {
-        lock.lock();
+        partitionServiceLock.lock();
         try {
             if (!completedMigrations.isEmpty()) {
                 completedMigrations.removeFirst();
             }
         } finally {
-            lock.unlock();
+            partitionServiceLock.unlock();
         }
     }
 
@@ -391,7 +391,7 @@ public class MigrationManager {
                 return;
             }
 
-            lock.lock();
+            partitionServiceLock.lock();
             try {
                 if (!isMigrationAllowed()) {
                     return;
@@ -412,7 +412,7 @@ public class MigrationManager {
                 processNewPartitionState(newState);
                 partitionService.syncPartitionRuntimeState();
             } finally {
-                lock.unlock();
+                partitionServiceLock.unlock();
             }
         }
 
@@ -468,8 +468,9 @@ public class MigrationManager {
                 Address newOwner) {
             currentPartition.setReplicaAddresses(replicas);
             MigrationInfo migrationInfo = new MigrationInfo(partitionId, null, newOwner);
-            partitionService.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
-            partitionService.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
+            PartitionEventManager partitionEventManager = partitionService.getPartitionEventManager();
+            partitionEventManager.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
+            partitionEventManager.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
         }
 
         private boolean isMigrationAllowed() {
@@ -511,7 +512,7 @@ public class MigrationManager {
                 }
                 internalMigrationListener.onMigrationStart(InternalMigrationListener.MigrationParticipant.MASTER,
                         migrationInfo);
-                partitionService.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
+                partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
 
                 Boolean result;
                 MemberImpl fromMember = partitionService.getMember(migrationInfo.getSource());
@@ -582,16 +583,16 @@ public class MigrationManager {
 
         private void migrationOperationFailed() {
             internalMigrationListener.onMigrationComplete(InternalMigrationListener.MigrationParticipant.MASTER, migrationInfo, false);
-            lock.lock();
+            partitionServiceLock.lock();
             try {
                 addCompletedMigration(migrationInfo);
                 internalMigrationListener.onMigrationRollback(InternalMigrationListener.MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
                 partitionService.syncPartitionRuntimeState();
             } finally {
-                lock.unlock();
+                partitionServiceLock.unlock();
             }
-            partitionService.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.FAILED);
+            partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.FAILED);
 
             // Migration failed.
             // Pause migration process for a small amount of time, if a migration attempt is failed.
@@ -610,7 +611,7 @@ public class MigrationManager {
 
             boolean commitSuccessful = commitMigrationToDestination(migrationInfo, addresses);
 
-            lock.lock();
+            partitionServiceLock.lock();
             try {
                 if (commitSuccessful) {
                     partitionStateManager.updateReplicaAddresses(migrationInfo.getPartitionId(), addresses);
@@ -622,9 +623,9 @@ public class MigrationManager {
                 scheduleActiveMigrationFinalization(migrationInfo);
                 partitionService.syncPartitionRuntimeState();
             } finally {
-                lock.unlock();
+                partitionServiceLock.unlock();
             }
-            partitionService.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
+            partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
         }
 
         private boolean migrationEndpointsActive() {
