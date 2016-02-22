@@ -18,7 +18,6 @@ package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.HazelcastException;
-import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.core.Member;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.metrics.Probe;
@@ -26,25 +25,17 @@ import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionStateGenerator;
-import com.hazelcast.internal.partition.operation.AssignPartitions;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.NoDataMemberInClusterException;
 import com.hazelcast.partition.membergroup.MemberGroup;
 import com.hazelcast.partition.membergroup.MemberGroupFactory;
 import com.hazelcast.partition.membergroup.MemberGroupFactoryFactory;
-import com.hazelcast.spi.NodeEngine;
-import com.hazelcast.util.ExceptionUtil;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
 
 import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
-import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
 
 /**
  * TODO: Javadoc Pending...
@@ -52,10 +43,7 @@ import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
  */
 public class PartitionStateManager {
 
-    private static final int PARTITION_OWNERSHIP_WAIT_MILLIS = 10;
-
     private final Node node;
-    private final NodeEngine nodeEngine;
     private final InternalPartitionServiceImpl partitionService;
     private final ILogger logger;
 
@@ -76,16 +64,10 @@ public class PartitionStateManager {
     // can be read and written concurrently...
     private volatile int memberGroupsSize;
 
-    // TODO: clarify lock usages.
-    // One option is to remove lock from this class and caller to guarantee thread safety.
-    private final Lock lock;
-
-    public PartitionStateManager(Node node, InternalPartitionServiceImpl service, PartitionListener listener, Lock lock) {
+    public PartitionStateManager(Node node, InternalPartitionServiceImpl service, PartitionListener listener) {
         this.node = node;
-        this.nodeEngine = node.nodeEngine;
         this.partitionService = service;
         this.logger = node.getLogger(getClass());
-        this.lock = lock;
 
         partitionCount = partitionService.getPartitionCount();
         this.partitions = new InternalPartitionImpl[partitionCount];
@@ -110,99 +92,12 @@ public class PartitionStateManager {
         return count;
     }
 
-    public Address getPartitionOwner(int partitionId) {
-        if (!initialized) {
-            firstArrangement();
-        }
-        if (partitions[partitionId].getOwnerOrNull() == null && !node.isMaster() && node.joined()) {
-            if (!partitionService.isClusterFormedByOnlyLiteMembers()) {
-                notifyMasterToAssignPartitions();
-            }
-        }
-        return partitions[partitionId].getOwnerOrNull();
-    }
-
-    public Address getPartitionOwnerOrWait(int partitionId) {
-        Address owner;
-        while ((owner = getPartitionOwner(partitionId)) == null) {
-            if (!nodeEngine.isRunning()) {
-                throw new HazelcastInstanceNotActiveException();
-            }
-
-            ClusterState clusterState = node.getClusterService().getClusterState();
-            if (clusterState != ClusterState.ACTIVE) {
-                throw new IllegalStateException("Partitions can't be assigned since cluster-state: " + clusterState);
-            }
-            if (partitionService.isClusterFormedByOnlyLiteMembers()) {
-                throw new NoDataMemberInClusterException(
-                        "Partitions can't be assigned since all nodes in the cluster are lite members");
-            }
-
-            try {
-                Thread.sleep(PARTITION_OWNERSHIP_WAIT_MILLIS);
-            } catch (InterruptedException e) {
-                throw ExceptionUtil.rethrow(e);
-            }
-        }
-        return owner;
-    }
-
-    private void notifyMasterToAssignPartitions() {
-        if (initialized) {
-            return;
-        }
-
-        ClusterState clusterState = node.getClusterService().getClusterState();
-        if (clusterState != ClusterState.ACTIVE) {
-            logger.warning("Partitions can't be assigned since cluster-state= " + clusterState);
-            return;
-        }
-
-        if (lock.tryLock()) {
-            try {
-                if (!initialized && !node.isMaster() && node.getMasterAddress() != null && node.joined()) {
-                    Future f = nodeEngine.getOperationService().createInvocationBuilder(SERVICE_NAME, new AssignPartitions(),
-                            node.getMasterAddress()).setTryCount(1).invoke();
-                    f.get(1, TimeUnit.SECONDS);
-                }
-            } catch (Exception e) {
-                logger.finest(e);
-            } finally {
-                lock.unlock();
-            }
-        }
-    }
-
-    public void firstArrangement() {
-        if (initialized) {
-            return;
-        }
-
-        if (!node.isMaster()) {
-            notifyMasterToAssignPartitions();
-            return;
-        }
-
-        lock.lock();
-        try {
-            if (initialized) {
-                return;
-            }
-            if (!initializePartitionAssignments()) {
-                return;
-            }
-            partitionService.publishPartitionRuntimeState();
-        } finally {
-            lock.unlock();
-        }
-    }
-
     private Collection<MemberGroup> createMemberGroups() {
         final Collection<Member> members = node.getClusterService().getMembers(DATA_MEMBER_SELECTOR);
         return memberGroupFactory.createMemberGroups(members);
     }
 
-    private boolean initializePartitionAssignments() {
+    boolean initializePartitionAssignments() {
         ClusterState clusterState = node.getClusterService().getClusterState();
         if (clusterState != ClusterState.ACTIVE) {
             logger.warning("Partitions can't be assigned since cluster-state= " + clusterState);
@@ -242,29 +137,24 @@ public class PartitionStateManager {
         return true;
     }
 
-    public void setInitialState(Address[][] newState, int partitionStateVersion) {
-        lock.lock();
-        try {
-            if (initialized) {
-                throw new IllegalStateException("Partition table is already initialized!");
-            }
-            logger.info("Setting cluster partition table ...");
-            boolean foundReplica = false;
-            for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-                InternalPartitionImpl partition = partitions[partitionId];
-                Address[] replicas = newState[partitionId];
-                if (!foundReplica && replicas != null) {
-                    for (int i = 0; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
-                        foundReplica |= replicas[i] != null;
-                    }
-                }
-                partition.setInitialReplicaAddresses(replicas);
-            }
-            stateVersion.set(partitionStateVersion);
-            initialized = foundReplica;
-        } finally {
-            lock.unlock();
+    void setInitialState(Address[][] newState, int partitionStateVersion) {
+        if (initialized) {
+            throw new IllegalStateException("Partition table is already initialized!");
         }
+        logger.info("Setting cluster partition table ...");
+        boolean foundReplica = false;
+        for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+            InternalPartitionImpl partition = partitions[partitionId];
+            Address[] replicas = newState[partitionId];
+            if (!foundReplica && replicas != null) {
+                for (int i = 0; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
+                    foundReplica |= replicas[i] != null;
+                }
+            }
+            partition.setInitialReplicaAddresses(replicas);
+        }
+        stateVersion.set(partitionStateVersion);
+        initialized = foundReplica;
     }
 
     void updateMemberGroupsSize() {
@@ -336,22 +226,6 @@ public class PartitionStateManager {
 
     public InternalPartitionImpl getPartitionImpl(int partitionId) {
         return partitions[partitionId];
-    }
-
-//    @Override
-    public InternalPartition getPartition(int partitionId) {
-        return getPartition(partitionId, true);
-    }
-
-//    @Override
-    public InternalPartition getPartition(int partitionId, boolean triggerOwnerAssignment) {
-        InternalPartitionImpl p = getPartitionImpl(partitionId);
-        if (triggerOwnerAssignment && p.getOwnerOrNull() == null) {
-            // probably ownerships are not set yet.
-            // force it.
-            getPartitionOwner(partitionId);
-        }
-        return p;
     }
 
     Address[][] repartition() {
