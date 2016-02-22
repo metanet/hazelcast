@@ -35,6 +35,7 @@ import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.Clock;
+import com.hazelcast.util.Preconditions;
 import com.hazelcast.util.scheduler.CoalescingDelayedTrigger;
 
 import java.util.ArrayList;
@@ -331,6 +332,19 @@ public class MigrationManager {
     void triggerRepartitioning() {
         migrationQueue.clear();
         migrationQueue.add(new RepartitioningTask());
+    }
+
+    public InternalMigrationListener getInternalMigrationListener() {
+        return internalMigrationListener;
+    }
+
+    void setInternalMigrationListener(InternalMigrationListener listener) {
+        Preconditions.checkNotNull(listener);
+        internalMigrationListener = listener;
+    }
+
+    void resetInternalMigrationListener() {
+        internalMigrationListener = new InternalMigrationListener.NopInternalMigrationListener();
     }
 
     void onMemberRemove(MemberImpl member) {

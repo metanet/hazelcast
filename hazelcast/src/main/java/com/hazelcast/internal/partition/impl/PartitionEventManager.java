@@ -27,7 +27,6 @@ import com.hazelcast.spi.EventRegistration;
 import com.hazelcast.spi.EventService;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.partition.IPartitionLostEvent;
-import com.hazelcast.util.Preconditions;
 
 import java.util.Collection;
 
@@ -44,9 +43,6 @@ public class PartitionEventManager {
     private final Node node;
     private final NodeEngineImpl nodeEngine;
     private final InternalPartitionServiceImpl partitionService;
-
-    private volatile InternalMigrationListener internalMigrationListener
-            = new InternalMigrationListener.NopInternalMigrationListener();
 
     public PartitionEventManager(Node node, InternalPartitionServiceImpl partitionService) {
         this.node = node;
@@ -137,16 +133,4 @@ public class PartitionEventManager {
         eventService.publishEvent(SERVICE_NAME, registrations, partitionLostEvent, event.getPartitionId());
     }
 
-    public void setInternalMigrationListener(InternalMigrationListener listener) {
-        Preconditions.checkNotNull(listener);
-        internalMigrationListener = listener;
-    }
-
-    public void resetInternalMigrationListener() {
-        internalMigrationListener = new InternalMigrationListener.NopInternalMigrationListener();
-    }
-
-    public InternalMigrationListener getInternalMigrationListener() {
-        return internalMigrationListener;
-    }
 }
