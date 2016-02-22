@@ -24,7 +24,6 @@ import com.hazelcast.core.MigrationListener;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
-import com.hazelcast.instance.NodeState;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
@@ -156,7 +155,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             partitionTableSendInterval = 1;
         }
         ExecutionService executionService = nodeEngine.getExecutionService();
-        executionService.scheduleWithRepetition(new SendPartitionRuntimeStateTask(),
+        executionService.scheduleWithRepetition(new PublishPartitionRuntimeStateTask(node, this),
                 partitionTableSendInterval, partitionTableSendInterval, TimeUnit.SECONDS);
 
         migrationManager.start();
@@ -922,22 +921,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     public PartitionEventManager getPartitionEventManager() {
         return partitionEventManager;
-    }
-
-    private class SendPartitionRuntimeStateTask
-            implements Runnable {
-        @Override
-        public void run() {
-            if (node.isMaster() && node.getState() == NodeState.ACTIVE) {
-                if (migrationManager.hasOnGoingMigration() && isMigrationAllowed()) {
-                    // TODO: DEBUG
-//                    logger.info("Remaining migration tasks in queue => " + getMigrationQueueSize());
-                    logger.info("Remaining migration tasks in queue => " + migrationManager.migrationQueue
-                    + ", status: " + isMigrationAllowed());
-                }
-                publishPartitionRuntimeState();
-            }
-        }
     }
 
     private static final class InternalPartitionListener implements PartitionListener {
