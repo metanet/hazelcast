@@ -168,7 +168,6 @@ public class PartitionStateManager {
         memberGroupsSize = size;
     }
 
-//    @Override
     public int getMemberGroupsSize() {
         int size = memberGroupsSize;
         if (size > 0) {
@@ -211,7 +210,6 @@ public class PartitionStateManager {
         return migrations;
     }
 
-    //    @Override
     InternalPartition[] getPartitions() {
         return partitions;
     }
@@ -251,10 +249,6 @@ public class PartitionStateManager {
     void updateReplicaAddresses(int partitionId, Address[] replicaAddresses) {
         InternalPartitionImpl partition = partitions[partitionId];
         partition.setReplicaAddresses(replicaAddresses);
-    }
-
-    void setReplicaAddresses(InternalPartition partition, Address[] replicaAddresses) {
-        ((InternalPartitionImpl) partition).setReplicaAddresses(replicaAddresses);
     }
 
     void setVersion(int version) {
