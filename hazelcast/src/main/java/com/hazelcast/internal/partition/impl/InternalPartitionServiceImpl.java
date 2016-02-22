@@ -925,7 +925,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     private class RepairPartitionTableTask implements Runnable {
         private final Address deadAddress;
 
-        public RepairPartitionTableTask(Address deadAddress) {this.deadAddress = deadAddress;}
+        RepairPartitionTableTask(Address deadAddress) {this.deadAddress = deadAddress;}
 
         @Override
         public void run() {
@@ -1003,6 +1003,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 migrationManager.setCompletedMigrations(allCompletedMigrations);
 
                 if (newState != null) {
+                    logger.info("Applying the most recent of partition state...");
                     applyNewState(newState, thisAddress);
                 }
 

@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MigrationInfo implements DataSerializable {
 
     private int partitionId;
+    private int replicaIndex;
     private Address source;
     private Address destination;
     private Address master;
@@ -38,8 +39,9 @@ public class MigrationInfo implements DataSerializable {
     public MigrationInfo() {
     }
 
-    public MigrationInfo(int partitionId, Address source, Address destination) {
+    public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination) {
         this.partitionId = partitionId;
+        this.replicaIndex = replicaIndex;
         this.source = source;
         this.destination = destination;
     }
@@ -54,6 +56,10 @@ public class MigrationInfo implements DataSerializable {
 
     public int getPartitionId() {
         return partitionId;
+    }
+
+    public int getReplicaIndex() {
+        return replicaIndex;
     }
 
     public void setMasterUuid(String uuid) {
