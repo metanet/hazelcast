@@ -471,36 +471,53 @@ public class MigrationManager {
                 for (int replicaIndex = 0; replicaIndex < InternalPartition.MAX_REPLICA_COUNT; replicaIndex++) {
                     Address currentOwner = currentPartition.getReplicaAddress(replicaIndex);
                     Address newOwner = newReplicas[replicaIndex];
-                    if (currentOwner != null && newOwner != null && !currentOwner.equals(newOwner)) {
-                        // migration owner or backup
-                        migrations.add(new MigrationInfo(partitionId, replicaIndex, currentOwner, newOwner));
-                    } else if (currentOwner == null && newOwner != null) {
-                        // copy of a backup
-                        boolean copyBack = false;
-                        // TODO: write clearer & more explicit explanation...
-                        // an earlier level replica of this partition may be migrated from
-                        // target of this copy task. if so, to avoid copy back partition data after migration,
-                        // set partition's replica owner to just after earlier replica is migrated.
-                        ListIterator<MigrationInfo> iter = migrations.listIterator(migrations.size());
-                        while (iter.hasPrevious()) {
-                            MigrationInfo previous = iter.previous();
-                            if (previous.getType() == MigrationType.MOVE && newOwner.equals(previous.getSource())) {
-                                copyBack = true;
-                                previous.setCopyBackReplicaIndex(replicaIndex);
-                                previous.setType(MigrationType.MOVE_COPY_BACK);
-                                break;
-                            }
-                        }
-                        if (!copyBack) {
-                            // actual currentOwner will be determined just before copy.
-                            migrations.add(new MigrationInfo(partitionId, replicaIndex, null, newOwner, MigrationType.COPY));
-                        }
-                    } else if (currentOwner != null && newOwner == null) {
-                        // A member is dead, this replica should not have an owner!
-                        migrations.add(new MigrationInfo(partitionId, replicaIndex, currentOwner, null));
-                    } else if (replicaIndex == 0 && currentOwner == null) {
-                        // TODO: LOST!
+
+                    // #CASE: either both current and new owners are null or they are same
+                    if (currentOwner == null && newOwner == null
+                            || currentOwner != null && currentOwner.equals(newOwner)) {
+                        // nop
+                        continue;
                     }
+
+                    if (currentOwner == null) {
+                        // #CASE: current owner is null and replica-index = 0
+                        if (replicaIndex == 0) {
+                            // TODO
+                            // data lost or this is new assignment
+                            // no need to run any migration operation
+                            // just assign and go on...
+                            assignNewPartitionOwner(partitionId, currentPartition, newOwner);
+                            continue;
+                        }
+
+                        // #CASE: current owner is null and replica-index > 0
+                        // TODO: search for previous migrations for copy-back
+                        if (isCopyBack(migrations, newOwner, replicaIndex)) {
+                            continue;
+                        }
+
+                        // replicate data from partition owner to new replica owner
+                        // schedule replication operation
+                        // actual source will be determined just before copy.
+                        migrations.add(new MigrationInfo(partitionId, replicaIndex, null, newOwner, MigrationType.COPY));
+                        continue;
+                    }
+
+                    // #CASE: current owner is removed and new owner is null
+                    if (newOwner == null) {
+                        // TODO
+                        // A member is dead, this replica should not have an owner!
+                        // clear assignment & data for this replica
+                        continue;
+                    }
+
+                    // #CASE: both current and new owners are not null and they are different
+                    // TODO: search for previous migrations for copy-back
+                    if (isCopyBack(migrations, newOwner, replicaIndex)) {
+                        continue;
+                    }
+                    // migrate replica
+                    migrations.add(new MigrationInfo(partitionId, replicaIndex, currentOwner, newOwner, MigrationType.MOVE));
                 }
             }
 
@@ -509,6 +526,19 @@ public class MigrationManager {
                 logger.finest("Scheduling " + migration);
                 migrationQueue.add(new MigrateTask(migration));
             }
+        }
+
+        private boolean isCopyBack(List<MigrationInfo> migrations, Address newOwner, int replicaIndex) {
+            ListIterator<MigrationInfo> iter = migrations.listIterator(migrations.size());
+            while (iter.hasPrevious()) {
+                MigrationInfo previous = iter.previous();
+                if (previous.getType() == MigrationType.MOVE && newOwner.equals(previous.getSource())) {
+                    previous.setCopyBackReplicaIndex(replicaIndex);
+                    previous.setType(MigrationType.MOVE_COPY_BACK);
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void logMigrationStatistics(int migrationCount, int lostCount) {
@@ -523,11 +553,11 @@ public class MigrationManager {
             }
         }
 
-        private void migratePartition(int partitionId, int replicaIndex, Address source, Address destination) {
-            MigrationInfo info = new MigrationInfo(partitionId, replicaIndex, source, destination);
-            MigrateTask migrateTask = new MigrateTask(info);
-            migrationQueue.add(migrateTask);
-        }
+//        private void migratePartition(int partitionId, int replicaIndex, Address source, Address destination) {
+//            MigrationInfo info = new MigrationInfo(partitionId, replicaIndex, source, destination);
+//            MigrateTask migrateTask = new MigrateTask(info);
+//            migrationQueue.add(migrateTask);
+//        }
 
         private void assignNewPartitionOwner(int partitionId, InternalPartitionImpl currentPartition, Address newOwner) {
             MigrationInfo migrationInfo = new MigrationInfo(partitionId, 0, null, newOwner);
