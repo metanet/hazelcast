@@ -56,7 +56,8 @@ public final class FinalizeMigrationOperation extends AbstractOperation
 
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
 
-        PartitionMigrationEvent event = new PartitionMigrationEvent(endpoint, partitionId);
+        PartitionMigrationEvent event = new PartitionMigrationEvent(endpoint, migrationInfo.getType(), partitionId,
+                migrationInfo.getCopyBackReplicaIndex());
         for (MigrationAwareService service : nodeEngine.getServices(MigrationAwareService.class)) {
             finishMigration(event, service);
         }

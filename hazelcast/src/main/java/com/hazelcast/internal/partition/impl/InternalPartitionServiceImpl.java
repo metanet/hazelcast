@@ -133,7 +133,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         replicaManager = new PartitionReplicaManager(node, this);
 
         partitionReplicaChecker = new PartitionReplicaChecker(node, this);
-        partitionEventManager = new PartitionEventManager(node, this);
+        partitionEventManager = new PartitionEventManager(node);
 
         partitionStateSyncTimeoutHandler =
                 logAllExceptions(logger, EXCEPTION_MSG_PARTITION_STATE_SYNC_TIMEOUT, Level.FINEST);
@@ -300,6 +300,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     }
 
                     // send initial partition table to newly joined node.
+                    // TODO: when master node changes, migration will be paused. We should not send ptable to the new members joining to the cluster.
+                    // TODO: ptable is sent via FinalizeJoinOperation too, apply same check there...
                     PartitionStateOperation op = new PartitionStateOperation(createPartitionState());
                     nodeEngine.getOperationService().send(op, member.getAddress());
                 }
@@ -342,9 +344,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             if (node.isMaster()) {
                 migrationManager.schedule(new RepairPartitionTableTask(deadAddress));
-                migrationManager.triggerRepartitioning();
             }
 
+            // TODO: when master node changes, migration should be resumed after most recent ptable is chosen.
             migrationManager.resumeMigrationEventually();
         } finally {
             lock.unlock();
@@ -360,6 +362,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
+    // TODO: when master node changes, we should not send ptable to the new members joining to the cluster.
     public PartitionRuntimeState createPartitionState() {
         return createPartitionState(getCurrentMembersAndMembersRemovedWhileNotClusterNotActive());
     }
@@ -601,7 +604,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         final ClusterState clusterState = clusterService.getClusterState();
         for (int index = 0; index < InternalPartition.MAX_REPLICA_COUNT; index++) {
             Address address = partitionInfo.getReplicaAddress(index);
-            if (address != null && getMember(address) == null) {
+            if (address != null && node.clusterService.getMember(address) == null) {
                 if (clusterState == ClusterState.ACTIVE || !clusterService.isMemberRemovedWhileClusterIsNotActive(address)) {
                     if (logger.isFinestEnabled()) {
                         logger.finest(
@@ -625,10 +628,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     @Override
     public InternalPartition[] getInternalPartitions() {
         return partitionStateManager.getPartitions();
-    }
-
-    MemberImpl getMember(Address address) {
-        return node.clusterService.getMember(address);
     }
 
     @Override
@@ -943,6 +942,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 // TODO: schedule migrations
             }
 
+            migrationManager.triggerRepartitioning();
             syncPartitionRuntimeState();
         }
 

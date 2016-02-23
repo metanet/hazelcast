@@ -146,9 +146,10 @@ public class InternalPartitionImpl implements InternalPartition {
         callPartitionListener(newAddresses, oldAddresses, PartitionReplicaChangeReason.ASSIGNMENT);
     }
 
-    public void setReplicaAddress(int replicaIndex, Address newAddress) {
+    void setReplicaAddress(int replicaIndex, Address newAddress) {
         Address[] newAddresses = Arrays.copyOf(addresses, MAX_REPLICA_COUNT);
         Address oldAddress = newAddresses[replicaIndex];
+        newAddresses[replicaIndex] = newAddress;
         addresses = newAddresses;
         callPartitionListener(replicaIndex, oldAddress, newAddress, PartitionReplicaChangeReason.ASSIGNMENT);
     }

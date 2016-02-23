@@ -59,6 +59,7 @@ final class InternalPartitionListener implements PartitionListener {
             if (thisAddress.equals(oldAddress)) {
                 clearPartition(partitionId, replicaIndex);
             } else if (thisAddress.equals(newAddress)) {
+                // TODO: is partition replica sync required anymore? we are already copying/migrating backup data.
                 synchronizePartition(partitionId, replicaIndex, reason, initialAssignment);
             }
         } else {

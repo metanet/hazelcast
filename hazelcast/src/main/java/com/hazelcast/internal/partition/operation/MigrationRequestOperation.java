@@ -21,7 +21,7 @@ import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
-import com.hazelcast.internal.partition.MigrationType;
+import com.hazelcast.partition.MigrationType;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.MigrationManager;
@@ -97,7 +97,7 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         }
 
         try {
-            Collection<Operation> tasks = prepareMigrationTasks();
+            Collection<Operation> tasks = prepareMigrationOperations();
             long[] replicaVersions = partitionService.getPartitionReplicaVersions(migrationInfo.getPartitionId());
             invokeMigrationOperation(destination, replicaVersions, tasks);
             returnResponse = false;
@@ -206,11 +206,13 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         sendResponse(result);
     }
 
-    private Collection<Operation> prepareMigrationTasks() {
+    private Collection<Operation> prepareMigrationOperations() {
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
-        PartitionReplicationEvent replicationEvent = new PartitionReplicationEvent(migrationInfo.getPartitionId(), 0);
+        PartitionReplicationEvent replicationEvent = new PartitionReplicationEvent(migrationInfo.getPartitionId(),
+                migrationInfo.getReplicaIndex());
         PartitionMigrationEvent migrationEvent
-                = new PartitionMigrationEvent(MigrationEndpoint.SOURCE, migrationInfo.getPartitionId());
+                = new PartitionMigrationEvent(MigrationEndpoint.SOURCE, migrationInfo.getType(),
+                migrationInfo.getPartitionId(), migrationInfo.getCopyBackReplicaIndex());
 
         Collection<Operation> tasks = new LinkedList<Operation>();
         for (ServiceInfo serviceInfo : nodeEngine.getServiceInfos(MigrationAwareService.class)) {

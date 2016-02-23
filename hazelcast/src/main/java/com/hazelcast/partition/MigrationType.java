@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.hazelcast.internal.partition;
+package com.hazelcast.partition;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -22,7 +22,6 @@ import java.io.IOException;
 
 /**
  * TODO: Javadoc Pending...
- *
  */
 public enum MigrationType {
 

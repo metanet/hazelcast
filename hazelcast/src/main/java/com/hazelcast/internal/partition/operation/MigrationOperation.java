@@ -177,7 +177,8 @@ public final class MigrationOperation extends BaseMigrationOperation {
     private void runMigrationTask(Operation op) throws Exception {
         MigrationAwareService service = op.getService();
         PartitionMigrationEvent event =
-                new PartitionMigrationEvent(MigrationEndpoint.DESTINATION, migrationInfo.getPartitionId());
+                new PartitionMigrationEvent(MigrationEndpoint.DESTINATION, migrationInfo.getType(),
+                        migrationInfo.getPartitionId(), migrationInfo.getCopyBackReplicaIndex());
         service.beforeMigration(event);
         op.beforeRun();
         op.run();
