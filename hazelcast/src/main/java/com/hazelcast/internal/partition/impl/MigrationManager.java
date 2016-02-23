@@ -65,6 +65,11 @@ public class MigrationManager {
 
     private static final int DEFAULT_PAUSE_MILLIS = 1000;
 
+    enum MigrateTaskReason {
+        REPAIR_PARTITION_TABLE,
+        REPARTITIONING
+    }
+
     private final Node node;
     private final NodeEngineImpl nodeEngine;
     private final InternalPartitionServiceImpl partitionService;
@@ -339,7 +344,6 @@ public class MigrationManager {
     }
 
     void triggerRepartitioning() {
-        invalidateAllPendingMigrations();
         migrationQueue.add(new RepartitioningTask());
     }
 
@@ -361,6 +365,8 @@ public class MigrationManager {
     }
 
     void onMemberRemove(MemberImpl member) {
+        invalidateAllPendingMigrations();
+
         // TODO: if it's source...?
         Address deadAddress = member.getAddress();
         if (activeMigrationInfo != null) {
@@ -409,6 +415,9 @@ public class MigrationManager {
     }
 
     private class RepartitioningTask implements MigrationRunnable {
+
+        private volatile boolean valid = true;
+
         @Override
         public void run() {
             if (!node.isMaster()) {
@@ -535,7 +544,7 @@ public class MigrationManager {
             for (MigrationInfo migration : migrations) {
                 // TODO: need to order tasks depending on their priority
                 logger.finest("Scheduling " + migration);
-                migrationQueue.add(new MigrateTask(migration));
+                migrationQueue.add(new MigrateTask(migration, MigrateTaskReason.REPARTITIONING));
             }
         }
 
@@ -581,13 +590,13 @@ public class MigrationManager {
         }
 
         @Override
-        public void invalidate() {
-
+        public void invalidate(Address address) {
+            valid = false;
         }
 
         @Override
         public boolean isValid() {
-            return true;
+            return valid;
         }
 
     }
@@ -597,15 +606,21 @@ public class MigrationManager {
     }
 
     class MigrateTask implements MigrationRunnable {
+
         final MigrationInfo migrationInfo;
 
-        public MigrateTask(MigrationInfo migrationInfo) {
+        final MigrateTaskReason reason;
+
+        volatile boolean valid;
+
+        public MigrateTask(MigrationInfo migrationInfo, MigrateTaskReason reason) {
             this.migrationInfo = migrationInfo;
             final Member masterMember = getMasterMember();
             if (masterMember != null) {
                 migrationInfo.setMasterUuid(masterMember.getUuid());
                 migrationInfo.setMaster(masterMember.getAddress());
             }
+            this.reason = reason;
         }
 
         @Override
@@ -788,13 +803,17 @@ public class MigrationManager {
         }
 
         @Override
-        public void invalidate() {
-            migrationInfo.invalidate();
+        public void invalidate(Address address) {
+            if (valid) {
+                valid = !(reason == MigrateTaskReason.REPARTITIONING
+                        || migrationInfo.getSource().equals(address)
+                        || migrationInfo.getDestination().equals(address));
+            }
         }
 
         @Override
         public boolean isValid() {
-            return migrationInfo.isValid();
+            return valid;
         }
 
     }
