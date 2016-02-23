@@ -327,7 +327,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             migrationManager.onMemberRemove(member);
 
             if (node.isMaster() && !thisAddress.equals(lastMaster)) {
-                migrationManager.execute(new FetchMostRecentPartitionTableTask());
+                migrationManager.schedule(new FetchMostRecentPartitionTableTask());
             }
             lastMaster = node.getMasterAddress();
 
@@ -341,7 +341,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             replicaManager.cancelReplicaSyncRequestsTo(deadAddress);
 
             if (node.isMaster()) {
-                migrationManager.execute(new RepairPartitionTableTask(deadAddress));
+                migrationManager.schedule(new RepairPartitionTableTask(deadAddress));
                 migrationManager.triggerRepartitioning();
             }
 
@@ -927,7 +927,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return partitionEventManager;
     }
 
-    private class RepairPartitionTableTask implements Runnable {
+    private class RepairPartitionTableTask implements MigrationRunnable {
         private final Address deadAddress;
 
         RepairPartitionTableTask(Address deadAddress) {this.deadAddress = deadAddress;}
@@ -945,9 +945,19 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             syncPartitionRuntimeState();
         }
+
+        @Override
+        public void invalidate() {
+
+        }
+
+        @Override
+        public boolean isValid() {
+            return true;
+        }
     }
 
-    private class FetchMostRecentPartitionTableTask implements Runnable {
+    private class FetchMostRecentPartitionTableTask implements MigrationRunnable {
         private final Address thisAddress = node.getThisAddress();
 
         public void run() {
@@ -1028,6 +1038,16 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             } finally {
                 lock.unlock();
             }
+        }
+
+        @Override
+        public void invalidate() {
+
+        }
+
+        @Override
+        public boolean isValid() {
+            return true;
         }
     }
 
