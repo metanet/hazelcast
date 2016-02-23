@@ -364,7 +364,7 @@ public class MigrationManager {
         }
     }
 
-    public void execute(Runnable runnable) {
+    public void schedule(MigrationRunnable runnable) {
         migrationQueue.add(runnable);
     }
 
@@ -401,7 +401,7 @@ public class MigrationManager {
         completedMigrations.addAll(migrationInfos);
     }
 
-    private class RepartitioningTask implements Runnable {
+    private class RepartitioningTask implements MigrationRunnable {
         @Override
         public void run() {
             if (!node.isMaster()) {
@@ -574,13 +574,24 @@ public class MigrationManager {
             migrationQueue.add(this);
             return false;
         }
+
+        @Override
+        public void invalidate() {
+
+        }
+
+        @Override
+        public boolean isValid() {
+            return true;
+        }
+
     }
 
     private Member getMasterMember() {
         return node.clusterService.getMember(node.getMasterAddress());
     }
 
-    class MigrateTask implements Runnable {
+    class MigrateTask implements MigrationRunnable {
         final MigrationInfo migrationInfo;
 
         public MigrateTask(MigrationInfo migrationInfo) {
@@ -595,10 +606,6 @@ public class MigrationManager {
         @Override
         public void run() {
             if (!node.isMaster()) {
-                return;
-            }
-
-            if (!migrationInfo.isValid()) {
                 return;
             }
 
@@ -762,6 +769,17 @@ public class MigrationManager {
         public String toString() {
             return getClass().getSimpleName() + "{" + "migrationInfo=" + migrationInfo + '}';
         }
+
+        @Override
+        public void invalidate() {
+            migrationInfo.invalidate();
+        }
+
+        @Override
+        public boolean isValid() {
+            return migrationInfo.isValid();
+        }
+
     }
 
 

@@ -34,11 +34,11 @@ class MigrationQueue {
 
     private final AtomicInteger migrateTaskCount = new AtomicInteger();
 
-    private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
+    private final BlockingQueue<MigrationRunnable> queue = new LinkedBlockingQueue<MigrationRunnable>();
 
     @SuppressFBWarnings(value = "RV_RETURN_VALUE_IGNORED",
             justification = "offer will always be successful since queue is unbounded")
-    public void add(Runnable task) {
+    public void add(MigrationRunnable task) {
         if (task instanceof MigrationManager.MigrateTask) {
             migrateTaskCount.incrementAndGet();
         }
@@ -46,21 +46,21 @@ class MigrationQueue {
         queue.offer(task);
     }
 
-    public Runnable poll(int timeout, TimeUnit unit)
+    public MigrationRunnable poll(int timeout, TimeUnit unit)
             throws InterruptedException {
         return queue.poll(timeout, unit);
     }
 
     public void clear() {
-        List<Runnable> sink = new ArrayList<Runnable>();
+        List<MigrationRunnable> sink = new ArrayList<MigrationRunnable>();
         queue.drainTo(sink);
 
-        for (Runnable task : sink) {
+        for (MigrationRunnable task : sink) {
             afterTaskCompletion(task);
         }
     }
 
-    public void afterTaskCompletion(Runnable task) {
+    public void afterTaskCompletion(MigrationRunnable task) {
         if (task instanceof MigrationManager.MigrateTask) {
             if (migrateTaskCount.decrementAndGet() < 0) {
                 throw new IllegalStateException();
@@ -69,12 +69,8 @@ class MigrationQueue {
     }
 
     public void invalidatePendingMigrations() {
-        for (Runnable runnable : queue) {
-            if (runnable instanceof MigrationManager.MigrateTask) {
-                MigrationManager.MigrateTask task = (MigrationManager.MigrateTask) runnable;
-                MigrationInfo migrationInfo = task.migrationInfo;
-                migrationInfo.invalidate();
-            }
+        for (MigrationRunnable runnable : queue) {
+            runnable.invalidate();
         }
     }
 
