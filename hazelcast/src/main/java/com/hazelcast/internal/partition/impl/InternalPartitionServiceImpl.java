@@ -34,6 +34,7 @@ import com.hazelcast.internal.partition.PartitionInfo;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.PartitionServiceProxy;
+import com.hazelcast.internal.partition.impl.MigrationManager.MigrateTaskReason;
 import com.hazelcast.internal.partition.operation.AssignPartitions;
 import com.hazelcast.internal.partition.operation.FetchPartitionStateOperation;
 import com.hazelcast.internal.partition.operation.HasOngoingMigration;
@@ -298,12 +299,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                         partitionStateManager.incrementVersion();
                         migrationManager.triggerRepartitioning();
                     }
-
-                    // send initial partition table to newly joined node.
-                    // TODO: when master node changes, migration will be paused. We should not send ptable to the new members joining to the cluster.
-                    // TODO: ptable is sent via FinalizeJoinOperation too, apply same check there...
-                    PartitionStateOperation op = new PartitionStateOperation(createPartitionState());
-                    nodeEngine.getOperationService().send(op, member.getAddress());
                 }
             } finally {
                 lock.unlock();
@@ -321,14 +316,18 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         lock.lock();
         try {
+
             // TODO: why not increment only on master and publish it?
-            if (partitionStateManager.isInitialized() && node.getClusterService().getClusterState() == ClusterState.ACTIVE) {
+            // TODO BASRI i updated here to increment only on master
+            if (node.isMaster() && partitionStateManager.isInitialized()
+                    && node.getClusterService().getClusterState() == ClusterState.ACTIVE) {
                 partitionStateManager.incrementVersion();
             }
 
             migrationManager.onMemberRemove(member);
 
-            if (node.isMaster() && !thisAddress.equals(lastMaster)) {
+            boolean isThisNodeNewMaster = node.isMaster() && !thisAddress.equals(lastMaster);
+            if (isThisNodeNewMaster) {
                 migrationManager.schedule(new FetchMostRecentPartitionTableTask());
             }
             lastMaster = node.getMasterAddress();
@@ -347,7 +346,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             }
 
             // TODO: when master node changes, migration should be resumed after most recent ptable is chosen.
-            migrationManager.resumeMigrationEventually();
+            if (!isThisNodeNewMaster) {
+                migrationManager.resumeMigrationEventually();
+            }
         } finally {
             lock.unlock();
         }
@@ -795,6 +796,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         migrationManager.resumeMigration();
     }
 
+    public int getMigrationPauseCount() {
+        return migrationManager.getMigrationPauseCount();
+    }
+
     public boolean isReplicaSyncAllowed() {
         return migrationManager.isMigrationAllowed();
     }
@@ -939,7 +944,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             Collection<MigrationInfo> migrationInfos = partitionStateManager.removeDeadAddress(deadAddress);
             for (MigrationInfo migrationInfo : migrationInfos) {
-                // TODO: schedule migrations
+                migrationManager.scheduleMigration(migrationInfo, MigrateTaskReason.REPAIR_PARTITION_TABLE);
             }
 
             migrationManager.triggerRepartitioning();
@@ -1038,6 +1043,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             } finally {
                 lock.unlock();
             }
+
+            migrationManager.resumeMigrationEventually();
         }
 
         @Override

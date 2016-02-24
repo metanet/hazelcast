@@ -26,7 +26,6 @@ import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationInfo;
-import com.hazelcast.partition.MigrationType;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.operation.FinalizeMigrationOperation;
@@ -35,6 +34,7 @@ import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.partition.MigrationType;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
@@ -49,7 +49,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
@@ -81,7 +81,7 @@ public class MigrationManager {
 
     private final MigrationThread migrationThread;
 
-    private final AtomicBoolean migrationAllowed = new AtomicBoolean(true);
+    private final AtomicInteger migrationPauseCount = new AtomicInteger(0);
 
     @Probe(name = "lastRepartitionTime")
     private final AtomicLong lastRepartitionTime = new AtomicLong();
@@ -156,15 +156,25 @@ public class MigrationManager {
 
     @Probe(name = "migrationActive")
     private int migrationActiveProbe() {
-        return migrationAllowed.get() ? 1 : 0;
+        return migrationPauseCount.get() == 0 ? 1 : 0;
+    }
+
+    @Probe(name = "migrationPauseCount")
+    public int getMigrationPauseCount() {
+        return migrationPauseCount.get();
     }
 
     public void pauseMigration() {
-        migrationAllowed.set(false);
+        migrationPauseCount.incrementAndGet();
     }
 
     public void resumeMigration() {
-        migrationAllowed.set(true);
+        int val = migrationPauseCount.decrementAndGet();
+
+        while (val < 0 && !migrationPauseCount.compareAndSet(val, 0)) {
+            logger.severe("migrationPauseCount=" + val + " is negative! ");
+            val = migrationPauseCount.get();
+        }
     }
 
     void resumeMigrationEventually() {
@@ -172,7 +182,7 @@ public class MigrationManager {
     }
 
     public boolean isMigrationAllowed() {
-        return migrationAllowed.get();
+        return migrationPauseCount.get() == 0;
     }
 
     private void finalizeMigrationInfo(MigrationInfo migrationInfo) {
@@ -347,10 +357,6 @@ public class MigrationManager {
         migrationQueue.add(new RepartitioningTask());
     }
 
-    void invalidateAllPendingMigrations() {
-        migrationQueue.invalidatePendingMigrations();
-    }
-
     public InternalMigrationListener getInternalMigrationListener() {
         return internalMigrationListener;
     }
@@ -365,7 +371,7 @@ public class MigrationManager {
     }
 
     void onMemberRemove(MemberImpl member) {
-        invalidateAllPendingMigrations();
+        migrationQueue.invalidatePendingMigrations(member.getAddress());
 
         // TODO: if it's source...?
         Address deadAddress = member.getAddress();
@@ -412,6 +418,10 @@ public class MigrationManager {
     public void setCompletedMigrations(Collection<MigrationInfo> migrationInfos) {
         completedMigrations.clear();
         completedMigrations.addAll(migrationInfos);
+    }
+
+    public void scheduleMigration(MigrationInfo migrationInfo, MigrateTaskReason reason) {
+        migrationQueue.add(new MigrateTask(migrationInfo, reason));
     }
 
     private class RepartitioningTask implements MigrationRunnable {
@@ -544,7 +554,7 @@ public class MigrationManager {
             for (MigrationInfo migration : migrations) {
                 // TODO: need to order tasks depending on their priority
                 logger.finest("Scheduling " + migration);
-                migrationQueue.add(new MigrateTask(migration, MigrateTaskReason.REPARTITIONING));
+                scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
             }
         }
 
@@ -610,8 +620,6 @@ public class MigrationManager {
         final MigrationInfo migrationInfo;
 
         final MigrateTaskReason reason;
-
-        volatile boolean valid;
 
         public MigrateTask(MigrationInfo migrationInfo, MigrateTaskReason reason) {
             this.migrationInfo = migrationInfo;
@@ -804,16 +812,20 @@ public class MigrationManager {
 
         @Override
         public void invalidate(Address address) {
-            if (valid) {
-                valid = !(reason == MigrateTaskReason.REPARTITIONING
+            if (migrationInfo.isValid()) {
+                boolean valid = !(reason == MigrateTaskReason.REPARTITIONING
                         || migrationInfo.getSource().equals(address)
                         || migrationInfo.getDestination().equals(address));
+
+                if (!valid) {
+                    migrationInfo.invalidate();
+                }
             }
         }
 
         @Override
         public boolean isValid() {
-            return valid;
+            return migrationInfo.isValid();
         }
 
     }

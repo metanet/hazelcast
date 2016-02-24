@@ -16,7 +16,7 @@
 
 package com.hazelcast.internal.partition.impl;
 
-import com.hazelcast.internal.partition.MigrationInfo;
+import com.hazelcast.nio.Address;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages migration tasks and migration status flag for {@link InternalPartitionServiceImpl} safely. Once a migration task
- * is added to the queue, queue has to be notified via {@link MigrationQueue#afterTaskCompletion(Runnable)} after its execution.
+ * is added to the queue, queue has to be notified via {@link MigrationQueue#afterTaskCompletion(MigrationRunnable)} after its execution.
  */
 class MigrationQueue {
 
@@ -68,9 +68,9 @@ class MigrationQueue {
         }
     }
 
-    public void invalidatePendingMigrations() {
+    public void invalidatePendingMigrations(Address removedAddress) {
         for (MigrationRunnable runnable : queue) {
-            runnable.invalidate();
+            runnable.invalidate(removedAddress);
         }
     }
 
