@@ -189,7 +189,7 @@ public class MigrationManager {
             boolean destination = thisAddress.equals(migrationInfo.getDestination());
 
             if (source || destination) {
-                Address ownerAddress = migratingPartition.getOwnerOrNull();
+                Address ownerAddress = migratingPartition.getReplicaAddress(migrationInfo.getReplicaIndex());
                 boolean success = migrationInfo.getDestination().equals(ownerAddress);
                 MigrationParticipant participant = source ? MigrationParticipant.SOURCE : MigrationParticipant.DESTINATION;
                 if (success) {
