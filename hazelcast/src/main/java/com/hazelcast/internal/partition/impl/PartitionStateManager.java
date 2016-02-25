@@ -184,6 +184,11 @@ public class PartitionStateManager {
         for (InternalPartitionImpl partition : partitions) {
             final int index = partition.removeAddress(deadAddress);
 
+            // address is not replica of this partition
+            if (index == -1) {
+                continue;
+            }
+
             // if owner is null, promote 1.backup to owner
             // don't touch to the other backups
             if (index == 0) {

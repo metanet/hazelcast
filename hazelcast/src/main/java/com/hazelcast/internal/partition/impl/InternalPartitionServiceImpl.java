@@ -944,6 +944,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             Collection<MigrationInfo> migrationInfos = partitionStateManager.removeDeadAddress(deadAddress);
             for (MigrationInfo migrationInfo : migrationInfos) {
+                if (logger.isFinestEnabled()) {
+                    logger.finest("Scheduling repair migration: " + migrationInfo + " removed address: " + deadAddress);
+                }
                 migrationManager.scheduleMigration(migrationInfo, MigrateTaskReason.REPAIR_PARTITION_TABLE);
             }
 
