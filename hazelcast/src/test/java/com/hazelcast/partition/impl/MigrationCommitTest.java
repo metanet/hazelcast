@@ -9,9 +9,11 @@ import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener;
+import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.impl.InternalMigrationListenerTest.InternalMigrationListenerImpl;
 import com.hazelcast.partition.impl.InternalMigrationListenerTest.MigrationProgressNotification;
+import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
@@ -24,6 +26,7 @@ import org.junit.runner.RunWith;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.hazelcast.partition.impl.InternalMigrationListenerTest.MigrationProgressEvent.COMMIT;
 import static org.junit.Assert.assertEquals;
@@ -119,11 +122,58 @@ public class MigrationCommitTest
     }
 
     @Test
+    public void shouldRollbackMigrationWhenMasterCrashesBeforeCommit() {
+        final CountDownLatch migrationLatch = new CountDownLatch(1);
+        final Config config1 = createConfig();
+        config1.setLiteMember(true);
+        config1.addListenerConfig(new ListenerConfig(new TerminateOnMigrationComplete(migrationLatch)));
+
+        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
+        final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
+
+        final CollectMigrationTaskOnRollback listener2 = new CollectMigrationTaskOnRollback();
+        final Config config2 = createConfig();
+        config2.addListenerConfig(new ListenerConfig(listener2));
+        final HazelcastInstance hz2 = factory.newHazelcastInstance(config2);
+
+        warmUpPartitions(hz1, hz2);
+        waitAllForSafeState(hz1, hz2);
+
+        final CollectMigrationTaskOnRollback listener3 = new CollectMigrationTaskOnRollback();
+        final Config config3 = createConfig();
+        config3.addListenerConfig(new ListenerConfig(listener3));
+        final HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
+
+        assertClusterSizeEventually(2, hz2);
+        assertClusterSizeEventually(2, hz3);
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertTrue(listener2.rollback);
+            }
+        });
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertTrue(listener3.rollback);
+            }
+        });
+
+        waitAllForSafeState(hz2, hz3);
+
+        migrationLatch.countDown();
+    }
+
+    @Test
     public void shouldRollbackMigrationWhenDestinationCrashesBeforeCommit() {
         final CountDownLatch migrationStartLatch = new CountDownLatch(1);
         final Config config1 = createConfig();
         config1.setLiteMember(true);
-        final CrashOtherMemberWhenMigrationCompleteOnMaster masterListener = new CrashOtherMemberWhenMigrationCompleteOnMaster(migrationStartLatch);
+        final CrashOtherMemberOnMigrationComplete masterListener = new CrashOtherMemberOnMigrationComplete(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
@@ -139,6 +189,8 @@ public class MigrationCommitTest
         masterListener.other = hz3;
         migrationStartLatch.countDown();
 
+        sleepAtLeastSeconds(10);
+
         waitAllForSafeState(hz1, hz2);
 
         final InternalPartition partition0 = getPartitionService(hz2).getPartition(0);
@@ -148,7 +200,7 @@ public class MigrationCommitTest
         assertEquals(getAddress(hz2), partition1.getOwnerOrNull());
         assertFalse(partition0.isMigrating());
         assertFalse(partition1.isMigrating());
-        assertTrue(masterListener.rollback.get());
+        assertTrue(masterListener.rollback);
     }
 
     @Test
@@ -156,7 +208,7 @@ public class MigrationCommitTest
         final CountDownLatch migrationStartLatch = new CountDownLatch(1);
         final Config config1 = createConfig();
         config1.setLiteMember(true);
-        final CrashOtherMemberWhenMigrationCompleteOnMaster masterListener = new CrashOtherMemberWhenMigrationCompleteOnMaster(migrationStartLatch);
+        final CrashOtherMemberOnMigrationComplete masterListener = new CrashOtherMemberOnMigrationComplete(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
         final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
@@ -184,7 +236,7 @@ public class MigrationCommitTest
         assertEquals(getAddress(hz3), partition1.getOwnerOrNull());
         assertFalse(partition0.isMigrating());
         assertFalse(partition1.isMigrating());
-        assertFalse(masterListener.rollback.get());
+        assertFalse(masterListener.rollback);
         final List<MigrationProgressNotification> notifications = targetListener.getNotifications();
         assertFalse(notifications.isEmpty());
         assertEquals(COMMIT, notifications.get(notifications.size() - 1).event);
@@ -207,8 +259,7 @@ public class MigrationCommitTest
         waitAllForSafeState(hz1, hz2);
 
         final CountDownLatch terminationLatch = new CountDownLatch(1);
-        final TerminateMigrationDestinationOnCommit memberListener = new TerminateMigrationDestinationOnCommit(
-                terminationLatch);
+        final TerminateOnMigrationCommit memberListener = new TerminateOnMigrationCommit(terminationLatch);
         final Config config3 = createConfig();
         config3.addListenerConfig(new ListenerConfig(memberListener));
         final HazelcastInstance hz3 = factory.newHazelcastInstance(config3);
@@ -233,7 +284,9 @@ public class MigrationCommitTest
 
     private Config createConfig() {
         final Config config = new Config();
+        config.setProperty(GroupProperty.PARTITION_MAX_PARALLEL_REPLICATIONS, "0");
         config.setProperty(GroupProperty.PARTITION_COUNT, String.valueOf(PARTITION_COUNT));
+        config.setProperty("hazelcast.logging.type", "log4j");
         return config;
     }
 
@@ -248,12 +301,20 @@ public class MigrationCommitTest
         return null;
     }
 
+    private static void resetInternalPartitionListener(HazelcastInstance instance) {
+        final InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) getPartitionService(instance);
+        partitionService.resetInternalMigrationListener();
+    }
+
     public static class DelayMigrationStartOnMaster
-            extends InternalMigrationListener {
+            extends InternalMigrationListener
+            implements HazelcastInstanceAware {
 
         private final CountDownLatch migrationStartLatch;
 
         private final AtomicBoolean rollback = new AtomicBoolean();
+
+        private HazelcastInstance instance;
 
         public DelayMigrationStartOnMaster(CountDownLatch migrationStartLatch) {
             this.migrationStartLatch = migrationStartLatch;
@@ -265,22 +326,28 @@ public class MigrationCommitTest
 
         public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
             rollback.compareAndSet(false, true);
+            resetInternalPartitionListener(instance);
         }
 
+        @Override
+        public void setHazelcastInstance(HazelcastInstance instance) {
+            this.instance = instance;
+        }
     }
 
-    public static class CrashOtherMemberWhenMigrationCompleteOnMaster
-            extends InternalMigrationListener implements HazelcastInstanceAware {
+    public static class CrashOtherMemberOnMigrationComplete
+            extends InternalMigrationListener
+            implements HazelcastInstanceAware {
 
         private final CountDownLatch migrationStartLatch;
 
-        private final AtomicBoolean rollback = new AtomicBoolean();
+        private volatile boolean rollback;
 
         private volatile HazelcastInstance instance;
 
         private volatile HazelcastInstance other;
 
-        public CrashOtherMemberWhenMigrationCompleteOnMaster(CountDownLatch migrationStartLatch) {
+        public CrashOtherMemberOnMigrationComplete(CountDownLatch migrationStartLatch) {
             this.migrationStartLatch = migrationStartLatch;
         }
 
@@ -290,7 +357,7 @@ public class MigrationCommitTest
 
         public void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success) {
             if (!success) {
-                System.out.println("ERR: migration is not successful");
+                System.err.println("ERR: migration is not successful");
             }
 
             final int memberCount = instance.getCluster().getMembers().size();
@@ -299,7 +366,9 @@ public class MigrationCommitTest
         }
 
         public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
-            rollback.compareAndSet(false, true);
+            rollback = true;
+
+            resetInternalPartitionListener(instance);
         }
 
         @Override
@@ -309,7 +378,7 @@ public class MigrationCommitTest
 
     }
 
-    private static class TerminateMigrationDestinationOnCommit
+    private static class TerminateOnMigrationCommit
             extends InternalMigrationListener
             implements HazelcastInstanceAware {
 
@@ -317,7 +386,7 @@ public class MigrationCommitTest
 
         private volatile HazelcastInstance instance;
 
-        public TerminateMigrationDestinationOnCommit(CountDownLatch latch) {
+        public TerminateOnMigrationCommit(CountDownLatch latch) {
             this.latch = latch;
         }
 
@@ -330,6 +399,78 @@ public class MigrationCommitTest
             });
 
             assertOpenEventually(latch);
+        }
+
+        @Override
+        public void setHazelcastInstance(HazelcastInstance instance) {
+            this.instance = instance;
+        }
+
+    }
+
+    private static class TerminateOnMigrationComplete
+            extends InternalMigrationListener
+            implements HazelcastInstanceAware {
+
+        private final CountDownLatch latch;
+
+        private volatile HazelcastInstance instance;
+
+        public TerminateOnMigrationComplete(CountDownLatch latch) {
+            this.latch = latch;
+        }
+
+        public void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success) {
+            if (!success) {
+                System.err.println("ERR: migration is not successful " + migrationInfo + " participant: " + participant);
+            }
+
+            resetInternalPartitionListener(instance);
+            spawn(new Runnable() {
+                @Override
+                public void run() {
+                    instance.getLifecycleService().terminate();
+                }
+            });
+            assertOpenEventually(latch);
+        }
+
+        @Override
+        public void setHazelcastInstance(HazelcastInstance instance) {
+            this.instance = instance;
+        }
+
+    }
+
+    private static class CollectMigrationTaskOnRollback
+            extends InternalMigrationListener
+            implements HazelcastInstanceAware {
+
+        private final AtomicReference<MigrationInfo> migrationInfoRef = new AtomicReference<MigrationInfo>();
+
+        private HazelcastInstance instance;
+
+        private volatile boolean rollback = false;
+
+        public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
+            if (!migrationInfoRef.compareAndSet(null, migrationInfo)) {
+                System.err.println("COLLECT START FAILED! curr: " + migrationInfoRef.get() + " new: " + migrationInfo);
+            }
+        }
+
+        public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
+            MigrationInfo collected = migrationInfoRef.get();
+            rollback = migrationInfo.equals(collected);
+            if (rollback) {
+                migrationInfoRef.set(null);
+                final InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) getPartitionService(
+                        instance);
+                partitionService.resetInternalMigrationListener();
+            } else {
+                System.err.println(
+                        "collect rollback failed! collected migration: " + collected + " rollback migration: " + migrationInfo
+                                + " participant: " + participant);
+            }
         }
 
         @Override

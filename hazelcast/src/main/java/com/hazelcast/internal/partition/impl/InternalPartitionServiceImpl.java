@@ -985,12 +985,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             }
 
             int version = getPartitionStateVersion();
+            logger.info("Fetching most recent partition table! my version: " + version);
             PartitionRuntimeState newState = null;
 
-            // TODO BASRI HANDLE ACTIVE MIGRATION
-            // There might be 0, 1 (only for source -dest already committed-) or 2 (from source and dest) active migration objects
-            Collection<MigrationInfo> activeMigrations = new ArrayList<MigrationInfo>();
-            Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
+            Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>(migrationManager.getCompletedMigrations());
 
             for (Future<PartitionRuntimeState> future : futures) {
                 try {
@@ -1001,8 +999,11 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     }
                     allCompletedMigrations.addAll(state.getCompletedMigrations());
 
+                    logger.info("Adding completed migrations: " + state.getCompletedMigrations());
+
                     if (state.getActiveMigration() != null) {
-                        activeMigrations.add(state.getActiveMigration());
+                        logger.info("Adding active migration: " + state.getActiveMigration());
+                        allCompletedMigrations.add(state.getActiveMigration());
                     }
                 } catch (TargetNotMemberException e) {
                     // ignore
@@ -1015,38 +1016,33 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 }
             }
 
+            logger.info("most recent partition table version: " + version);
+
             lock.lock();
             try {
                 if (migrationManager.getActiveMigration() != null) {
-                    activeMigrations.add(migrationManager.getActiveMigration());
+                    logger.info("Adding active migration of this node: " + migrationManager.getActiveMigration());
+                    allCompletedMigrations.add(migrationManager.getActiveMigration());
                 }
 
-                // TODO: merge completed migrations
-                allCompletedMigrations.addAll(migrationManager.getCompletedMigrations());
-                migrationManager.setCompletedMigrations(allCompletedMigrations);
+                logger.info("All completed migrations: " +allCompletedMigrations);
 
                 if (newState != null) {
+                    newState.setCompletedMigrations(allCompletedMigrations);
                     logger.info("Applying the most recent of partition state...");
                     applyNewState(newState, thisAddress);
+                } else {
+                    migrationManager.setCompletedMigrations(allCompletedMigrations);
+                    for (MigrationInfo migrationInfo : allCompletedMigrations) {
+                        migrationManager.scheduleActiveMigrationFinalization(migrationInfo);
+                    }
                 }
-
-                // TODO: iterate over active migrations and decide either to commit or to rollback
-                // we can (should ?) store status of active migration on both source and destination
-                // that way, we can see complete picture of a migration and decide whether we should commit
-                // or rollback.
-
-                // TODO: for now, just add activeMigrations into the completed migrations list
-                // eventually they'll be rolled back
-                for (MigrationInfo activeMigration : activeMigrations) {
-                    migrationManager.addCompletedMigration(activeMigration);
-                }
-                // TODO: remove local active migration?
-//                migrationManager.removeActiveMigration();
-
             } finally {
                 lock.unlock();
             }
 
+
+            syncPartitionRuntimeState();
             migrationManager.resumeMigrationEventually();
         }
 
