@@ -7,5 +7,7 @@ public interface MigrationRunnable extends Runnable {
     void invalidate(Address address);
 
     boolean isValid();
+    
+    boolean isPauseable();
 
 }

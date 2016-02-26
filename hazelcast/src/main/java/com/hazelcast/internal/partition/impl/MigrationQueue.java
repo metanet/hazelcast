@@ -51,6 +51,10 @@ class MigrationQueue {
         return queue.poll(timeout, unit);
     }
 
+    public MigrationRunnable peek() {
+        return queue.peek();
+    }
+
     public void clear() {
         List<MigrationRunnable> sink = new ArrayList<MigrationRunnable>();
         queue.drainTo(sink);
@@ -95,4 +99,5 @@ class MigrationQueue {
         return "MigrationQueue{" + "migrateTaskCount=" + migrateTaskCount
                 + ", queue=" + queue + '}';
     }
+
 }

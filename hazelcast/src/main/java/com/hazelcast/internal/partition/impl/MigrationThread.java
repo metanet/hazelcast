@@ -66,15 +66,18 @@ class MigrationThread extends Thread implements Runnable {
         boolean migrating = false;
         for (; ; ) {
             if (!migrationManager.isMigrationAllowed()) {
-                break;
+                MigrationRunnable runnable = queue.peek();
+                if (runnable == null || runnable.isPauseable()) {
+                    break;
+                }
             }
-            MigrationRunnable r = queue.poll(1, TimeUnit.SECONDS);
-            if (r == null) {
+            MigrationRunnable runnable = queue.poll(1, TimeUnit.SECONDS);
+            if (runnable == null) {
                 break;
             }
 
-            migrating |= r instanceof MigrationManager.MigrateTask;
-            processTask(r);
+            migrating |= runnable instanceof MigrationManager.MigrateTask;
+            processTask(runnable);
             if (partitionMigrationInterval > 0) {
                 Thread.sleep(partitionMigrationInterval);
             }
@@ -91,17 +94,17 @@ class MigrationThread extends Thread implements Runnable {
         }
     }
 
-    boolean processTask(MigrationRunnable r) {
+    boolean processTask(MigrationRunnable runnable) {
         try {
-            if (r == null || isInterrupted() || !r.isValid()) {
+            if (runnable == null || isInterrupted() || !runnable.isValid()) {
                 return false;
             }
 
-            r.run();
+            runnable.run();
         } catch (Throwable t) {
             logger.warning(t);
         } finally {
-            queue.afterTaskCompletion(r);
+            queue.afterTaskCompletion(runnable);
         }
 
         return true;

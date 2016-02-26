@@ -609,6 +609,11 @@ public class MigrationManager {
             return valid;
         }
 
+        @Override
+        public boolean isPauseable() {
+            return true;
+        }
+
     }
 
     private Member getMasterMember() {
@@ -828,6 +833,11 @@ public class MigrationManager {
         @Override
         public boolean isValid() {
             return migrationInfo.isValid();
+        }
+
+        @Override
+        public boolean isPauseable() {
+            return isValid();
         }
 
     }
