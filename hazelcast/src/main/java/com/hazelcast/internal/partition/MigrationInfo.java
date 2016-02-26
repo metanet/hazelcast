@@ -22,10 +22,46 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
 import com.hazelcast.partition.MigrationType;
 
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MigrationInfo implements DataSerializable {
+
+    public enum MigrationStatus {
+
+        ACTIVE(0),
+        INVALID(1),
+        SUCCESS(2),
+        FAILED(3);
+
+        public static void writeTo(MigrationStatus type, DataOutput out) throws IOException {
+            out.writeByte(type.code);
+        }
+
+        public static MigrationStatus readFrom(DataInput in) throws IOException {
+            final byte code = in.readByte();
+            switch (code) {
+                case 0:
+                    return ACTIVE;
+                case 1:
+                    return INVALID;
+                case 2:
+                    return SUCCESS;
+                case 3:
+                    return FAILED;
+            }
+            throw new IllegalArgumentException("Code: " + code);
+        }
+
+        MigrationStatus(int code) {
+            this.code = code;
+        }
+
+        private final int code;
+
+    }
 
     private int partitionId;
     private int replicaIndex;
@@ -38,7 +74,7 @@ public class MigrationInfo implements DataSerializable {
     private MigrationType type = MigrationType.MOVE;
 
     private final AtomicBoolean processing = new AtomicBoolean(false);
-    private volatile boolean valid = true;
+    private volatile MigrationStatus status;
 
     public MigrationInfo() {
     }
@@ -59,6 +95,7 @@ public class MigrationInfo implements DataSerializable {
         this.destination = destination;
         this.type = type;
         this.copyBackReplicaIndex = copyBackReplicaIndex;
+        this.status = MigrationStatus.ACTIVE;
     }
 
     public Address getSource() {
@@ -121,12 +158,16 @@ public class MigrationInfo implements DataSerializable {
         processing.set(false);
     }
 
-    public boolean isValid() {
-        return valid;
+    public MigrationStatus getStatus() {
+        return status;
     }
 
-    public void invalidate() {
-        valid = false;
+    public void setStatus(MigrationStatus status) {
+        this.status = status;
+    }
+
+    public boolean isValid() {
+        return status != MigrationStatus.INVALID;
     }
 
     @Override
@@ -135,6 +176,7 @@ public class MigrationInfo implements DataSerializable {
         out.writeByte(replicaIndex);
         out.writeByte(copyBackReplicaIndex);
         MigrationType.writeTo(type, out);
+        MigrationStatus.writeTo(status, out);
 
         boolean hasFrom = source != null;
         out.writeBoolean(hasFrom);
@@ -157,6 +199,7 @@ public class MigrationInfo implements DataSerializable {
         replicaIndex = in.readByte();
         copyBackReplicaIndex = in.readByte();
         type = MigrationType.readFrom(in);
+        status = MigrationStatus.readFrom(in);
 
         boolean hasFrom = in.readBoolean();
         if (hasFrom) {
@@ -216,7 +259,7 @@ public class MigrationInfo implements DataSerializable {
         sb.append(", copyBackReplicaIndex=").append(copyBackReplicaIndex);
         sb.append(", type=").append(type);
         sb.append(", processing=").append(processing);
-        sb.append(", valid=").append(valid);
+        sb.append(", status=").append(status);
         sb.append('}');
         return sb.toString();
     }

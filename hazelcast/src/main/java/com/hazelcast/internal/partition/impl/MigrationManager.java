@@ -26,6 +26,7 @@ import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationInfo;
+import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.operation.FinalizeMigrationOperation;
@@ -378,7 +379,7 @@ public class MigrationManager {
         if (activeMigrationInfo != null) {
             if (deadAddress.equals(activeMigrationInfo.getSource())
                     || deadAddress.equals(activeMigrationInfo.getDestination())) {
-                activeMigrationInfo.invalidate();
+                activeMigrationInfo.setStatus(MigrationStatus.INVALID);
             }
         }
     }
@@ -748,6 +749,7 @@ public class MigrationManager {
         }
 
         private void migrationOperationFailed() {
+            migrationInfo.setStatus(MigrationStatus.FAILED);
             internalMigrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, false);
             partitionServiceLock.lock();
             try {
@@ -773,6 +775,7 @@ public class MigrationManager {
         }
 
         private void migrationOperationSucceeded() {
+            migrationInfo.setStatus(MigrationStatus.SUCCESS);
             internalMigrationListener.onMigrationComplete(MigrationParticipant.MASTER, migrationInfo, true);
             addCompletedMigration(migrationInfo);
 
@@ -825,7 +828,7 @@ public class MigrationManager {
                         || migrationInfo.getDestination().equals(address));
 
                 if (!valid) {
-                    migrationInfo.invalidate();
+                    migrationInfo.setStatus(MigrationStatus.INVALID);
                 }
             }
         }
