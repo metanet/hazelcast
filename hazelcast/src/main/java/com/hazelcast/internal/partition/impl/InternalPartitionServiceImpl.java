@@ -30,6 +30,7 @@ import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
+import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionInfo;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
@@ -999,6 +1000,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             PartitionRuntimeState newState = null;
 
             Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>(migrationManager.getCompletedMigrations());
+            Collection<MigrationInfo> allActiveMigrations = new HashSet<MigrationInfo>();
 
             for (Future<PartitionRuntimeState> future : futures) {
                 try {
@@ -1010,7 +1012,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     allCompletedMigrations.addAll(state.getCompletedMigrations());
 
                     if (state.getActiveMigration() != null) {
-                        allCompletedMigrations.add(state.getActiveMigration());
+                        allActiveMigrations.add(state.getActiveMigration());
                     }
                 } catch (TargetNotMemberException e) {
                     // ignore
@@ -1028,7 +1030,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             lock.lock();
             try {
                 if (migrationManager.getActiveMigration() != null) {
-                    allCompletedMigrations.add(migrationManager.getActiveMigration());
+                    allActiveMigrations.add(migrationManager.getActiveMigration());
+                }
+
+                for (MigrationInfo activeMigration : allActiveMigrations) {
+                    activeMigration.setStatus(MigrationStatus.FAILED);
+                    if (allCompletedMigrations.add(activeMigration)) {
+                        logger.info("Marked active migration " + activeMigration + " as " + MigrationStatus.FAILED);
+                    }
                 }
 
                 if (newState != null) {
