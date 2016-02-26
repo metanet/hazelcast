@@ -265,6 +265,14 @@ public class PartitionStateManager {
         return stateVersion.get();
     }
 
+    void incrementVersion(int delta) {
+        if (delta >= 0) {
+            stateVersion.addAndGet(delta);
+        } else {
+            logger.warning("partition table version not incremented by " + delta);
+        }
+    }
+
     void incrementVersion() {
         stateVersion.incrementAndGet();
     }

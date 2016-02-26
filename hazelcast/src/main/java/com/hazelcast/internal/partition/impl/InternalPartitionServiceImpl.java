@@ -813,6 +813,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return false;
     }
 
+    void incrementPartitionStateVersion(int delta) {
+        partitionStateManager.incrementVersion(delta);
+    }
+
     @Override
     public void shutdown(boolean terminate) {
         logger.finest("Shutting down the partition service");
@@ -1040,7 +1044,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             } finally {
                 lock.unlock();
             }
-
 
             syncPartitionRuntimeState();
             migrationManager.resumeMigrationEventually();

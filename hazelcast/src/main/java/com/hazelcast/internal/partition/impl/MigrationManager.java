@@ -749,6 +749,7 @@ public class MigrationManager {
                 addCompletedMigration(migrationInfo);
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
+                partitionService.incrementPartitionStateVersion(2); // TODO move this into constant
                 partitionService.syncPartitionRuntimeState();
             } finally {
                 partitionServiceLock.unlock();
@@ -777,6 +778,7 @@ public class MigrationManager {
                 if (commitSuccessful) {
                     internalMigrationListener.onMigrationCommit(MigrationParticipant.MASTER, migrationInfo);
 
+                    // TODO BASRI after we remove internalpartitionlistener, ptable version update must be done manually
                     // TODO: inspect this part later!
                     // updates partition table after successful commit
                     InternalPartitionImpl partition =
