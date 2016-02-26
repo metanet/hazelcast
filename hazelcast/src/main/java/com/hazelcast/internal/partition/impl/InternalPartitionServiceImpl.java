@@ -1003,10 +1003,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     }
                     allCompletedMigrations.addAll(state.getCompletedMigrations());
 
-                    logger.info("Adding completed migrations: " + state.getCompletedMigrations());
-
                     if (state.getActiveMigration() != null) {
-                        logger.info("Adding active migration: " + state.getActiveMigration());
                         allCompletedMigrations.add(state.getActiveMigration());
                     }
                 } catch (TargetNotMemberException e) {
@@ -1020,16 +1017,13 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 }
             }
 
-            logger.info("most recent partition table version: " + version);
+            logger.info("Most recent partition table version: " + version);
 
             lock.lock();
             try {
                 if (migrationManager.getActiveMigration() != null) {
-                    logger.info("Adding active migration of this node: " + migrationManager.getActiveMigration());
                     allCompletedMigrations.add(migrationManager.getActiveMigration());
                 }
-
-                logger.info("All completed migrations: " +allCompletedMigrations);
 
                 if (newState != null) {
                     newState.setCompletedMigrations(allCompletedMigrations);
