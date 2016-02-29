@@ -317,7 +317,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         lock.lock();
         try {
-
+            final int partitionStateVersionBeforeMemberRemove = partitionStateManager.getVersion();
             // TODO: why not increment only on master and publish it?
             // TODO BASRI i updated here to increment only on master
             if (node.isMaster() && partitionStateManager.isInitialized()
@@ -329,8 +329,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             boolean isThisNodeNewMaster = node.isMaster() && !thisAddress.equals(lastMaster);
             if (isThisNodeNewMaster) {
-                logger.info("Scheduling " + FetchMostRecentPartitionTableTask.class.getSimpleName());
-                migrationManager.schedule(new FetchMostRecentPartitionTableTask());
+                migrationManager.schedule(new FetchMostRecentPartitionTableTask(partitionStateVersionBeforeMemberRemove));
             }
             lastMaster = node.getMasterAddress();
 
@@ -977,7 +976,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
     }
 
     private class FetchMostRecentPartitionTableTask implements MigrationRunnable {
+
         private final Address thisAddress = node.getThisAddress();
+
+        private final int version;
+
+        public FetchMostRecentPartitionTableTask(int version) {
+            this.version = version;
+        }
 
         public void run() {
             Collection<MemberImpl> members = node.clusterService.getMemberImpls();
@@ -995,11 +1001,11 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 futures.add(future);
             }
 
-            int version = getPartitionStateVersion();
+            int version = this.version;
             logger.info("Fetching most recent partition table! my version: " + version);
             PartitionRuntimeState newState = null;
 
-            Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>(migrationManager.getCompletedMigrations());
+            Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
             Collection<MigrationInfo> allActiveMigrations = new HashSet<MigrationInfo>();
 
             for (Future<PartitionRuntimeState> future : futures) {
@@ -1029,6 +1035,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             lock.lock();
             try {
+                allCompletedMigrations.addAll(migrationManager.getCompletedMigrations());
                 if (migrationManager.getActiveMigration() != null) {
                     allActiveMigrations.add(migrationManager.getActiveMigration());
                 }
