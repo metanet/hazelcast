@@ -69,7 +69,6 @@ public class MigrationInfo implements DataSerializable {
     private Address destination;
     private Address master;
     private String masterUuid;
-
     private int copyBackReplicaIndex = -1;
     private MigrationType type = MigrationType.MOVE;
 

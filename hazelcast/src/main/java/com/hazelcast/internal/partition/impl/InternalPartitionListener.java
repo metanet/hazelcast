@@ -57,10 +57,11 @@ final class InternalPartitionListener implements PartitionListener {
         if (replicaIndex > 0) {
             // backup replica owner changed!
             if (thisAddress.equals(oldAddress)) {
-                clearPartition(partitionId, replicaIndex);
+                // TODO: do we need to call clear explicitly or is it going to be part of commit?
+//                clearPartition(partitionId, replicaIndex);
             } else if (thisAddress.equals(newAddress)) {
                 // TODO: is partition replica sync required anymore? we are already copying/migrating backup data.
-                synchronizePartition(partitionId, replicaIndex, reason, initialAssignment);
+//                synchronizePartition(partitionId, replicaIndex, reason, initialAssignment);
             }
         } else {
             if (!initialAssignment && thisAddress.equals(newAddress)) {

@@ -544,30 +544,36 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         partitionStateManager.setVersion(partitionState.getVersion());
         partitionStateManager.setInitialized();
 
-        PartitionInfo[] state = partitionState.getPartitions();
-        filterAndLogUnknownAddressesInPartitionTable(sender, state);
-        finalizeOrRollbackMigration(partitionState, state);
+        filterAndLogUnknownAddressesInPartitionTable(sender, partitionState.getPartitions());
+        finalizeOrRollbackMigration(partitionState);
     }
 
-    private void finalizeOrRollbackMigration(PartitionRuntimeState partitionState, PartitionInfo[] state) {
+    private void finalizeOrRollbackMigration(PartitionRuntimeState partitionState) {
+        final PartitionInfo[] partitions = partitionState.getPartitions();
         Collection<MigrationInfo> completedMigrations = partitionState.getCompletedMigrations();
         for (MigrationInfo completedMigration : completedMigrations) {
-            migrationManager.addCompletedMigration(completedMigration);
-            int partitionId = completedMigration.getPartitionId();
-            PartitionInfo partitionInfo = state[partitionId];
-            // mdogan:
-            // Each partition should be updated right after migration is finalized
-            // at the moment, it doesn't cause any harm to existing services,
-            // because we have a `migrating` flag in partition which is cleared during migration finalization.
-            // But from API point of view, we should provide explicit guarantees.
-            // For the time being, leaving this stuff as is to not to change behaviour.
 
-            // TODO BASRI IS THIS STILL NECESSARY? CAN WE MOVE UPDATEALLPARTITIONS(state) BEFORE FOR LOOP AND REMOVE NEXT LINE?
-            partitionStateManager.updateReplicaAddresses(partitionInfo.getPartitionId(), partitionInfo.getReplicaAddresses());
-            migrationManager.scheduleActiveMigrationFinalization(completedMigration);
+            assert completedMigration.getStatus() == MigrationStatus.SUCCESS
+                    || completedMigration.getStatus() == MigrationStatus.FAILED
+                    : "Invalid migration: " + completedMigration;
+
+            if (migrationManager.addCompletedMigration(completedMigration)) {
+                int partitionId = completedMigration.getPartitionId();
+                PartitionInfo partitionInfo = partitions[partitionId];
+                // mdogan:
+                // Each partition should be updated right after migration is finalized
+                // at the moment, it doesn't cause any harm to existing services,
+                // because we have a `migrating` flag in partition which is cleared during migration finalization.
+                // But from API point of view, we should provide explicit guarantees.
+                // For the time being, leaving this stuff as is to not to change behaviour.
+
+                // TODO BASRI IS THIS STILL NECESSARY? CAN WE MOVE UPDATEALLPARTITIONS(partitions) BEFORE FOR LOOP AND REMOVE NEXT LINE?
+                partitionStateManager.updateReplicaAddresses(partitionInfo.getPartitionId(), partitionInfo.getReplicaAddresses());
+                migrationManager.scheduleActiveMigrationFinalization(completedMigration);
+            }
         }
 
-        updateAllPartitions(state);
+        updateAllPartitions(partitions);
     }
 
     private void updateAllPartitions(PartitionInfo[] state) {
@@ -1047,6 +1053,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     }
                 }
 
+                // TODO: if we get the same migration-info once as completed and once as active
+                // then we will throw the active one and mark the migration as completed.
                 if (newState != null) {
                     newState.setCompletedMigrations(allCompletedMigrations);
                     logger.info("Applying the most recent of partition state...");

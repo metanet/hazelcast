@@ -21,12 +21,12 @@ import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
-import com.hazelcast.partition.MigrationType;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.MigrationManager;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.partition.MigrationType;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.NodeEngine;
@@ -82,13 +82,6 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
             return;
         }
 
-//        if (!source.equals(owner)) {
-//            getLogger().warning("Cannot migrate! This node is not owner of the partition => "
-//                    + migrationInfo + " -> partitionId=" + partition.getPartitionId() + " , " + partition);
-//            setFailed();
-//            return;
-//        }
-
         InternalPartitionServiceImpl partitionService = getService();
         MigrationManager migrationManager = partitionService.getMigrationManager();
         if (!migrationManager.addActiveMigration(migrationInfo)) {
@@ -111,7 +104,7 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
 
     private void setFailed() {
         success = false;
-        onMigrationComplete();
+        onMigrationComplete(false);
     }
 
     @Override
@@ -140,16 +133,16 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
                     + migrationInfo);
         }
 
-        if (migrationInfo.getType() == MigrationType.COPY) {
+//        if (migrationInfo.getType() == MigrationType.COPY) {
             if (!thisAddress.equals(owner)) {
                 throw new RetryableHazelcastException("Owner of partition is not this node! => " + toString());
             }
-        } else {
-            Address source = migrationInfo.getSource();
-            if (source == null || !source.equals(thisAddress)) {
-                throw new RetryableHazelcastException("Source of migration is not this node! => " + toString());
-            }
-        }
+//        } else {
+//            Address source = migrationInfo.getSource();
+//            if (source == null || !source.equals(thisAddress)) {
+//                throw new RetryableHazelcastException("Source of migration is not this node! => " + toString());
+//            }
+//        }
     }
 
     private void invokeMigrationOperation(Address destination, long[] replicaVersions, Collection<Operation> tasks)
@@ -211,8 +204,9 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         PartitionReplicationEvent replicationEvent = new PartitionReplicationEvent(migrationInfo.getPartitionId(),
                 migrationInfo.getReplicaIndex());
         PartitionMigrationEvent migrationEvent
-                = new PartitionMigrationEvent(MigrationEndpoint.SOURCE, migrationInfo.getType(),
-                migrationInfo.getPartitionId(), migrationInfo.getCopyBackReplicaIndex());
+                = new PartitionMigrationEvent(MigrationEndpoint.SOURCE,
+                migrationInfo.getReplicaIndex() == 0 ? migrationInfo.getType() : MigrationType.COPY,
+                migrationInfo.getPartitionId(), migrationInfo.getReplicaIndex(), migrationInfo.getCopyBackReplicaIndex());
 
         Collection<Operation> tasks = new LinkedList<Operation>();
         for (ServiceInfo serviceInfo : nodeEngine.getServiceInfos(MigrationAwareService.class)) {
