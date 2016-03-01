@@ -337,7 +337,7 @@ public class MigrationManager {
             if (completedMigrations.size() > 25) {
                 completedMigrations.removeFirst();
             }
-            logger.info("Added completed migration: " + migrationInfo);
+
             completedMigrations.add(migrationInfo);
         } finally {
             partitionServiceLock.unlock();
