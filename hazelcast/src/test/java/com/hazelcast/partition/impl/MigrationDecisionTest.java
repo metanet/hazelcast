@@ -1,6 +1,7 @@
 package com.hazelcast.partition.impl;
 
 import com.hazelcast.nio.Address;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.net.UnknownHostException;
@@ -139,6 +140,72 @@ public class MigrationDecisionTest {
         assertFalse(isCyclic(oldReplicas, newReplicas));
     }
 
+    @Test
+    public void testOptimizeShiftDown()
+            throws UnknownHostException {
+        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5701), new Address(
+                "localhost", 5702), new Address("localhost", 5703), null, null, null};
+
+        final Address[] optimized = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5701), null, null, null};
+
+        optimizeShifts(oldReplicas, newReplicas);
+        assertArrayEquals(optimized, newReplicas);
+    }
+
+    @Test
+    public void testOptimizeShiftDown2()
+            throws UnknownHostException {
+        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5701), new Address(
+                "localhost", 5702), null, null, null, null};
+
+        final Address[] optimized = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
+                "localhost", 5701), null, null, null, null};
+
+        optimizeShifts(oldReplicas, newReplicas);
+        assertArrayEquals(optimized, newReplicas);
+    }
+
+    @Test
+    public void testOptimizeShiftDown3()
+            throws UnknownHostException {
+        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), null, null, null, null, null, null};
+
+        final Address[] newReplicas = new Address[]{new Address("localhost", 5702), new Address("localhost",
+                5701), null, null, null, null, null};
+
+        final Address[] optimized = new Address[]{new Address("localhost", 5702), new Address("localhost",
+                5701), null, null, null, null, null};
+
+        optimizeShifts(oldReplicas, newReplicas);
+        assertArrayEquals(optimized, newReplicas);
+    }
+
+    @Ignore // fails
+    @Test
+    public void testOptimizeShiftDown4()
+            throws UnknownHostException {
+        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
+
+        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5701), new Address(
+                "localhost", 5702), new Address("localhost", 5703), new Address("localhost", 5707), new Address("localhost",
+                5704), new Address("localhost", 5705)};
+
+        final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5701), new Address("localhost", 5707), new Address("localhost",
+                5705), new Address("localhost", 5704)};
+
+        optimizeShifts(oldReplicas, newReplicas);
+        assertArrayEquals(optimized, newReplicas);
+    }
+
     private boolean isCyclic2(Address[] oldReplicas, Address[] newReplicas) {
         boolean cyclic = false;
         for (int i = 0; i < oldReplicas.length; i++) {
@@ -177,7 +244,7 @@ public class MigrationDecisionTest {
 
     private boolean isCyclic(Address[] oldReplicas, Address[] newReplicas, int index) {
         final Address newOwner = newReplicas[index];
-        while (index < newReplicas.length && newReplicas[index] != null) {
+        while (true) {
             int nextIndex = findIndex(newReplicas, oldReplicas[index]);
             if (nextIndex == -1) {
                 return false;
@@ -187,12 +254,10 @@ public class MigrationDecisionTest {
                 index = nextIndex;
             }
         }
-
-        return false;
     }
 
     private void fixCycle(Address[] oldReplicas, Address[] newReplicas, int index) {
-        while (index < newReplicas.length && newReplicas[index] != null) {
+        while (true) {
             int nextIndex = findIndex(newReplicas, oldReplicas[index]);
             newReplicas[index] = oldReplicas[index];
             if (nextIndex == -1) {
@@ -203,6 +268,10 @@ public class MigrationDecisionTest {
     }
 
     private int findIndex(Address[] replicas, Address address) {
+        if (address == null) {
+            return -1;
+        }
+
         for (int i = 0; i < replicas.length; i++) {
             if (address.equals(replicas[i])) {
                 return i;
@@ -210,6 +279,47 @@ public class MigrationDecisionTest {
         }
 
         return -1;
+    }
+
+    private void optimizeShifts(Address[] oldReplicas, Address[] newReplicas) {
+        for (int i = 0; i < oldReplicas.length; i++) {
+            final Address oldAddress = oldReplicas[i];
+            final Address newAddress = newReplicas[i];
+
+            if (oldAddress == null || newAddress == null || oldAddress.equals(newAddress)) {
+                continue;
+            }
+
+            int newIndex = findIndex(newReplicas, oldAddress);
+            if (newIndex != -1) {
+                if (newIndex < i) {
+                    optimizeShiftUp(oldReplicas, newReplicas, i);
+                } else {
+                    optimizeShiftDown(oldReplicas, newReplicas, i);
+                }
+            }
+        }
+    }
+
+    private void optimizeShiftUp(Address[] oldReplicas, Address[] newReplicas, int index) {
+
+    }
+
+    private void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas, int index) {
+        Address bottomAddress = oldReplicas[index];
+
+        index = findIndex(newReplicas, oldReplicas[index]);
+
+        while (index != -1) {
+            int nextIndex = findIndex(newReplicas, oldReplicas[index]);
+            newReplicas[index] = oldReplicas[index];
+            if (nextIndex == -1) {
+                break;
+            }
+            index = nextIndex;
+        }
+
+        newReplicas[index] = bottomAddress;
     }
 
 }
