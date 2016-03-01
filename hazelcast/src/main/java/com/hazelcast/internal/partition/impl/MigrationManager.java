@@ -508,14 +508,15 @@ public class MigrationManager {
             }
             System.out.println("");
 
-            List<MigrationInfo> migrations = new ArrayList<MigrationInfo>();
             int lostCount = 0;
 
             if (node.getClusterService().getSize() == 5) {
                 System.out.println();
             }
 
+            List<MigrationInfo> migrations = new ArrayList<MigrationInfo>();
             for (int partitionId = 0; partitionId < newState.length; partitionId++) {
+
                 InternalPartitionImpl currentPartition = partitionStateManager.getPartitionImpl(partitionId);
                 Address[] newReplicas = newState[partitionId];
 
@@ -544,9 +545,9 @@ public class MigrationManager {
 
                         // #CASE: current owner is null and replica-index > 0
                         // TODO: search for previous migrations for copy-back
-                        if (isCopyBack(migrations, currentOwner, newOwner, replicaIndex)) {
-                            continue;
-                        }
+//                        if (isCopyBack(migrations, currentOwner, newOwner, replicaIndex)) {
+//                            continue;
+//                        }
 
                         // replicate data from partition owner to new replica owner
                         // schedule replication operation
@@ -564,21 +565,42 @@ public class MigrationManager {
 
                     // #CASE: both current and new owners are not null and they are different
                     // TODO: search for previous migrations for copy-back
-                    if (isCopyBack(migrations, currentOwner, newOwner, replicaIndex)) {
-                        continue;
-                    }
+//                    if (isCopyBack(migrations, currentOwner, newOwner, replicaIndex)) {
+//                        continue;
+//                    }
                     // migrate replica
                     migrations.add(new MigrationInfo(partitionId, replicaIndex, currentOwner, newOwner, MigrationType.MOVE));
                 }
+
+                MigrationInfo current = null;
+                ListIterator<MigrationInfo> iter = migrations.listIterator(migrations.size());
+                while (iter.hasPrevious()) {
+                    MigrationInfo prev = iter.previous();
+                    if (current == null) {
+                        current = prev;
+                        continue;
+                    }
+
+                    if (prev.getType() == MigrationType.MOVE
+                            && newOwner.equals(current.getSource())
+                            && (currentOwner == null || current.getDestination().equals(currentOwner))) {
+                        logger.severe("Prev: " + current + ", Current: " + currentOwner + ", New: " + newOwner + ", index: " + replicaIndex);
+                        current.setKeepReplicaIndex(replicaIndex);
+                        //                    previous.setType(MigrationType.MOVE_COPY_BACK);
+                        return true;
+                    }
+
+                }
+
+                for (MigrationInfo migration : migrations) {
+                    // TODO: need to order tasks depending on their priority
+                    logger.severe("Scheduling " + migration);
+                    scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
+                }
+                migrations.clear();
             }
 
             logMigrationStatistics(migrations.size(), lostCount);
-
-            for (MigrationInfo migration : migrations) {
-                // TODO: need to order tasks depending on their priority
-                logger.severe("Scheduling " + migration);
-                scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
-            }
         }
 
         private boolean isCopyBack(List<MigrationInfo> migrations, Address currentOwner, Address newOwner, int replicaIndex) {
@@ -589,8 +611,8 @@ public class MigrationManager {
                         && newOwner.equals(previous.getSource())
                         && (currentOwner == null || previous.getDestination().equals(currentOwner))) {
                     logger.severe("Prev: " + previous + ", Current: " + currentOwner + ", New: " + newOwner + ", index: " + replicaIndex);
-                    previous.setCopyBackReplicaIndex(replicaIndex);
-                    previous.setType(MigrationType.MOVE_COPY_BACK);
+                    previous.setKeepReplicaIndex(replicaIndex);
+//                    previous.setType(MigrationType.MOVE_COPY_BACK);
                     return true;
                 }
             }
@@ -717,7 +739,7 @@ public class MigrationManager {
                 return false;
             }
 
-            if (migrationInfo.getType() == MigrationType.MOVE || migrationInfo.getType() == MigrationType.MOVE_COPY_BACK) {
+            if (migrationInfo.getType() == MigrationType.MOVE/* || migrationInfo.getType() == MigrationType.MOVE_COPY_BACK*/) {
                 Address replica = partition.getReplicaAddress(migrationInfo.getReplicaIndex());
                 if (replica == null) {
                     logger.severe("ERROR: partition replica owner is not set! -> partitionId="
@@ -814,8 +836,9 @@ public class MigrationManager {
                             partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
                     partition.setReplicaAddress(migrationInfo.getReplicaIndex(), migrationInfo.getDestination());
 
-                    if (migrationInfo.getType() == MigrationType.MOVE_COPY_BACK) {
-                        partition.setReplicaAddress(migrationInfo.getCopyBackReplicaIndex(), migrationInfo.getSource());
+//                    if (migrationInfo.getType() == MigrationType.MOVE_COPY_BACK) {
+                    if (migrationInfo.getKeepReplicaIndex() > -1) {
+                        partition.setReplicaAddress(migrationInfo.getKeepReplicaIndex(), migrationInfo.getSource());
                     }
 
                 } else {

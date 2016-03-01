@@ -320,11 +320,9 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
             logger.info("COMMIT: " + event.toString() + "\n");
             if (event.getMigrationEndpoint() == MigrationEndpoint.SOURCE) {
                 if (event.getMigrationType() == MigrationType.MOVE) {
-                    data.remove(event.getPartitionId());
-                }
-                if (event.getMigrationType() == MigrationType.MOVE_COPY_BACK
-                        && event.getCopyBackReplicaIndex() > backupCount) {
-                    data.remove(event.getPartitionId());
+                    if (event.getKeepReplicaIndex() == -1 || event.getKeepReplicaIndex() > backupCount) {
+                        data.remove(event.getPartitionId());
+                    }
                 }
             }
         }

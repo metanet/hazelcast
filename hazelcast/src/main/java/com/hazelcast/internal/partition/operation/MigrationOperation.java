@@ -179,7 +179,7 @@ public final class MigrationOperation extends BaseMigrationOperation {
         PartitionMigrationEvent event =
                 new PartitionMigrationEvent(MigrationEndpoint.DESTINATION, migrationInfo.getType(),
                         migrationInfo.getPartitionId(), migrationInfo.getReplicaIndex(),
-                        migrationInfo.getCopyBackReplicaIndex());
+                        migrationInfo.getKeepReplicaIndex());
         service.beforeMigration(event);
         op.beforeRun();
         op.run();

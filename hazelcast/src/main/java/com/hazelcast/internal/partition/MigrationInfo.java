@@ -69,7 +69,7 @@ public class MigrationInfo implements DataSerializable {
     private Address destination;
     private Address master;
     private String masterUuid;
-    private int copyBackReplicaIndex = -1;
+    private int keepReplicaIndex = -1;
     private MigrationType type = MigrationType.MOVE;
 
     private final AtomicBoolean processing = new AtomicBoolean(false);
@@ -87,13 +87,13 @@ public class MigrationInfo implements DataSerializable {
     }
 
     public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination,
-            MigrationType type, int copyBackReplicaIndex) {
+            MigrationType type, int keepReplicaIndex) {
         this.partitionId = partitionId;
         this.replicaIndex = replicaIndex;
         this.source = source;
         this.destination = destination;
         this.type = type;
-        this.copyBackReplicaIndex = copyBackReplicaIndex;
+        this.keepReplicaIndex = keepReplicaIndex;
         this.status = MigrationStatus.ACTIVE;
     }
 
@@ -113,12 +113,12 @@ public class MigrationInfo implements DataSerializable {
         return replicaIndex;
     }
 
-    public int getCopyBackReplicaIndex() {
-        return copyBackReplicaIndex;
+    public int getKeepReplicaIndex() {
+        return keepReplicaIndex;
     }
 
-    public void setCopyBackReplicaIndex(int copyBackReplicaIndex) {
-        this.copyBackReplicaIndex = copyBackReplicaIndex;
+    public void setKeepReplicaIndex(int keepReplicaIndex) {
+        this.keepReplicaIndex = keepReplicaIndex;
     }
 
     public MigrationType getType() {
@@ -173,7 +173,7 @@ public class MigrationInfo implements DataSerializable {
     public void writeData(ObjectDataOutput out) throws IOException {
         out.writeInt(partitionId);
         out.writeByte(replicaIndex);
-        out.writeByte(copyBackReplicaIndex);
+        out.writeByte(keepReplicaIndex);
         MigrationType.writeTo(type, out);
         MigrationStatus.writeTo(status, out);
 
@@ -196,7 +196,7 @@ public class MigrationInfo implements DataSerializable {
     public void readData(ObjectDataInput in) throws IOException {
         partitionId = in.readInt();
         replicaIndex = in.readByte();
-        copyBackReplicaIndex = in.readByte();
+        keepReplicaIndex = in.readByte();
         type = MigrationType.readFrom(in);
         status = MigrationStatus.readFrom(in);
 
@@ -226,7 +226,7 @@ public class MigrationInfo implements DataSerializable {
 
         if (partitionId != that.partitionId) return false;
         if (replicaIndex != that.replicaIndex) return false;
-        if (copyBackReplicaIndex != that.copyBackReplicaIndex) return false;
+        if (keepReplicaIndex != that.keepReplicaIndex) return false;
         if (source != null ? !source.equals(that.source) : that.source != null) return false;
         if (destination != null ? !destination.equals(that.destination) : that.destination != null) return false;
         if (masterUuid != null ? !masterUuid.equals(that.masterUuid) : that.masterUuid != null) return false;
@@ -240,7 +240,7 @@ public class MigrationInfo implements DataSerializable {
         result = 31 * result + (source != null ? source.hashCode() : 0);
         result = 31 * result + (destination != null ? destination.hashCode() : 0);
         result = 31 * result + (masterUuid != null ? masterUuid.hashCode() : 0);
-        result = 31 * result + copyBackReplicaIndex;
+        result = 31 * result + keepReplicaIndex;
         result = 31 * result + type.hashCode();
         return result;
     }
@@ -255,7 +255,7 @@ public class MigrationInfo implements DataSerializable {
         sb.append(", destination=").append(destination);
         sb.append(", master=").append(master);
         sb.append(", masterUuid='").append(masterUuid).append('\'');
-        sb.append(", copyBackReplicaIndex=").append(copyBackReplicaIndex);
+        sb.append(", keepReplicaIndex=").append(keepReplicaIndex);
         sb.append(", type=").append(type);
         sb.append(", processing=").append(processing);
         sb.append(", status=").append(status);

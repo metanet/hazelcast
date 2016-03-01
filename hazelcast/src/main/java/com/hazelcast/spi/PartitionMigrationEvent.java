@@ -35,20 +35,20 @@ public class PartitionMigrationEvent extends EventObject {
 
     private final int replicaIndex;
 
-    private final int copyBackReplicaIndex;
+    private final int keepReplicaIndex;
 
     public PartitionMigrationEvent(MigrationEndpoint migrationEndpoint, int partitionId) {
         this(migrationEndpoint, MigrationType.MOVE, partitionId, 0, -1);
     }
 
     public PartitionMigrationEvent(MigrationEndpoint migrationEndpoint, MigrationType migrationType, int partitionId,
-            int replicaIndex, int copyBackReplicaIndex) {
+            int replicaIndex, int keepReplicaIndex) {
         super(partitionId);
         this.migrationEndpoint = migrationEndpoint;
         this.migrationType = migrationType;
         this.partitionId = partitionId;
         this.replicaIndex = replicaIndex;
-        this.copyBackReplicaIndex = copyBackReplicaIndex;
+        this.keepReplicaIndex = keepReplicaIndex;
     }
 
     /**
@@ -90,8 +90,8 @@ public class PartitionMigrationEvent extends EventObject {
      *
      * @return
      */
-    public int getCopyBackReplicaIndex() {
-        return copyBackReplicaIndex;
+    public int getKeepReplicaIndex() {
+        return keepReplicaIndex;
     }
 
     @Override
@@ -101,7 +101,7 @@ public class PartitionMigrationEvent extends EventObject {
                 ", migrationType=" + migrationType +
                 ", partitionId=" + partitionId +
                 ", replicaIndex=" + replicaIndex +
-                ", copyBackReplicaIndex=" + copyBackReplicaIndex +
+                ", keepReplicaIndex=" + keepReplicaIndex +
                 '}';
     }
 }

@@ -206,7 +206,7 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
         PartitionMigrationEvent migrationEvent
                 = new PartitionMigrationEvent(MigrationEndpoint.SOURCE,
                 migrationInfo.getReplicaIndex() == 0 ? migrationInfo.getType() : MigrationType.COPY,
-                migrationInfo.getPartitionId(), migrationInfo.getReplicaIndex(), migrationInfo.getCopyBackReplicaIndex());
+                migrationInfo.getPartitionId(), migrationInfo.getReplicaIndex(), migrationInfo.getKeepReplicaIndex());
 
         Collection<Operation> tasks = new LinkedList<Operation>();
         for (ServiceInfo serviceInfo : nodeEngine.getServiceInfos(MigrationAwareService.class)) {
