@@ -87,7 +87,6 @@ class MigrationThread extends Thread implements Runnable {
             if (migrating) {
                 logger.info("All migration tasks have been completed, queues are empty.");
             }
-            migrationManager.evictCompletedMigrations();
             Thread.sleep(sleepTime);
         } else if (!migrationManager.isMigrationAllowed()) {
             Thread.sleep(sleepTime);

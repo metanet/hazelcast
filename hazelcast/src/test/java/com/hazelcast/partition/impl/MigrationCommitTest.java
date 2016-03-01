@@ -518,11 +518,13 @@ public class MigrationCommitTest
     }
 
     private static class CollectMigrationTaskOnCommit
-            extends InternalMigrationListener {
+            extends InternalMigrationListener implements HazelcastInstanceAware {
 
         private final AtomicReference<MigrationInfo> migrationInfoRef = new AtomicReference<MigrationInfo>();
 
-        private volatile boolean commit = false;
+        private volatile boolean commit;
+
+        private volatile HazelcastInstance instance;
 
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
@@ -532,7 +534,7 @@ public class MigrationCommitTest
                 return;
             }
 
-            if (migrationInfoRef.compareAndSet(null, migrationInfo)) {
+            if (!migrationInfoRef.compareAndSet(null, migrationInfo)) {
                 System.err.println("COLLECT COMMIT START FAILED! curr: " + migrationInfoRef.get() + " new: " + migrationInfo);
             }
         }
@@ -548,10 +550,17 @@ public class MigrationCommitTest
             MigrationInfo collected = migrationInfoRef.get();
             commit = migrationInfo.equals(collected);
             if (!commit) {
+                resetInternalPartitionListener(instance);
+            } else {
                 System.err.println(
                         "collect commit failed! collected migration: " + collected + " rollback migration: " + migrationInfo
                                 + " participant: " + participant);
             }
+        }
+
+        @Override
+        public void setHazelcastInstance(HazelcastInstance instance) {
+            this.instance = instance;
         }
 
     }
@@ -561,7 +570,7 @@ public class MigrationCommitTest
 
         private final AtomicReference<MigrationInfo> migrationInfoRef = new AtomicReference<MigrationInfo>();
 
-        private volatile boolean rollback = false;
+        private volatile boolean rollback;
 
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
