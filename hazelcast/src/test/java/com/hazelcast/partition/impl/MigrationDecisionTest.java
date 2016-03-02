@@ -1,10 +1,10 @@
 package com.hazelcast.partition.impl;
 
 import com.hazelcast.nio.Address;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.net.UnknownHostException;
+import java.util.Arrays;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
@@ -152,7 +152,7 @@ public class MigrationDecisionTest {
         final Address[] optimized = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
                 "localhost", 5703), new Address("localhost", 5701), null, null, null};
 
-        optimizeShifts(oldReplicas, newReplicas);
+        optimizeShiftDown(oldReplicas, newReplicas);
         assertArrayEquals(optimized, newReplicas);
     }
 
@@ -168,7 +168,7 @@ public class MigrationDecisionTest {
         final Address[] optimized = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
                 "localhost", 5701), null, null, null, null};
 
-        optimizeShifts(oldReplicas, newReplicas);
+        optimizeShiftDown(oldReplicas, newReplicas);
         assertArrayEquals(optimized, newReplicas);
     }
 
@@ -183,11 +183,10 @@ public class MigrationDecisionTest {
         final Address[] optimized = new Address[]{new Address("localhost", 5702), new Address("localhost",
                 5701), null, null, null, null, null};
 
-        optimizeShifts(oldReplicas, newReplicas);
+        optimizeShiftDown(oldReplicas, newReplicas);
         assertArrayEquals(optimized, newReplicas);
     }
 
-    @Ignore // fails
     @Test
     public void testOptimizeShiftDown4()
             throws UnknownHostException {
@@ -199,10 +198,44 @@ public class MigrationDecisionTest {
                 5704), new Address("localhost", 5705)};
 
         final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5701), new Address("localhost", 5707), new Address("localhost",
-                5705), new Address("localhost", 5704)};
+                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5707), new Address("localhost",
+                5701), new Address("localhost", 5705)};
 
-        optimizeShifts(oldReplicas, newReplicas);
+        optimizeShiftDown(oldReplicas, newReplicas);
+        assertArrayEquals(optimized, newReplicas);
+    }
+
+    @Test
+    public void testOptimizeShiftDown5()
+            throws UnknownHostException {
+        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
+
+        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5701), new Address(
+                "localhost", 5702), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
+
+        final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
+                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
+
+        optimizeShiftDown(oldReplicas, newReplicas);
+        assertArrayEquals(optimized, newReplicas);
+    }
+
+    @Test
+    public void testOptimizeShiftDown6()
+            throws UnknownHostException {
+        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
+
+        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
+                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5705), new Address("localhost", 5703), null};
+
+        final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), new Address("localhost", 5701), null};
+
+        System.out.println(Arrays.toString(newReplicas));
+        System.out.println(Arrays.toString(optimized));
+        optimizeShiftDown(oldReplicas, newReplicas);
         assertArrayEquals(optimized, newReplicas);
     }
 
@@ -281,28 +314,21 @@ public class MigrationDecisionTest {
         return -1;
     }
 
-    private void optimizeShifts(Address[] oldReplicas, Address[] newReplicas) {
+    private void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas) {
         for (int i = 0; i < oldReplicas.length; i++) {
             final Address oldAddress = oldReplicas[i];
             final Address newAddress = newReplicas[i];
 
-            if (oldAddress == null || newAddress == null || oldAddress.equals(newAddress)) {
+            if (oldAddress != null && newAddress != null && oldAddress.equals(newAddress)) {
                 continue;
             }
 
-            int newIndex = findIndex(newReplicas, oldAddress);
-            if (newIndex != -1) {
-                if (newIndex < i) {
-                    optimizeShiftUp(oldReplicas, newReplicas, i);
-                } else {
-                    optimizeShiftDown(oldReplicas, newReplicas, i);
-                }
+            int oldIndex = findIndex(oldReplicas, newAddress);
+            if (oldIndex != -1 && oldIndex < i) {
+                optimizeShiftDown(oldReplicas, newReplicas, oldIndex);
+                return;
             }
         }
-    }
-
-    private void optimizeShiftUp(Address[] oldReplicas, Address[] newReplicas, int index) {
-
     }
 
     private void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas, int index) {
@@ -313,7 +339,7 @@ public class MigrationDecisionTest {
         while (index != -1) {
             int nextIndex = findIndex(newReplicas, oldReplicas[index]);
             newReplicas[index] = oldReplicas[index];
-            if (nextIndex == -1) {
+            if (nextIndex == -1 ) {
                 break;
             }
             index = nextIndex;
