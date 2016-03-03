@@ -193,44 +193,11 @@ class MigrationDecision {
         }
     }
 
-    static void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas) {
-        for (int i = 0; i < oldReplicas.length; i++) {
-            final Address oldAddress = oldReplicas[i];
-            final Address newAddress = newReplicas[i];
-
-            if (oldAddress != null && newAddress != null && oldAddress.equals(newAddress)) {
-                continue;
-            }
-
-            int oldIndex = getReplicaIndex(oldReplicas, newAddress);
-            if (oldIndex != -1 && oldIndex < i) {
-                optimizeShiftDown(oldReplicas, newReplicas, oldIndex);
-                return;
-            }
-        }
-    }
-
-    private static void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas, int index) {
-        Address bottomAddress = oldReplicas[index];
-
-        index = getReplicaIndex(newReplicas, oldReplicas[index]);
-
-        while (index != -1) {
-            int nextIndex = getReplicaIndex(newReplicas, oldReplicas[index]);
-            newReplicas[index] = oldReplicas[index];
-            if (nextIndex == -1 ) {
-                break;
-            }
-            index = nextIndex;
-        }
-
-        newReplicas[index] = bottomAddress;
-    }
-
     private static final boolean TRACE = false;
     private static void log(String x) {
         if (TRACE) {
             System.out.println(x);
         }
     }
+
 }

@@ -16,246 +16,107 @@
 
 package com.hazelcast.internal.partition.impl;
 
+import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.nio.Address;
+import com.hazelcast.partition.MigrationType;
+import com.sun.istack.internal.NotNull;
 import org.junit.Test;
 
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Random;
 
-import static com.hazelcast.internal.partition.impl.MigrationDecision.fixCycle;
-import static com.hazelcast.internal.partition.impl.MigrationDecision.isCyclic;
-import static com.hazelcast.internal.partition.impl.MigrationDecision.optimizeShiftDown;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static com.hazelcast.internal.partition.impl.MigrationDecision.migrate;
 
 public class MigrationDecisionTest {
 
+    private static final MigrationDecision.MigrationCallback CALLBACK = new MigrationDecision.MigrationCallback() {
+        @Override
+        public void migrate(Address currentOwner, Address newOwner, int replicaIndex, MigrationType type,
+                int keepReplicaIndex) {
+        }
+    };
+
     @Test
-    public void testCycle1()
+    public void test()
             throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost",
-                5702), null, null, null, null, null};
 
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5702), new Address("localhost",
-                5701), null, null, null, null, null};
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5705), null, null, null};
 
-        assertTrue(isCyclic(oldReplicas, newReplicas));
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5703), new Address(
+                "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5702), new Address("localhost",
+                5701), null};
+
+        migrate(oldAddresses, newAddresses, CALLBACK);
+
     }
 
     @Test
-    public void testCycle1_fixed()
+    public void test2()
             throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost",
-                5702), null, null, null, null, null};
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5705), null, null, null};
 
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5702), new Address("localhost",
-                5701), null, null, null, null, null};
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5703), new Address(
+                "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5701), null, null};
 
-        assertTrue(fixCycle(oldReplicas, newReplicas));
-        assertArrayEquals(oldReplicas, newReplicas);
+        migrate(oldAddresses, newAddresses, CALLBACK);
     }
 
     @Test
-    public void testCycle2()
+    public void test3()
             throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5705), null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
                 "localhost", 5703), null, null, null, null};
 
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5703), new Address("localhost", 5701), new Address(
-                "localhost", 5702), null, null, null, null};
-
-        assertTrue(isCyclic(oldReplicas, newReplicas));
+        migrate(oldAddresses, newAddresses, CALLBACK);
     }
 
     @Test
-    public void testCycle2_fixed()
+    public void testRandom()
             throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), null, null, null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5703), new Address("localhost", 5701), new Address(
-                "localhost", 5702), null, null, null, null};
-
-        assertTrue(fixCycle(oldReplicas, newReplicas));
-        assertArrayEquals(oldReplicas, newReplicas);
+        for (int i = 0; i < 100; i++) {
+            testRandom(3);
+            testRandom(4);
+            testRandom(5);
+        }
     }
 
-    @Test
-    public void testCycle3()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
+    private static void testRandom(int initialLen) throws java.net.UnknownHostException {
+        Address[] oldAddresses = new Address[InternalPartition.MAX_REPLICA_COUNT];
+        for (int i = 0; i < initialLen; i++) {
+            oldAddresses[i] = newAddress(5000 + i);
+        }
 
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), null, null};
+        Address[] newAddresses = Arrays.copyOf(oldAddresses, oldAddresses.length);
+        int newLen = (int) (Math.random() * (oldAddresses.length - initialLen + 1));
+        for (int i = 0; i < newLen; i++) {
+            newAddresses[i + initialLen] = newAddress(6000 + i);
+        }
 
-        assertTrue(isCyclic(oldReplicas, newReplicas));
+        shuffle(newAddresses, initialLen + newLen);
+
+        migrate(oldAddresses, newAddresses, CALLBACK);
     }
 
-    @Test
-    public void testCycle3_fixed()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), null, null};
-
-        assertTrue(fixCycle(oldReplicas, newReplicas));
-        assertArrayEquals(oldReplicas, newReplicas);
+    private static void shuffle(Address[] array, int len) {
+        int index;
+        Address temp;
+        Random random = new Random();
+        for (int i = len - 1; i > 0; i--) {
+            index = random.nextInt(i + 1);
+            temp = array[index];
+            array[index] = array[i];
+            array[i] = temp;
+        }
     }
 
-    @Test
-    public void testCycle4()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), new Address("localhost",
-                5706), new Address("localhost", 5707)};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), new Address("localhost",
-                5707), new Address("localhost", 5706)};
-
-        assertTrue(isCyclic(oldReplicas, newReplicas));
+    @NotNull
+    private static Address newAddress(int port) throws java.net.UnknownHostException {
+        return new Address("localhost", port);
     }
-
-    @Test
-    public void testCycle4_fixed()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), new Address("localhost",
-                5706), new Address("localhost", 5707)};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), new Address("localhost",
-                5707), new Address("localhost", 5706)};
-
-        assertTrue(fixCycle(oldReplicas, newReplicas));
-        assertArrayEquals(oldReplicas, newReplicas);
-    }
-
-    @Test
-    public void testNoCycle()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost",
-                5702), null, null, null, null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5702), new Address("localhost",
-                5703), null, null, null, null, null};
-
-        assertFalse(isCyclic(oldReplicas, newReplicas));
-    }
-
-    @Test
-    public void testNoCycle2()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), null, null};
-
-        assertFalse(isCyclic(oldReplicas, newReplicas));
-    }
-
-    @Test
-    public void testOptimizeShiftDown()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), null, null, null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5701), new Address(
-                "localhost", 5702), new Address("localhost", 5703), null, null, null};
-
-        final Address[] optimized = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5701), null, null, null};
-
-        optimizeShiftDown(oldReplicas, newReplicas);
-        assertArrayEquals(optimized, newReplicas);
-    }
-
-    @Test
-    public void testOptimizeShiftDown2()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), null, null, null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5701), new Address(
-                "localhost", 5702), null, null, null, null};
-
-        final Address[] optimized = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
-                "localhost", 5701), null, null, null, null};
-
-        optimizeShiftDown(oldReplicas, newReplicas);
-        assertArrayEquals(optimized, newReplicas);
-    }
-
-    @Test
-    public void testOptimizeShiftDown3()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), null, null, null, null, null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5702), new Address("localhost",
-                5701), null, null, null, null, null};
-
-        final Address[] optimized = new Address[]{new Address("localhost", 5702), new Address("localhost",
-                5701), null, null, null, null, null};
-
-        optimizeShiftDown(oldReplicas, newReplicas);
-        assertArrayEquals(optimized, newReplicas);
-    }
-
-    @Test
-    public void testOptimizeShiftDown4()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5701), new Address(
-                "localhost", 5702), new Address("localhost", 5703), new Address("localhost", 5707), new Address("localhost",
-                5704), new Address("localhost", 5705)};
-
-        final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5707), new Address("localhost",
-                5701), new Address("localhost", 5705)};
-
-        optimizeShiftDown(oldReplicas, newReplicas);
-        assertArrayEquals(optimized, newReplicas);
-    }
-
-    @Test
-    public void testOptimizeShiftDown5()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5701), new Address(
-                "localhost", 5702), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        optimizeShiftDown(oldReplicas, newReplicas);
-        assertArrayEquals(optimized, newReplicas);
-    }
-
-    @Test
-    public void testOptimizeShiftDown6()
-            throws UnknownHostException {
-        final Address[] oldReplicas = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), null, null};
-
-        final Address[] newReplicas = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
-                "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5705), new Address("localhost", 5703), null};
-
-        final Address[] optimized = new Address[]{new Address("localhost", 5706), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), new Address("localhost", 5705), new Address("localhost", 5701), null};
-
-        System.out.println(Arrays.toString(newReplicas));
-        System.out.println(Arrays.toString(optimized));
-        optimizeShiftDown(oldReplicas, newReplicas);
-        assertArrayEquals(optimized, newReplicas);
-    }
-
 }
