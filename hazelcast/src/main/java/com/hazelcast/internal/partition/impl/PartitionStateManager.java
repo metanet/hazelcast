@@ -259,12 +259,19 @@ public class PartitionStateManager {
 
     // called under partition service lock
     boolean setVersion(int version) {
-        if (version <= stateVersion.get()) {
-            String message = "Master version should be greater than ours! Current: " + stateVersion.get()
-                    + ", Master: " + version;
-            logger.warning(message);
+        if (version < stateVersion.get()) {
+            logger.warning("Master version should be greater than ours! Current: " + stateVersion.get()
+                    + ", Master: " + version);
+            return false;
+        } else if (version == stateVersion.get()) {
+            if (logger.isFineEnabled()) {
+                logger.fine("Master version should be greater than ours! Current: " + stateVersion.get()
+                        + ", Master: " + version);
+            }
+
             return false;
         }
+
         stateVersion.set(version);
         return true;
     }
