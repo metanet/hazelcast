@@ -1,4 +1,20 @@
-package com.hazelcast.partition.impl;
+/*
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.nio.Address;
 import org.junit.Test;
@@ -6,6 +22,9 @@ import org.junit.Test;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 
+import static com.hazelcast.internal.partition.impl.MigrationDecision.fixCycle;
+import static com.hazelcast.internal.partition.impl.MigrationDecision.isCyclic;
+import static com.hazelcast.internal.partition.impl.MigrationDecision.optimizeShiftDown;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -33,7 +52,7 @@ public class MigrationDecisionTest {
         final Address[] newReplicas = new Address[]{new Address("localhost", 5702), new Address("localhost",
                 5701), null, null, null, null, null};
 
-        assertTrue(isCyclic2(oldReplicas, newReplicas));
+        assertTrue(fixCycle(oldReplicas, newReplicas));
         assertArrayEquals(oldReplicas, newReplicas);
     }
 
@@ -58,7 +77,7 @@ public class MigrationDecisionTest {
         final Address[] newReplicas = new Address[]{new Address("localhost", 5703), new Address("localhost", 5701), new Address(
                 "localhost", 5702), null, null, null, null};
 
-        assertTrue(isCyclic2(oldReplicas, newReplicas));
+        assertTrue(fixCycle(oldReplicas, newReplicas));
         assertArrayEquals(oldReplicas, newReplicas);
     }
 
@@ -83,7 +102,7 @@ public class MigrationDecisionTest {
         final Address[] newReplicas = new Address[]{new Address("localhost", 5705), new Address("localhost", 5702), new Address(
                 "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), null, null};
 
-        assertTrue(isCyclic2(oldReplicas, newReplicas));
+        assertTrue(fixCycle(oldReplicas, newReplicas));
         assertArrayEquals(oldReplicas, newReplicas);
     }
 
@@ -112,7 +131,7 @@ public class MigrationDecisionTest {
                 "localhost", 5701), new Address("localhost", 5704), new Address("localhost", 5703), new Address("localhost",
                 5707), new Address("localhost", 5706)};
 
-        assertTrue(isCyclic2(oldReplicas, newReplicas));
+        assertTrue(fixCycle(oldReplicas, newReplicas));
         assertArrayEquals(oldReplicas, newReplicas);
     }
 
@@ -237,115 +256,6 @@ public class MigrationDecisionTest {
         System.out.println(Arrays.toString(optimized));
         optimizeShiftDown(oldReplicas, newReplicas);
         assertArrayEquals(optimized, newReplicas);
-    }
-
-    private boolean isCyclic2(Address[] oldReplicas, Address[] newReplicas) {
-        boolean cyclic = false;
-        for (int i = 0; i < oldReplicas.length; i++) {
-            final Address oldAddress = oldReplicas[i];
-            final Address newAddress = newReplicas[i];
-
-            if (oldAddress == null || newAddress == null || oldAddress.equals(newAddress)) {
-                continue;
-            }
-
-            if (isCyclic(oldReplicas, newReplicas, i)) {
-                fixCycle(oldReplicas, newReplicas, i);
-                cyclic = true;
-            }
-        }
-
-        return cyclic;
-    }
-
-    private boolean isCyclic(Address[] oldReplicas, Address[] newReplicas) {
-        for (int i = 0; i < oldReplicas.length; i++) {
-            final Address oldAddress = oldReplicas[i];
-            final Address newAddress = newReplicas[i];
-
-            if (oldAddress == null || newAddress == null || oldAddress.equals(newAddress)) {
-                continue;
-            }
-
-            if (isCyclic(oldReplicas, newReplicas, i)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private boolean isCyclic(Address[] oldReplicas, Address[] newReplicas, int index) {
-        final Address newOwner = newReplicas[index];
-        while (true) {
-            int nextIndex = findIndex(newReplicas, oldReplicas[index]);
-            if (nextIndex == -1) {
-                return false;
-            } else if (newOwner.equals(oldReplicas[nextIndex])) {
-                return true;
-            } else {
-                index = nextIndex;
-            }
-        }
-    }
-
-    private void fixCycle(Address[] oldReplicas, Address[] newReplicas, int index) {
-        while (true) {
-            int nextIndex = findIndex(newReplicas, oldReplicas[index]);
-            newReplicas[index] = oldReplicas[index];
-            if (nextIndex == -1) {
-                return;
-            }
-            index = nextIndex;
-        }
-    }
-
-    private int findIndex(Address[] replicas, Address address) {
-        if (address == null) {
-            return -1;
-        }
-
-        for (int i = 0; i < replicas.length; i++) {
-            if (address.equals(replicas[i])) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas) {
-        for (int i = 0; i < oldReplicas.length; i++) {
-            final Address oldAddress = oldReplicas[i];
-            final Address newAddress = newReplicas[i];
-
-            if (oldAddress != null && newAddress != null && oldAddress.equals(newAddress)) {
-                continue;
-            }
-
-            int oldIndex = findIndex(oldReplicas, newAddress);
-            if (oldIndex != -1 && oldIndex < i) {
-                optimizeShiftDown(oldReplicas, newReplicas, oldIndex);
-                return;
-            }
-        }
-    }
-
-    private void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas, int index) {
-        Address bottomAddress = oldReplicas[index];
-
-        index = findIndex(newReplicas, oldReplicas[index]);
-
-        while (index != -1) {
-            int nextIndex = findIndex(newReplicas, oldReplicas[index]);
-            newReplicas[index] = oldReplicas[index];
-            if (nextIndex == -1 ) {
-                break;
-            }
-            index = nextIndex;
-        }
-
-        newReplicas[index] = bottomAddress;
     }
 
 }

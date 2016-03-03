@@ -1,94 +1,36 @@
-package com.hazelcast.partition.impl;
+/*
+ * Copyright (c) 2008-2016, Hazelcast, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-import com.hazelcast.internal.partition.InternalPartition;
+package com.hazelcast.internal.partition.impl;
+
 import com.hazelcast.nio.Address;
-import com.sun.istack.internal.NotNull;
-import org.junit.Test;
 
-import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Random;
 import java.util.Set;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.hazelcast.internal.partition.impl.InternalPartitionImpl.getReplicaIndex;
 
-public class MigrationDecisionTest2 {
+/**
+ * TODO: Javadoc Pending...
+ *
+ */
+class MigrationDecision {
 
-    @Test
-    public void test()
-            throws UnknownHostException {
-
-        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5705), null, null, null};
-
-        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5703), new Address(
-                "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5702), new Address("localhost",
-                5701), null};
-
-        migrate(oldAddresses, newAddresses);
-
-    }
-
-    @Test
-    public void test2()
-            throws UnknownHostException {
-        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5705), null, null, null};
-
-        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5703), new Address(
-                "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5701), null, null};
-
-        migrate(oldAddresses, newAddresses);
-    }
-
-    @Test
-    public void testRandom()
-            throws UnknownHostException {
-        for (int i = 0; i < 100; i++) {
-            testRandom(3);
-            testRandom(4);
-            testRandom(5);
-        }
-    }
-
-    private static void testRandom(int initialLen) throws java.net.UnknownHostException {
-        Address[] oldAddresses = new Address[InternalPartition.MAX_REPLICA_COUNT];
-        for (int i = 0; i < initialLen; i++) {
-            oldAddresses[i] = newAddress(5000 + i);
-        }
-
-        Address[] newAddresses = Arrays.copyOf(oldAddresses, oldAddresses.length);
-        int newLen = (int) (Math.random() * (oldAddresses.length - initialLen + 1));
-        for (int i = 0; i < newLen; i++) {
-            newAddresses[i + initialLen] = newAddress(6000 + i);
-        }
-
-        shuffle(newAddresses, initialLen + newLen);
-
-        migrate(oldAddresses, newAddresses);
-    }
-
-    private static void shuffle(Address[] array, int len) {
-        int index;
-        Address temp;
-        Random random = new Random();
-        for (int i = len - 1; i > 0; i--) {
-            index = random.nextInt(i + 1);
-            temp = array[index];
-            array[index] = array[i];
-            array[i] = temp;
-        }
-    }
-
-    @NotNull
-    private static Address newAddress(int port) throws java.net.UnknownHostException {
-        return new Address("localhost", port);
-    }
-
-    public static void migrate(Address[] oldAddresses, Address[] newAddresses) {
+    static void migrate(Address[] oldAddresses, Address[] newAddresses) {
 
         System.out.println("#############################################");
         Address[] state = new Address[oldAddresses.length];
@@ -113,13 +55,13 @@ public class MigrationDecisionTest2 {
             } else if (newAddresses[currentIndex].equals(state[currentIndex])) {
                 System.out.println("Addresses are same on index: " + currentIndex);
                 currentIndex++;
-            } else if (findIndex(newAddresses, state[currentIndex]) == -1 && findIndex(state, newAddresses[currentIndex]) == -1) {
+            } else if (getReplicaIndex(newAddresses, state[currentIndex]) == -1 && getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
                 System.out.println("MOVE " + newAddresses[currentIndex] + " to index: " + currentIndex);
                 state[currentIndex] = newAddresses[currentIndex];
                 currentIndex++;
             } else { // IT IS A MOVE COPY BACK
-                if (findIndex(state, newAddresses[currentIndex]) == -1) {
-                    int keepReplicaIndex = findIndex(newAddresses, state[currentIndex]);
+                if (getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
+                    int keepReplicaIndex = getReplicaIndex(newAddresses, state[currentIndex]);
                     System.out.println("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex
                             + " with keepReplicaIndex: " + keepReplicaIndex);
 
@@ -130,18 +72,17 @@ public class MigrationDecisionTest2 {
                     Address target = newAddresses[currentIndex];
 
                     while (true) {
-                        int j = findIndex(state, target);
+                        int j = getReplicaIndex(state, target);
 
                         if (j == -1) {
-                            System.out.println(target + " is not present in " + Arrays.toString(state));
-                            fail();
-                            break;
+                            throw new AssertionError(target + " is not present in " + Arrays.toString(state));
+
                         } else if (newAddresses[j] == null) {
                             System.out.println(
                                     "SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
                             state[currentIndex] = state[j];
                             break;
-                        } else if (findIndex(state, newAddresses[j]) == -1) { //
+                        } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
                             System.out.println("MOVE2 " + newAddresses[j] + " to index: " + j);
                             state[j] = newAddresses[j];
                             break;
@@ -157,27 +98,30 @@ public class MigrationDecisionTest2 {
             Set<Address> verify = new HashSet<Address>();
             for (Address s : state) {
                 if (s != null) {
-                    assertTrue(verify.add(s));
+                    assert verify.add(s);
                 }
             }
 
         }
 
-        assertArrayEquals(state, newAddresses);
+        assert Arrays.equals(state, newAddresses);
     }
 
-    private static int findIndex(Address[] replicas, Address address) {
-        if (address == null) {
-            return -1;
-        }
+    static boolean isCyclic(Address[] oldReplicas, Address[] newReplicas) {
+        for (int i = 0; i < oldReplicas.length; i++) {
+            final Address oldAddress = oldReplicas[i];
+            final Address newAddress = newReplicas[i];
 
-        for (int i = 0; i < replicas.length; i++) {
-            if (address.equals(replicas[i])) {
-                return i;
+            if (oldAddress == null || newAddress == null || oldAddress.equals(newAddress)) {
+                continue;
+            }
+
+            if (isCyclic(oldReplicas, newReplicas, i)) {
+                return true;
             }
         }
 
-        return -1;
+        return false;
     }
 
     static boolean fixCycle(Address[] oldReplicas, Address[] newReplicas) {
@@ -202,7 +146,7 @@ public class MigrationDecisionTest2 {
     private static boolean isCyclic(Address[] oldReplicas, Address[] newReplicas, int index) {
         final Address newOwner = newReplicas[index];
         while (true) {
-            int nextIndex = findIndex(newReplicas, oldReplicas[index]);
+            int nextIndex = InternalPartitionImpl.getReplicaIndex(newReplicas, oldReplicas[index]);
             if (nextIndex == -1) {
                 return false;
             } else if (newOwner.equals(oldReplicas[nextIndex])) {
@@ -215,7 +159,7 @@ public class MigrationDecisionTest2 {
 
     private static void fixCycle(Address[] oldReplicas, Address[] newReplicas, int index) {
         while (true) {
-            int nextIndex = findIndex(newReplicas, oldReplicas[index]);
+            int nextIndex = InternalPartitionImpl.getReplicaIndex(newReplicas, oldReplicas[index]);
             newReplicas[index] = oldReplicas[index];
             if (nextIndex == -1) {
                 return;
@@ -224,4 +168,37 @@ public class MigrationDecisionTest2 {
         }
     }
 
+    static void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas) {
+        for (int i = 0; i < oldReplicas.length; i++) {
+            final Address oldAddress = oldReplicas[i];
+            final Address newAddress = newReplicas[i];
+
+            if (oldAddress != null && newAddress != null && oldAddress.equals(newAddress)) {
+                continue;
+            }
+
+            int oldIndex = getReplicaIndex(oldReplicas, newAddress);
+            if (oldIndex != -1 && oldIndex < i) {
+                optimizeShiftDown(oldReplicas, newReplicas, oldIndex);
+                return;
+            }
+        }
+    }
+
+    private static void optimizeShiftDown(Address[] oldReplicas, Address[] newReplicas, int index) {
+        Address bottomAddress = oldReplicas[index];
+
+        index = getReplicaIndex(newReplicas, oldReplicas[index]);
+
+        while (index != -1) {
+            int nextIndex = getReplicaIndex(newReplicas, oldReplicas[index]);
+            newReplicas[index] = oldReplicas[index];
+            if (nextIndex == -1 ) {
+                break;
+            }
+            index = nextIndex;
+        }
+
+        newReplicas[index] = bottomAddress;
+    }
 }
