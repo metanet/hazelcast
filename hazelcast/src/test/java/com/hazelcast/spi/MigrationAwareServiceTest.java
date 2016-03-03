@@ -52,6 +52,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
@@ -61,7 +62,7 @@ import static org.junit.Assert.assertTrue;
 public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     private static final String BACKUP_COUNT_PROP = "backups.count";
-    private static final int PARTITION_COUNT = 222;
+    private static final int PARTITION_COUNT = 333;
     private static final int PARALLEL_REPLICATIONS = 0;
 
     private TestHazelcastInstanceFactory factory;
@@ -93,7 +94,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         fill(hz);
         assertSize(backupCount);
 
-        for (int i = 1; i < backupCount + 3; i++) {
+        for (int i = 1; i <= InternalPartition.MAX_REPLICA_COUNT; i++) {
             startNodes(config, 1);
             assertSize(backupCount);
         }
@@ -121,7 +122,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         fill(hz);
         assertSize(backupCount);
 
-        startNodes(config, backupCount + 1);
+        startNodes(config, InternalPartition.MAX_REPLICA_COUNT);
         assertSize(backupCount);
     }
 
@@ -143,7 +144,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     private void testPartitionDataSize_whenBackupNodesTerminated(int backupCount) throws InterruptedException {
         Config config = getConfig(backupCount);
 
-        startNodes(config, backupCount + 4);
+        startNodes(config, InternalPartition.MAX_REPLICA_COUNT + 1);
         HazelcastInstance hz = factory.getAllHazelcastInstances().iterator().next();
         fill(hz);
         assertSize(backupCount);
@@ -250,7 +251,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                 }
                 assertEquals(s.toString(), expectedSize, total);
             }
-        }, 15);
+        }, 30);
     }
 
     private SampleMigrationAwareService getService(HazelcastInstance hz) {
@@ -323,6 +324,11 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                     if (event.getKeepReplicaIndex() == -1 || event.getKeepReplicaIndex() > backupCount) {
                         data.remove(event.getPartitionId());
                     }
+                }
+            }
+            if (event.getMigrationEndpoint() == MigrationEndpoint.DESTINATION) {
+                if (event.getReplicaIndex() > backupCount) {
+                    assertNull(data.get(event.getPartitionId()));
                 }
             }
         }

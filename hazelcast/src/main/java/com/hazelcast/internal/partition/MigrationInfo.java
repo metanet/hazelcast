@@ -68,9 +68,11 @@ public class MigrationInfo implements DataSerializable {
     private Address source;
     private Address destination;
     private Address master;
-    private String masterUuid;
-    private int keepReplicaIndex = -1;
     private MigrationType type = MigrationType.MOVE;
+    private int keepReplicaIndex = -1;
+
+    // TODO: fix name and change access modifier
+    public Address oldKeepReplicaOwner;
 
     private final AtomicBoolean processing = new AtomicBoolean(false);
     private volatile MigrationStatus status;
@@ -129,14 +131,6 @@ public class MigrationInfo implements DataSerializable {
         this.type = type;
     }
 
-    public void setMasterUuid(String uuid) {
-        masterUuid = uuid;
-    }
-
-    public String getMasterUuid() {
-        return masterUuid;
-    }
-
     public Address getMaster() {
         return master;
     }
@@ -184,11 +178,12 @@ public class MigrationInfo implements DataSerializable {
         }
         destination.writeData(out);
 
-        out.writeUTF(masterUuid);
-        boolean b = master != null;
-        out.writeBoolean(b);
-        if (b) {
-            master.writeData(out);
+        master.writeData(out);
+
+        boolean hasOld = oldKeepReplicaOwner != null;
+        out.writeBoolean(hasOld);
+        if (hasOld) {
+            oldKeepReplicaOwner.writeData(out);
         }
     }
 
@@ -208,10 +203,12 @@ public class MigrationInfo implements DataSerializable {
         destination = new Address();
         destination.readData(in);
 
-        masterUuid = in.readUTF();
+        master = new Address();
+        master.readData(in);
+
         if (in.readBoolean()) {
-            master = new Address();
-            master.readData(in);
+            oldKeepReplicaOwner = new Address();
+            oldKeepReplicaOwner.readData(in);
         }
     }
 
@@ -229,7 +226,6 @@ public class MigrationInfo implements DataSerializable {
         if (keepReplicaIndex != that.keepReplicaIndex) return false;
         if (source != null ? !source.equals(that.source) : that.source != null) return false;
         if (destination != null ? !destination.equals(that.destination) : that.destination != null) return false;
-        if (masterUuid != null ? !masterUuid.equals(that.masterUuid) : that.masterUuid != null) return false;
         return type == that.type;
     }
 
@@ -239,7 +235,6 @@ public class MigrationInfo implements DataSerializable {
         result = 31 * result + replicaIndex;
         result = 31 * result + (source != null ? source.hashCode() : 0);
         result = 31 * result + (destination != null ? destination.hashCode() : 0);
-        result = 31 * result + (masterUuid != null ? masterUuid.hashCode() : 0);
         result = 31 * result + keepReplicaIndex;
         result = 31 * result + type.hashCode();
         return result;
@@ -254,7 +249,6 @@ public class MigrationInfo implements DataSerializable {
         sb.append(", source=").append(source);
         sb.append(", destination=").append(destination);
         sb.append(", master=").append(master);
-        sb.append(", masterUuid='").append(masterUuid).append('\'');
         sb.append(", keepReplicaIndex=").append(keepReplicaIndex);
         sb.append(", type=").append(type);
         sb.append(", processing=").append(processing);

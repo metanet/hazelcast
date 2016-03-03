@@ -16,7 +16,6 @@
 
 package com.hazelcast.internal.partition.impl;
 
-import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.instance.GroupProperty;
@@ -29,6 +28,7 @@ import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
+import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
 import com.hazelcast.internal.partition.operation.FinalizeMigrationOperation;
 import com.hazelcast.internal.partition.operation.MigrationCommitOperation;
 import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
@@ -40,6 +40,7 @@ import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.Clock;
+import com.hazelcast.util.MutableInteger;
 import com.hazelcast.util.Preconditions;
 import com.hazelcast.util.scheduler.CoalescingDelayedTrigger;
 
@@ -317,6 +318,13 @@ public class MigrationManager {
                     && node.getThisAddress().equals(migrationInfo.getSource())) {
                 // OLD BACKUP
                 finalizeMigration(migrationInfo);
+            } else if (migrationInfo.getKeepReplicaIndex() > 0) {
+                if (node.getThisAddress().equals(migrationInfo.oldKeepReplicaOwner)) {
+                    // clear
+                    ClearReplicaOperation op = new ClearReplicaOperation(migrationInfo.getKeepReplicaIndex());
+                    op.setPartitionId(migrationInfo.getPartitionId()).setNodeEngine(nodeEngine).setService(partitionService);
+                    nodeEngine.getOperationService().executeOperation(op);
+                }
             }
         } finally {
             partitionServiceLock.unlock();
@@ -498,6 +506,8 @@ public class MigrationManager {
             }
             System.out.println("");
 
+            final MutableInteger lostCount = new MutableInteger();
+            final MutableInteger migrationCount = new MutableInteger();
 
             for (int i = 0; i < newState.length; i++) {
                 final int partitionId = i;
@@ -511,15 +521,22 @@ public class MigrationManager {
                                     MigrationType type, int keepReplicaIndex) {
 
                                 if (currentOwner == null && replicaIndex == 0) {
+                                    lostCount.value++;
                                     assignNewPartitionOwner(partitionId, currentPartition, newOwner);
                                 } else {
-                                    scheduleMigration(new MigrationInfo(partitionId, replicaIndex,
-                                            currentOwner, newOwner, type, keepReplicaIndex), MigrateTaskReason.REPARTITIONING);
+                                    migrationCount.value++;
+                                    MigrationInfo migration = new MigrationInfo(partitionId, replicaIndex, currentOwner,
+                                            newOwner, type, keepReplicaIndex);
+                                    if (keepReplicaIndex > 0) {
+                                        migration.oldKeepReplicaOwner = currentPartition.getReplicaAddress(keepReplicaIndex);
+                                    }
+                                    scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
                                 }
                             }
                         });
             }
 
+            logMigrationStatistics(migrationCount.value, lostCount.value);
         }
 
         private void processNewPartitionState_old(Address[][] newState) {
@@ -690,10 +707,6 @@ public class MigrationManager {
 
     }
 
-    private Member getMasterMember() {
-        return node.clusterService.getMember(node.getMasterAddress());
-    }
-
     class MigrateTask implements MigrationRunnable {
 
         final MigrationInfo migrationInfo;
@@ -702,11 +715,7 @@ public class MigrationManager {
 
         public MigrateTask(MigrationInfo migrationInfo, MigrateTaskReason reason) {
             this.migrationInfo = migrationInfo;
-            final Member masterMember = getMasterMember();
-            if (masterMember != null) {
-                migrationInfo.setMasterUuid(masterMember.getUuid());
-                migrationInfo.setMaster(masterMember.getAddress());
-            }
+            migrationInfo.setMaster(node.getThisAddress());
             this.reason = reason;
         }
 
