@@ -6,6 +6,8 @@ public interface MigrationRunnable extends Runnable {
 
     void invalidate(Address address);
 
+    void invalidate(int partitionId);
+
     boolean isValid();
     
     boolean isPauseable();

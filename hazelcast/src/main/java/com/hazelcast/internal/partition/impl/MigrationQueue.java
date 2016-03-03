@@ -78,6 +78,12 @@ class MigrationQueue {
         }
     }
 
+    public void invalidatePendingMigrations(int partitionId) {
+        for (MigrationRunnable runnable : queue) {
+            runnable.invalidate(partitionId);
+        }
+    }
+
     public boolean hasMigrationTasks() {
         return migrateTaskCount.get() > 0;
     }

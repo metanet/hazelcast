@@ -696,6 +696,11 @@ public class MigrationManager {
         }
 
         @Override
+        public void invalidate(int partitionId) {
+
+        }
+
+        @Override
         public boolean isValid() {
             return valid;
         }
@@ -833,6 +838,7 @@ public class MigrationManager {
             partitionServiceLock.lock();
             try {
                 addCompletedMigration(migrationInfo);
+                migrationQueue.invalidatePendingMigrations(migrationInfo.getPartitionId());
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
                 partitionService.getPartitionStateManager().incrementVersion(2); // TODO move this into constant
@@ -910,6 +916,13 @@ public class MigrationManager {
                 if (!valid) {
                     migrationInfo.setStatus(MigrationStatus.INVALID);
                 }
+            }
+        }
+
+        @Override
+        public void invalidate(int partitionId) {
+            if (migrationInfo.isValid() && migrationInfo.getPartitionId() == partitionId) {
+                migrationInfo.setStatus(MigrationStatus.INVALID);
             }
         }
 
