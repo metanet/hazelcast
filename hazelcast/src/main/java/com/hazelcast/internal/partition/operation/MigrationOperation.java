@@ -65,8 +65,9 @@ public final class MigrationOperation extends BaseMigrationOperation {
     public MigrationOperation() {
     }
 
-    public MigrationOperation(MigrationInfo migrationInfo, long[] replicaVersions, Collection<Operation> tasks) {
-        super(migrationInfo);
+    public MigrationOperation(MigrationInfo migrationInfo, long[] replicaVersions, Collection<Operation> tasks,
+            int partitionStateVersion) {
+        super(migrationInfo, partitionStateVersion);
         this.replicaVersions = replicaVersions;
         this.tasks = tasks;
     }

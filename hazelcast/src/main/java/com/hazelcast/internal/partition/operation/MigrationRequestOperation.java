@@ -54,8 +54,8 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
     public MigrationRequestOperation() {
     }
 
-    public MigrationRequestOperation(MigrationInfo migrationInfo) {
-        super(migrationInfo);
+    public MigrationRequestOperation(MigrationInfo migrationInfo, int partitionStateVersion) {
+        super(migrationInfo, partitionStateVersion);
     }
 
     @Override
@@ -148,7 +148,7 @@ public final class MigrationRequestOperation extends BaseMigrationOperation {
     private void invokeMigrationOperation(Address destination, long[] replicaVersions, Collection<Operation> tasks)
             throws IOException {
 
-        MigrationOperation operation = new MigrationOperation(migrationInfo, replicaVersions, tasks);
+        MigrationOperation operation = new MigrationOperation(migrationInfo, replicaVersions, tasks, partitionStateVersion);
 
         NodeEngine nodeEngine = getNodeEngine();
         InternalPartitionServiceImpl partitionService = getService();

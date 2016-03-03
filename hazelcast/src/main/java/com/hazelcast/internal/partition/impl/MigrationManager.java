@@ -29,6 +29,7 @@ import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
+import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
 import com.hazelcast.internal.partition.operation.FinalizeMigrationOperation;
 import com.hazelcast.internal.partition.operation.MigrationCommitOperation;
 import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
@@ -316,7 +317,12 @@ public class MigrationManager {
             } else if (migrationInfo.getReplicaIndex() > 0
                     && node.getThisAddress().equals(migrationInfo.getSource())) {
                 // OLD BACKUP
-                finalizeMigration(migrationInfo);
+//                finalizeMigration(migrationInfo);
+                // TODO: run ClearReplicaOperation instead of finalize
+                ClearReplicaOperation op = new ClearReplicaOperation(migrationInfo.getReplicaIndex());
+                op.setPartitionId(migrationInfo.getPartitionId())
+                        .setNodeEngine(nodeEngine).setService(partitionService);
+                nodeEngine.getOperationService().executeOperation(op);
             }
         } finally {
             partitionServiceLock.unlock();
@@ -353,22 +359,14 @@ public class MigrationManager {
         }
     }
 
-
     boolean addCompletedMigration(MigrationInfo migrationInfo) {
         if (migrationInfo.getStatus() != MigrationStatus.SUCCESS
                 && migrationInfo.getStatus() != MigrationStatus.FAILED) {
             throw new IllegalArgumentException("Migration doesn't seem completed: " + migrationInfo);
         }
+
         partitionServiceLock.lock();
         try {
-            // TODO: we cannot remove from completed list
-            // before master ensuring all participants agree on the result
-            if (completedMigrations.size() > COMPLETED_MIGRATION_MAX_SIZE) {
-                // TODO: we may optimize this part further
-//                Iterator<MigrationInfo> iterator = completedMigrations.iterator();
-//                iterator.next();
-//                iterator.remove();
-            }
             boolean added = completedMigrations.add(migrationInfo);
             if (added) {
                 completedMigrationCounter.incrementAndGet();
@@ -379,16 +377,14 @@ public class MigrationManager {
         }
     }
 
-//    void evictCompletedMigrations() {
-//        partitionServiceLock.lock();
-//        try {
-//            if (!completedMigrations.isEmpty()) {
-//                completedMigrations.removeFirst();
-//            }
-//        } finally {
-//            partitionServiceLock.unlock();
-//        }
-//    }
+    void retainCompletedMigrations(Collection<MigrationInfo> migrations) {
+        partitionServiceLock.lock();
+        try {
+            completedMigrations.retainAll(migrations);
+        } finally {
+            partitionServiceLock.unlock();
+        }
+    }
 
     void triggerRepartitioning() {
         migrationQueue.add(new RepartitioningTask());
@@ -581,14 +577,14 @@ public class MigrationManager {
                         continue;
                     }
 
-                    if (prev.getType() == MigrationType.MOVE
-                            && newOwner.equals(current.getSource())
-                            && (currentOwner == null || current.getDestination().equals(currentOwner))) {
-                        logger.severe("Prev: " + current + ", Current: " + currentOwner + ", New: " + newOwner + ", index: " + replicaIndex);
-                        current.setKeepReplicaIndex(replicaIndex);
-                        //                    previous.setType(MigrationType.MOVE_COPY_BACK);
-                        return true;
-                    }
+//                    if (prev.getType() == MigrationType.MOVE
+//                            && newOwner.equals(current.getSource())
+//                            && (currentOwner == null || current.getDestination().equals(currentOwner))) {
+//                        logger.severe("Prev: " + current + ", Current: " + currentOwner + ", New: " + newOwner + ", index: " + replicaIndex);
+//                        current.setKeepReplicaIndex(replicaIndex);
+//                        //                    previous.setType(MigrationType.MOVE_COPY_BACK);
+//                        return true;
+//                    }
 
                 }
 
@@ -710,7 +706,8 @@ public class MigrationManager {
                     result = Boolean.TRUE;
                     // TODO BASRI UNDERSTAND HOW THIS PART WILL WORK. THIS CASE SHOULD CAN BE TESTED WITH OUR MIGRATION LISTENER
                 } else {
-                    MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo);
+                    MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo,
+                            partitionService.getPartitionStateVersion());
                     result = executeMigrateOperation(migrationRequestOp, fromMember);
                 }
                 processMigrationResult(result);
@@ -799,7 +796,7 @@ public class MigrationManager {
                 addCompletedMigration(migrationInfo);
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
-                partitionService.incrementPartitionStateVersion(2); // TODO move this into constant
+                partitionService.getPartitionStateManager().incrementVersion(2); // TODO move this into constant
                 partitionService.syncPartitionRuntimeState();
             } finally {
                 partitionServiceLock.unlock();
