@@ -45,10 +45,7 @@ class PublishPartitionRuntimeStateTask implements Runnable {
                 logger.info("Not publishing partition runtime state since migration is not allowed.");
                 return;
             } else if (migrationManager.hasOnGoingMigration() && migrationAllowed) {
-                // TODO: DEBUG
-                // logger.info("Remaining migration tasks in queue => " + partitionService.getMigrationQueueSize());
-                logger.info("Remaining migration tasks in queue => " + migrationManager.migrationQueue
-                        + ", status: " + migrationAllowed);
+                 logger.info("Remaining migration tasks in queue => " + partitionService.getMigrationQueueSize());
             }
             partitionService.publishPartitionRuntimeState();
         }

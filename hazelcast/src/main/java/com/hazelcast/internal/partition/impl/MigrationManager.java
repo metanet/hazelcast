@@ -23,7 +23,6 @@ import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
-import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
@@ -48,7 +47,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -208,12 +206,9 @@ public class MigrationManager {
                 }
             }
 
-            logger.warning("FINALIZE: " + migrationInfo);
             boolean destination = thisAddress.equals(migrationInfo.getDestination());
 
             if (source || destination) {
-//                Address ownerAddress = migratingPartition.getReplicaAddress(migrationInfo.getReplicaIndex());
-//                boolean success = migrationInfo.getDestination().equals(ownerAddress);
                 assert migrationInfo.getStatus() == MigrationStatus.SUCCESS
                         || migrationInfo.getStatus() == MigrationStatus.FAILED
                         : "Invalid migration: " + migrationInfo;
@@ -233,7 +228,6 @@ public class MigrationManager {
                         .setValidateTarget(false)
                         .setService(partitionService);
                 nodeEngine.getOperationService().executeOperation(op);
-//                activeMigrationInfo = null;
                 removeActiveMigration(partitionId);
             } else {
                 logger.severe("Failed to finalize migration because this member " + thisAddress
@@ -262,16 +256,16 @@ public class MigrationManager {
         }
     }
 
-    public MigrationInfo getActiveMigration(int partitionId) {
-        MigrationInfo activeMigrationInfo = this.activeMigrationInfo;
-        if (activeMigrationInfo != null && activeMigrationInfo.getPartitionId() == partitionId) {
-            return activeMigrationInfo;
-        }
+//    public MigrationInfo getActiveMigration(int partitionId) {
+//        MigrationInfo activeMigrationInfo = this.activeMigrationInfo;
+//        if (activeMigrationInfo != null && activeMigrationInfo.getPartitionId() == partitionId) {
+//            return activeMigrationInfo;
+//        }
+//
+//        return null;
+//    }
 
-        return null;
-    }
-
-    public MigrationInfo getActiveMigration() {
+    MigrationInfo getActiveMigration() {
         return activeMigrationInfo;
     }
 
@@ -319,7 +313,8 @@ public class MigrationManager {
                 // OLD BACKUP
                 finalizeMigration(migrationInfo);
             } else if (migrationInfo.getKeepReplicaIndex() > 0) {
-                if (node.getThisAddress().equals(migrationInfo.oldKeepReplicaOwner)) {
+                if (migrationInfo.getStatus() == MigrationStatus.SUCCESS
+                        && node.getThisAddress().equals(migrationInfo.getOldKeepReplicaOwner())) {
                     // clear
                     ClearReplicaOperation op = new ClearReplicaOperation(migrationInfo.getKeepReplicaIndex());
                     op.setPartitionId(migrationInfo.getPartitionId()).setNodeEngine(nodeEngine).setService(partitionService);
@@ -528,7 +523,7 @@ public class MigrationManager {
                                     MigrationInfo migration = new MigrationInfo(partitionId, replicaIndex, currentOwner,
                                             newOwner, type, keepReplicaIndex);
                                     if (keepReplicaIndex > 0) {
-                                        migration.oldKeepReplicaOwner = currentPartition.getReplicaAddress(keepReplicaIndex);
+                                        migration.setOldKeepReplicaOwner(currentPartition.getReplicaAddress(keepReplicaIndex));
                                     }
                                     scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
                                 }
@@ -537,129 +532,6 @@ public class MigrationManager {
             }
 
             logMigrationStatistics(migrationCount.value, lostCount.value);
-        }
-
-        private void processNewPartitionState_old(Address[][] newState) {
-            System.out.println("");
-            for (int i = 0; i < newState.length; i++) {
-                Address[] addresses = newState[i];
-                System.out.print("partitionId: " + i + " -> ");
-                for (Address address : addresses) {
-                    System.out.print(address + ", ");
-                }
-                System.out.println();
-            }
-            System.out.println("");
-
-            int lostCount = 0;
-
-            if (node.getClusterService().getSize() == 5) {
-                System.out.println();
-            }
-
-            List<MigrationInfo> migrations = new ArrayList<MigrationInfo>();
-            for (int partitionId = 0; partitionId < newState.length; partitionId++) {
-
-                InternalPartitionImpl currentPartition = partitionStateManager.getPartitionImpl(partitionId);
-                Address[] newReplicas = newState[partitionId];
-
-                for (int replicaIndex = 0; replicaIndex < InternalPartition.MAX_REPLICA_COUNT; replicaIndex++) {
-                    Address currentOwner = currentPartition.getReplicaAddress(replicaIndex);
-                    Address newOwner = newReplicas[replicaIndex];
-
-                    // #CASE: either both current and new owners are null or they are same
-                    if (currentOwner == null && newOwner == null
-                            || currentOwner != null && currentOwner.equals(newOwner)) {
-                        // nop
-                        continue;
-                    }
-
-                    if (currentOwner == null) {
-                        // #CASE: current owner is null and replica-index = 0
-                        if (replicaIndex == 0) {
-                            // TODO
-                            // data lost or this is new assignment
-                            // no need to run any migration operation
-                            // just assign and go on...
-                            lostCount++;
-                            assignNewPartitionOwner(partitionId, currentPartition, newOwner);
-                            continue;
-                        }
-
-                        // #CASE: current owner is null and replica-index > 0
-                        // TODO: search for previous migrations for copy-back
-//                        if (isCopyBack(migrations, currentOwner, newOwner, replicaIndex)) {
-//                            continue;
-//                        }
-
-                        // replicate data from partition owner to new replica owner
-                        // schedule replication operation
-                        migrations.add(new MigrationInfo(partitionId, replicaIndex, null, newOwner, MigrationType.COPY));
-                        continue;
-                    }
-
-                    // #CASE: current owner is removed and new owner is null
-                    if (newOwner == null) {
-                        // TODO
-                        // A member is dead, this replica should not have an owner!
-                        // clear assignment & data for this replica
-                        continue;
-                    }
-
-                    // #CASE: both current and new owners are not null and they are different
-                    // TODO: search for previous migrations for copy-back
-//                    if (isCopyBack(migrations, currentOwner, newOwner, replicaIndex)) {
-//                        continue;
-//                    }
-                    // migrate replica
-                    migrations.add(new MigrationInfo(partitionId, replicaIndex, currentOwner, newOwner, MigrationType.MOVE));
-                }
-
-                MigrationInfo current = null;
-                ListIterator<MigrationInfo> iter = migrations.listIterator(migrations.size());
-                while (iter.hasPrevious()) {
-                    MigrationInfo prev = iter.previous();
-                    if (current == null) {
-                        current = prev;
-                        continue;
-                    }
-
-//                    if (prev.getType() == MigrationType.MOVE
-//                            && newOwner.equals(current.getSource())
-//                            && (currentOwner == null || current.getDestination().equals(currentOwner))) {
-//                        logger.severe("Prev: " + current + ", Current: " + currentOwner + ", New: " + newOwner + ", index: " + replicaIndex);
-//                        current.setKeepReplicaIndex(replicaIndex);
-//                        //                    previous.setType(MigrationType.MOVE_COPY_BACK);
-//                        return true;
-//                    }
-
-                }
-
-                for (MigrationInfo migration : migrations) {
-                    // TODO: need to order tasks depending on their priority
-                    logger.severe("Scheduling " + migration);
-                    scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
-                }
-                migrations.clear();
-            }
-
-            logMigrationStatistics(migrations.size(), lostCount);
-        }
-
-        private boolean isCopyBack(List<MigrationInfo> migrations, Address currentOwner, Address newOwner, int replicaIndex) {
-            ListIterator<MigrationInfo> iter = migrations.listIterator(migrations.size());
-            while (iter.hasPrevious()) {
-                MigrationInfo previous = iter.previous();
-                if (previous.getType() == MigrationType.MOVE
-                        && newOwner.equals(previous.getSource())
-                        && (currentOwner == null || previous.getDestination().equals(currentOwner))) {
-                    logger.severe("Prev: " + previous + ", Current: " + currentOwner + ", New: " + newOwner + ", index: " + replicaIndex);
-                    previous.setKeepReplicaIndex(replicaIndex);
-//                    previous.setType(MigrationType.MOVE_COPY_BACK);
-                    return true;
-                }
-            }
-            return false;
         }
 
         private void logMigrationStatistics(int migrationCount, int lostCount) {
