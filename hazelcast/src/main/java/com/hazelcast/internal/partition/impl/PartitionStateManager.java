@@ -262,7 +262,7 @@ public class PartitionStateManager {
         if (version <= stateVersion.get()) {
             String message = "Master version should be greater than ours! Current: " + stateVersion.get()
                     + ", Master: " + version;
-            logger.fine(message);
+            logger.warning(message);
             return false;
         }
         stateVersion.set(version);
