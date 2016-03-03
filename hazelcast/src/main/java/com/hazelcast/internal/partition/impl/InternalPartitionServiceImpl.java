@@ -505,47 +505,50 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return calls;
     }
 
-    public void processPartitionRuntimeState(PartitionRuntimeState partitionState) {
-        lock.lock();
-        try {
-            final Address sender = partitionState.getEndpoint();
-            if (!node.getNodeExtension().isStartCompleted()) {
-                logger.warning("Ignoring received partition table, startup is not completed yet. Sender: " + sender);
-                return;
-            }
+    public void processPartitionRuntimeState(final PartitionRuntimeState partitionState) {
+        final Address sender = partitionState.getEndpoint();
+        if (!node.getNodeExtension().isStartCompleted()) {
+            logger.warning("Ignoring received partition table, startup is not completed yet. Sender: " + sender);
+            return;
+        }
 
-            final Address master = node.getMasterAddress();
-            if (node.isMaster()) {
-                logger.warning("This is the master node and received a PartitionRuntimeState from "
-                        + sender + ". Ignoring incoming state! ");
-                return;
-            } else {
-                if (sender == null || !sender.equals(master)) {
-                    if (node.clusterService.getMember(sender) == null) {
-                        logger.severe("Received a ClusterRuntimeState from an unknown member!"
-                                + " => Sender: " + sender + ", Master: " + master + "! ");
-                        return;
-                    } else {
-                        logger.warning("Received a ClusterRuntimeState, but its sender doesn't seem to be master!"
-                                + " => Sender: " + sender + ", Master: " + master + "! "
-                                + "(Ignore if master node has changed recently.)");
-                        return;
-                    }
+        final Address master = node.getMasterAddress();
+        if (node.isMaster()) {
+            logger.warning("This is the master node and received a PartitionRuntimeState from "
+                    + sender + ". Ignoring incoming state! ");
+            return;
+        } else {
+            if (sender == null || !sender.equals(master)) {
+                if (node.clusterService.getMember(sender) == null) {
+                    logger.severe("Received a ClusterRuntimeState from an unknown member!"
+                            + " => Sender: " + sender + ", Master: " + master + "! ");
+                    return;
+                } else {
+                    logger.warning("Received a ClusterRuntimeState, but its sender doesn't seem to be master!"
+                            + " => Sender: " + sender + ", Master: " + master + "! "
+                            + "(Ignore if master node has changed recently.)");
+                    return;
                 }
             }
-
-            applyNewState(partitionState, sender);
-        } finally {
-            lock.unlock();
         }
+
+        applyNewState(partitionState, sender);
     }
 
     private void applyNewState(PartitionRuntimeState partitionState, Address sender) {
-        partitionStateManager.setVersion(partitionState.getVersion());
-        partitionStateManager.setInitialized();
+        lock.lock();
+        try {
+            if (!partitionStateManager.setVersion(partitionState.getVersion())) {
+                return;
+            }
 
-        filterAndLogUnknownAddressesInPartitionTable(sender, partitionState.getPartitions());
-        finalizeOrRollbackMigration(partitionState);
+            partitionStateManager.setInitialized();
+
+            filterAndLogUnknownAddressesInPartitionTable(sender, partitionState.getPartitions());
+            finalizeOrRollbackMigration(partitionState);
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void finalizeOrRollbackMigration(PartitionRuntimeState partitionState) {

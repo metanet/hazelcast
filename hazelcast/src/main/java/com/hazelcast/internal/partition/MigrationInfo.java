@@ -71,8 +71,8 @@ public class MigrationInfo implements DataSerializable {
     private MigrationType type = MigrationType.MOVE;
     private int keepReplicaIndex = -1;
 
-    // TODO: fix name and change access modifier
-    public Address oldKeepReplicaOwner;
+    // TODO: fix name
+    private Address oldKeepReplicaOwner;
 
     private final AtomicBoolean processing = new AtomicBoolean(false);
     private volatile MigrationStatus status;
@@ -119,16 +119,8 @@ public class MigrationInfo implements DataSerializable {
         return keepReplicaIndex;
     }
 
-    public void setKeepReplicaIndex(int keepReplicaIndex) {
-        this.keepReplicaIndex = keepReplicaIndex;
-    }
-
     public MigrationType getType() {
         return type;
-    }
-
-    public void setType(MigrationType type) {
-        this.type = type;
     }
 
     public Address getMaster() {
@@ -137,6 +129,14 @@ public class MigrationInfo implements DataSerializable {
 
     public void setMaster(Address master) {
         this.master = master;
+    }
+
+    public Address getOldKeepReplicaOwner() {
+        return oldKeepReplicaOwner;
+    }
+
+    public void setOldKeepReplicaOwner(Address oldKeepReplicaOwner) {
+        this.oldKeepReplicaOwner = oldKeepReplicaOwner;
     }
 
     public boolean startProcessing() {

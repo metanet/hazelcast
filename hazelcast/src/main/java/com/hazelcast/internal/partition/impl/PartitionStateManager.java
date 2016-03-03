@@ -258,12 +258,15 @@ public class PartitionStateManager {
     }
 
     // called under partition service lock
-    void setVersion(int version) {
-        if (version < stateVersion.get()) {
-            throw new IllegalArgumentException("New version cannot be smaller than current!"
-                    + " Current: " + stateVersion.get() + ", New: " + version);
+    boolean setVersion(int version) {
+        if (version <= stateVersion.get()) {
+            String message = "Master version should be greater than ours! Current: " + stateVersion.get()
+                    + ", Master: " + version;
+            logger.fine(message);
+            return false;
         }
         stateVersion.set(version);
+        return true;
     }
 
     public int getVersion() {
