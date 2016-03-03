@@ -257,7 +257,12 @@ public class PartitionStateManager {
         partition.setReplicaAddresses(replicaAddresses);
     }
 
+    // called under partition service lock
     void setVersion(int version) {
+        if (version < stateVersion.get()) {
+            throw new IllegalArgumentException("New version cannot be smaller than current!"
+                    + " Current: " + stateVersion.get() + ", New: " + version);
+        }
         stateVersion.set(version);
     }
 

@@ -169,6 +169,10 @@ public class InternalPartitionImpl implements InternalPartition {
         return new InternalPartitionImpl(partitionId, listener, thisAddress, Arrays.copyOf(addresses, MAX_REPLICA_COUNT));
     }
 
+    Address[] getReplicaAddresses() {
+        return addresses;
+    }
+
     @Override
     public boolean isOwnerOrBackup(Address address) {
         for (int i = 0; i < MAX_REPLICA_COUNT; i++) {

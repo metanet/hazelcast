@@ -20,9 +20,7 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
-import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
 import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation;
-import com.hazelcast.internal.partition.operation.ResetReplicaVersionOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.NodeEngine;
@@ -95,39 +93,39 @@ final class InternalPartitionListener implements PartitionListener {
         }
     }
 
-    private void clearPartition(final int partitionId, final int oldReplicaIndex) {
-        NodeEngine nodeEngine = node.nodeEngine;
-        ClearReplicaOperation op = new ClearReplicaOperation(oldReplicaIndex);
-        op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
-        nodeEngine.getOperationService().executeOperation(op);
-    }
+//    private void clearPartition(final int partitionId, final int oldReplicaIndex) {
+//        NodeEngine nodeEngine = node.nodeEngine;
+//        ClearReplicaOperation op = new ClearReplicaOperation(oldReplicaIndex);
+//        op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
+//        nodeEngine.getOperationService().executeOperation(op);
+//    }
+//
+//    private void synchronizePartition(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
+//            boolean initialAssignment) {
+//        // if not initialized yet, no need to sync, since this is the initial partition assignment
+//        if (partitionService.getPartitionStateManager().isInitialized()) {
+//            long delayMillis = 0L;
+//            if (replicaIndex > 1) {
+//                // immediately trigger replica synchronization for the first backups
+//                // postpone replica synchronization for greater backups to a later time
+//                // high priority is 1st backups
+//                delayMillis = (long) (InternalPartitionService.REPLICA_SYNC_RETRY_DELAY + (Math.random()
+//                        * InternalPartitionService.DEFAULT_REPLICA_SYNC_DELAY));
+//            }
+//
+//            resetReplicaVersion(partitionId, replicaIndex, reason, initialAssignment);
+//            partitionService.getReplicaManager().triggerPartitionReplicaSync(partitionId, replicaIndex, delayMillis);
+//        }
+//    }
 
-    private void synchronizePartition(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
-            boolean initialAssignment) {
-        // if not initialized yet, no need to sync, since this is the initial partition assignment
-        if (partitionService.getPartitionStateManager().isInitialized()) {
-            long delayMillis = 0L;
-            if (replicaIndex > 1) {
-                // immediately trigger replica synchronization for the first backups
-                // postpone replica synchronization for greater backups to a later time
-                // high priority is 1st backups
-                delayMillis = (long) (InternalPartitionService.REPLICA_SYNC_RETRY_DELAY + (Math.random()
-                        * InternalPartitionService.DEFAULT_REPLICA_SYNC_DELAY));
-            }
-
-            resetReplicaVersion(partitionId, replicaIndex, reason, initialAssignment);
-            partitionService.getReplicaManager().triggerPartitionReplicaSync(partitionId, replicaIndex, delayMillis);
-        }
-    }
-
-    private void resetReplicaVersion(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
-            boolean initialAssignment) {
-        NodeEngine nodeEngine = node.nodeEngine;
-        ResetReplicaVersionOperation op = new ResetReplicaVersionOperation(reason, initialAssignment);
-        op.setPartitionId(partitionId).setReplicaIndex(replicaIndex).setNodeEngine(nodeEngine)
-                .setService(partitionService);
-        nodeEngine.getOperationService().executeOperation(op);
-    }
+//    private void resetReplicaVersion(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
+//            boolean initialAssignment) {
+//        NodeEngine nodeEngine = node.nodeEngine;
+//        ResetReplicaVersionOperation op = new ResetReplicaVersionOperation(reason, initialAssignment);
+//        op.setPartitionId(partitionId).setReplicaIndex(replicaIndex).setNodeEngine(nodeEngine)
+//                .setService(partitionService);
+//        nodeEngine.getOperationService().executeOperation(op);
+//    }
 
     private void promoteFromBackups(int partitionId, PartitionReplicaChangeReason reason, Address oldAddress) {
         NodeEngine nodeEngine = node.nodeEngine;

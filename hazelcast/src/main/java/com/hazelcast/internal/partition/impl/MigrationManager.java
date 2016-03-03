@@ -29,7 +29,6 @@ import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
-import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
 import com.hazelcast.internal.partition.operation.FinalizeMigrationOperation;
 import com.hazelcast.internal.partition.operation.MigrationCommitOperation;
 import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
@@ -317,12 +316,7 @@ public class MigrationManager {
             } else if (migrationInfo.getReplicaIndex() > 0
                     && node.getThisAddress().equals(migrationInfo.getSource())) {
                 // OLD BACKUP
-//                finalizeMigration(migrationInfo);
-                // TODO: run ClearReplicaOperation instead of finalize
-                ClearReplicaOperation op = new ClearReplicaOperation(migrationInfo.getReplicaIndex());
-                op.setPartitionId(migrationInfo.getPartitionId())
-                        .setNodeEngine(nodeEngine).setService(partitionService);
-                nodeEngine.getOperationService().executeOperation(op);
+                finalizeMigration(migrationInfo);
             }
         } finally {
             partitionServiceLock.unlock();
@@ -493,6 +487,42 @@ public class MigrationManager {
         }
 
         private void processNewPartitionState(Address[][] newState) {
+            System.out.println("");
+            for (int i = 0; i < newState.length; i++) {
+                Address[] addresses = newState[i];
+                System.out.print("partitionId: " + i + " -> ");
+                for (Address address : addresses) {
+                    System.out.print(address + ", ");
+                }
+                System.out.println();
+            }
+            System.out.println("");
+
+
+            for (int i = 0; i < newState.length; i++) {
+                final int partitionId = i;
+                final InternalPartitionImpl currentPartition = partitionStateManager.getPartitionImpl(partitionId);
+                Address[] newReplicas = newState[partitionId];
+
+                MigrationDecision.migrate(currentPartition.getReplicaAddresses(), newReplicas,
+                        new MigrationDecision.MigrationCallback() {
+                            @Override
+                            public void migrate(Address currentOwner, Address newOwner, int replicaIndex,
+                                    MigrationType type, int keepReplicaIndex) {
+
+                                if (currentOwner == null && replicaIndex == 0) {
+                                    assignNewPartitionOwner(partitionId, currentPartition, newOwner);
+                                } else {
+                                    scheduleMigration(new MigrationInfo(partitionId, replicaIndex,
+                                            currentOwner, newOwner, type, keepReplicaIndex), MigrateTaskReason.REPARTITIONING);
+                                }
+                            }
+                        });
+            }
+
+        }
+
+        private void processNewPartitionState_old(Address[][] newState) {
             System.out.println("");
             for (int i = 0; i < newState.length; i++) {
                 Address[] addresses = newState[i];

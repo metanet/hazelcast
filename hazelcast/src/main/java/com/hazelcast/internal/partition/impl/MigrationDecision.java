@@ -37,30 +37,31 @@ class MigrationDecision {
 
     static void migrate(Address[] oldAddresses, Address[] newAddresses, MigrationCallback callback) {
 
-        System.out.println("#############################################");
         Address[] state = new Address[oldAddresses.length];
         System.arraycopy(oldAddresses, 0, state, 0, oldAddresses.length);
 
-        System.out.println("INITIAL STATE: " + Arrays.toString(state));
-        System.out.println("FINAL STATE: " + Arrays.toString(newAddresses));
+        log("INITIAL STATE: " + Arrays.toString(state));
+        log("FINAL STATE: " + Arrays.toString(newAddresses));
         if (fixCycle(oldAddresses, newAddresses)) {
-            System.out.println("cycle fixed");
+            log("cycle fixed");
         }
-        System.out.println("EXPECTED STATE: " + Arrays.toString(newAddresses));
+        log("EXPECTED STATE: " + Arrays.toString(newAddresses));
 
         int currentIndex = 0;
         while (currentIndex < oldAddresses.length) {
 
             if (newAddresses[currentIndex] == null) {
-                System.out.println("new address is null at index: " + currentIndex);
-                callback.migrate(state[currentIndex], null, currentIndex, MigrationType.MOVE, -1);
-                state[currentIndex] = null;
+                if (state[currentIndex] != null) {
+                    log("new address is null at index: " + currentIndex);
+                    callback.migrate(state[currentIndex], null, currentIndex, MigrationType.MOVE, -1);
+                    state[currentIndex] = null;
+                }
                 currentIndex++;
                 continue;
             }
 
             if (state[currentIndex] == null) {
-                System.out.println("COPY " + newAddresses[currentIndex] + " to index: " + currentIndex);
+                log("COPY " + newAddresses[currentIndex] + " to index: " + currentIndex);
                 callback.migrate(null, newAddresses[currentIndex], currentIndex, MigrationType.COPY, -1);
                 state[currentIndex] = newAddresses[currentIndex];
                 currentIndex++;
@@ -68,14 +69,14 @@ class MigrationDecision {
             }
 
             if (newAddresses[currentIndex].equals(state[currentIndex])) {
-                System.out.println("Addresses are same on index: " + currentIndex);
+                log("Addresses are same on index: " + currentIndex);
                 currentIndex++;
                 continue;
             }
 
             if (getReplicaIndex(newAddresses, state[currentIndex]) == -1
                     && getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
-                System.out.println("MOVE " + newAddresses[currentIndex] + " to index: " + currentIndex);
+                log("MOVE " + newAddresses[currentIndex] + " to index: " + currentIndex);
                 callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex, MigrationType.MOVE, -1);
                 state[currentIndex] = newAddresses[currentIndex];
                 currentIndex++;
@@ -85,7 +86,7 @@ class MigrationDecision {
             // IT IS A MOVE COPY BACK
             if (getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
                 int keepReplicaIndex = getReplicaIndex(newAddresses, state[currentIndex]);
-                System.out.println("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex
+                log("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex
                         + " with keepReplicaIndex: " + keepReplicaIndex);
 
                 callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex,
@@ -105,13 +106,12 @@ class MigrationDecision {
                     throw new AssertionError(target + " is not present in " + Arrays.toString(state));
 
                 } else if (newAddresses[j] == null) {
-                    System.out.println(
-                            "SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
+                    log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
                     callback.migrate(null, state[j], currentIndex, MigrationType.MOVE, -1);
                     state[currentIndex] = state[j];
                     break;
                 } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
-                    System.out.println("MOVE2 " + newAddresses[j] + " to index: " + j);
+                    log("MOVE2 " + newAddresses[j] + " to index: " + j);
                     callback.migrate(state[j], newAddresses[j], j, MigrationType.MOVE, -1);
                     state[j] = newAddresses[j];
                     break;
@@ -121,7 +121,7 @@ class MigrationDecision {
                 }
             }
 
-            System.out.println("STATE: " + Arrays.toString(state));
+            log("STATE: " + Arrays.toString(state));
             Set<Address> verify = new HashSet<Address>();
             for (Address s : state) {
                 if (s != null) {
@@ -225,5 +225,12 @@ class MigrationDecision {
         }
 
         newReplicas[index] = bottomAddress;
+    }
+
+    private static final boolean TRACE = false;
+    private static void log(String x) {
+        if (TRACE) {
+            System.out.println(x);
+        }
     }
 }

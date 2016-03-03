@@ -67,7 +67,11 @@ public abstract class BaseMigrationOperation extends AbstractOperation
         InternalPartitionService partitionService = getService();
         int localPartitionStateVersion = partitionService.getPartitionStateVersion();
         if (partitionStateVersion != localPartitionStateVersion) {
-            throw new RetryableHazelcastException("Partition state versions are not matching!"
+            if (partitionStateVersion < localPartitionStateVersion) {
+                throw new IllegalStateException("Local state version cannot be greater than master's version!"
+                        + " Local: " + localPartitionStateVersion + ", Master: " + partitionStateVersion);
+            }
+            throw new RetryableHazelcastException("Local partition state version is behind master!"
                     + " Local: " + localPartitionStateVersion + ", Master: " + partitionStateVersion);
         }
     }
