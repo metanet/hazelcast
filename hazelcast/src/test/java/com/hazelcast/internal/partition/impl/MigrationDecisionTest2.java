@@ -18,6 +18,7 @@ package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.nio.Address;
+import com.hazelcast.partition.MigrationType;
 import com.sun.istack.internal.NotNull;
 import org.junit.Test;
 
@@ -28,6 +29,13 @@ import java.util.Random;
 import static com.hazelcast.internal.partition.impl.MigrationDecision.migrate;
 
 public class MigrationDecisionTest2 {
+
+    private static final MigrationDecision.MigrationCallback CALLBACK = new MigrationDecision.MigrationCallback() {
+        @Override
+        public void migrate(Address currentOwner, Address newOwner, int replicaIndex, MigrationType type,
+                int keepReplicaIndex) {
+        }
+    };
 
     @Test
     public void test()
@@ -40,7 +48,7 @@ public class MigrationDecisionTest2 {
                 "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5702), new Address("localhost",
                 5701), null};
 
-        migrate(oldAddresses, newAddresses);
+        migrate(oldAddresses, newAddresses, CALLBACK);
 
     }
 
@@ -53,7 +61,19 @@ public class MigrationDecisionTest2 {
         final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5703), new Address(
                 "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5701), null, null};
 
-        migrate(oldAddresses, newAddresses);
+        migrate(oldAddresses, newAddresses, CALLBACK);
+    }
+
+    @Test
+    public void test3()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5705), null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, CALLBACK);
     }
 
     @Test
@@ -80,7 +100,7 @@ public class MigrationDecisionTest2 {
 
         shuffle(newAddresses, initialLen + newLen);
 
-        migrate(oldAddresses, newAddresses);
+        migrate(oldAddresses, newAddresses, CALLBACK);
     }
 
     private static void shuffle(Address[] array, int len) {

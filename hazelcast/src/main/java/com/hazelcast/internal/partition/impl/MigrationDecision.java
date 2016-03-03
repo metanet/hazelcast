@@ -17,6 +17,7 @@
 package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.nio.Address;
+import com.hazelcast.partition.MigrationType;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -30,11 +31,16 @@ import static com.hazelcast.internal.partition.impl.InternalPartitionImpl.getRep
  */
 class MigrationDecision {
 
-    static void migrate(Address[] oldAddresses, Address[] newAddresses) {
+    interface MigrationCallback {
+        void migrate(Address currentOwner, Address newOwner, int replicaIndex, MigrationType type, int keepReplicaIndex);
+    }
+
+    static void migrate(Address[] oldAddresses, Address[] newAddresses, MigrationCallback callback) {
 
         System.out.println("#############################################");
         Address[] state = new Address[oldAddresses.length];
         System.arraycopy(oldAddresses, 0, state, 0, oldAddresses.length);
+
         System.out.println("INITIAL STATE: " + Arrays.toString(state));
         System.out.println("FINAL STATE: " + Arrays.toString(newAddresses));
         if (fixCycle(oldAddresses, newAddresses)) {
@@ -46,65 +52,84 @@ class MigrationDecision {
         while (currentIndex < oldAddresses.length) {
 
             if (newAddresses[currentIndex] == null) {
-                currentIndex++;
                 System.out.println("new address is null at index: " + currentIndex);
-            } else if (state[currentIndex] == null) {
+                callback.migrate(state[currentIndex], null, currentIndex, MigrationType.MOVE, -1);
+                state[currentIndex] = null;
+                currentIndex++;
+                continue;
+            }
+
+            if (state[currentIndex] == null) {
                 System.out.println("COPY " + newAddresses[currentIndex] + " to index: " + currentIndex);
+                callback.migrate(null, newAddresses[currentIndex], currentIndex, MigrationType.COPY, -1);
                 state[currentIndex] = newAddresses[currentIndex];
                 currentIndex++;
-            } else if (newAddresses[currentIndex].equals(state[currentIndex])) {
+                continue;
+            }
+
+            if (newAddresses[currentIndex].equals(state[currentIndex])) {
                 System.out.println("Addresses are same on index: " + currentIndex);
                 currentIndex++;
-            } else if (getReplicaIndex(newAddresses, state[currentIndex]) == -1 && getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
+                continue;
+            }
+
+            if (getReplicaIndex(newAddresses, state[currentIndex]) == -1
+                    && getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
                 System.out.println("MOVE " + newAddresses[currentIndex] + " to index: " + currentIndex);
+                callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex, MigrationType.MOVE, -1);
                 state[currentIndex] = newAddresses[currentIndex];
                 currentIndex++;
-            } else { // IT IS A MOVE COPY BACK
-                if (getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
-                    int keepReplicaIndex = getReplicaIndex(newAddresses, state[currentIndex]);
-                    System.out.println("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex
-                            + " with keepReplicaIndex: " + keepReplicaIndex);
+                continue;
+            }
 
-                    state[keepReplicaIndex] = state[currentIndex];
-                    state[currentIndex] = newAddresses[currentIndex];
-                    currentIndex++;
+            // IT IS A MOVE COPY BACK
+            if (getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
+                int keepReplicaIndex = getReplicaIndex(newAddresses, state[currentIndex]);
+                System.out.println("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex
+                        + " with keepReplicaIndex: " + keepReplicaIndex);
+
+                callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex,
+                        MigrationType.MOVE, keepReplicaIndex);
+
+                state[keepReplicaIndex] = state[currentIndex];
+                state[currentIndex] = newAddresses[currentIndex];
+                currentIndex++;
+                continue;
+            }
+
+            Address target = newAddresses[currentIndex];
+            while (true) {
+                int j = getReplicaIndex(state, target);
+
+                if (j == -1) {
+                    throw new AssertionError(target + " is not present in " + Arrays.toString(state));
+
+                } else if (newAddresses[j] == null) {
+                    System.out.println(
+                            "SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
+                    callback.migrate(state[currentIndex], state[j], j, MigrationType.MOVE, -1);
+                    state[currentIndex] = state[j];
+                    break;
+                } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
+                    System.out.println("MOVE2 " + newAddresses[j] + " to index: " + j);
+                    callback.migrate(state[j], newAddresses[j], j, MigrationType.MOVE, -1);
+                    state[j] = newAddresses[j];
+                    break;
                 } else {
-                    Address target = newAddresses[currentIndex];
-
-                    while (true) {
-                        int j = getReplicaIndex(state, target);
-
-                        if (j == -1) {
-                            throw new AssertionError(target + " is not present in " + Arrays.toString(state));
-
-                        } else if (newAddresses[j] == null) {
-                            System.out.println(
-                                    "SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
-                            state[currentIndex] = state[j];
-                            break;
-                        } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
-                            System.out.println("MOVE2 " + newAddresses[j] + " to index: " + j);
-                            state[j] = newAddresses[j];
-                            break;
-                        } else { // newAddresses[j] is also present in old partition replicas
-                            target = newAddresses[j];
-                        }
-                    }
+                    // newAddresses[j] is also present in old partition replicas
+                    target = newAddresses[j];
                 }
             }
 
             System.out.println("STATE: " + Arrays.toString(state));
-
             Set<Address> verify = new HashSet<Address>();
             for (Address s : state) {
                 if (s != null) {
                     assert verify.add(s);
                 }
             }
-
         }
-
-        assert Arrays.equals(state, newAddresses);
+        assert Arrays.equals(state, newAddresses) : Arrays.toString(state) + " vs " + Arrays.toString(newAddresses);
     }
 
     static boolean isCyclic(Address[] oldReplicas, Address[] newReplicas) {
