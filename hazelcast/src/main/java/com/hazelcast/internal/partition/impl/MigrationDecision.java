@@ -107,7 +107,7 @@ class MigrationDecision {
                 } else if (newAddresses[j] == null) {
                     System.out.println(
                             "SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
-                    callback.migrate(state[currentIndex], state[j], j, MigrationType.MOVE, -1);
+                    callback.migrate(null, state[j], currentIndex, MigrationType.MOVE, -1);
                     state[currentIndex] = state[j];
                     break;
                 } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
