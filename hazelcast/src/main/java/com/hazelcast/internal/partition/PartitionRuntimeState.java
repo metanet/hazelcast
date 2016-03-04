@@ -233,6 +233,10 @@ public final class PartitionRuntimeState implements IdentifiedDataSerializable {
         return version;
     }
 
+    public void setVersion(int version) {
+        this.version = version;
+    }
+
     private static class ShortPartitionInfo implements DataSerializable {
 
         int partitionId;

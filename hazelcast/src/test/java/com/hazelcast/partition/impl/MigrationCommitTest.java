@@ -549,7 +549,7 @@ public class MigrationCommitTest
 
             MigrationInfo collected = migrationInfoRef.get();
             commit = migrationInfo.equals(collected);
-            if (!commit) {
+            if (commit) {
                 resetInternalPartitionListener(instance);
             } else {
                 System.err.println(
@@ -566,11 +566,13 @@ public class MigrationCommitTest
     }
 
     private static class CollectMigrationTaskOnRollback
-            extends InternalMigrationListener {
+            extends InternalMigrationListener implements HazelcastInstanceAware {
 
         private final AtomicReference<MigrationInfo> migrationInfoRef = new AtomicReference<MigrationInfo>();
 
         private volatile boolean rollback;
+
+        private volatile HazelcastInstance instance;
 
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
@@ -579,7 +581,6 @@ public class MigrationCommitTest
                         + " since expected migration is already rolled back");
                 return;
             }
-
 
             if (!migrationInfoRef.compareAndSet(null, migrationInfo)) {
                 System.err.println("COLLECT ROLLBACK START FAILED! curr: " + migrationInfoRef.get() + " new: " + migrationInfo);
@@ -596,11 +597,18 @@ public class MigrationCommitTest
 
             MigrationInfo collected = migrationInfoRef.get();
             rollback = migrationInfo.equals(collected);
-            if (!rollback) {
+            if (rollback) {
+                resetInternalPartitionListener(instance);
+            } else {
                 System.err.println(
                         "collect rollback failed! collected migration: " + collected + " rollback migration: " + migrationInfo
                                 + " participant: " + participant);
             }
+        }
+
+        @Override
+        public void setHazelcastInstance(HazelcastInstance instance) {
+            this.instance = instance;
         }
 
     }

@@ -21,6 +21,7 @@ import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
 import com.hazelcast.partition.MigrationType;
+import com.hazelcast.util.UuidUtil;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -63,6 +64,7 @@ public class MigrationInfo implements DataSerializable {
 
     }
 
+    private String uuid;
     private int partitionId;
     private int replicaIndex;
     private Address source;
@@ -90,6 +92,7 @@ public class MigrationInfo implements DataSerializable {
 
     public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination,
             MigrationType type, int keepReplicaIndex) {
+        this.uuid = UuidUtil.newUnsecureUuidString();
         this.partitionId = partitionId;
         this.replicaIndex = replicaIndex;
         this.source = source;
@@ -165,6 +168,7 @@ public class MigrationInfo implements DataSerializable {
 
     @Override
     public void writeData(ObjectDataOutput out) throws IOException {
+        out.writeUTF(uuid);
         out.writeInt(partitionId);
         out.writeByte(replicaIndex);
         out.writeByte(keepReplicaIndex);
@@ -189,6 +193,7 @@ public class MigrationInfo implements DataSerializable {
 
     @Override
     public void readData(ObjectDataInput in) throws IOException {
+        uuid = in.readUTF();
         partitionId = in.readInt();
         replicaIndex = in.readByte();
         keepReplicaIndex = in.readByte();
@@ -214,36 +219,33 @@ public class MigrationInfo implements DataSerializable {
 
     //CHECKSTYLE:OFF
     // This equals method is to complex for our rules due to many internal object type members
+
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         MigrationInfo that = (MigrationInfo) o;
 
-        if (partitionId != that.partitionId) return false;
-        if (replicaIndex != that.replicaIndex) return false;
-        if (keepReplicaIndex != that.keepReplicaIndex) return false;
-        if (source != null ? !source.equals(that.source) : that.source != null) return false;
-        if (destination != null ? !destination.equals(that.destination) : that.destination != null) return false;
-        return type == that.type;
+        return uuid.equals(that.uuid);
+
     }
 
     @Override
     public int hashCode() {
-        int result = partitionId;
-        result = 31 * result + replicaIndex;
-        result = 31 * result + (source != null ? source.hashCode() : 0);
-        result = 31 * result + (destination != null ? destination.hashCode() : 0);
-        result = 31 * result + keepReplicaIndex;
-        result = 31 * result + type.hashCode();
-        return result;
+        return uuid.hashCode();
     }
+
     //CHECKSTYLE:ON
 
     @Override
     public String toString() {
         final StringBuilder sb = new StringBuilder("MigrationInfo{");
+        sb.append("uuid=").append(uuid);
         sb.append("partitionId=").append(partitionId);
         sb.append(", replicaIndex=").append(replicaIndex);
         sb.append(", source=").append(source);
