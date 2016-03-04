@@ -99,6 +99,7 @@ class MigrationDecision {
             }
 
             Address target = newAddresses[currentIndex];
+            int i = currentIndex;
             while (true) {
                 int j = getReplicaIndex(state, target);
 
@@ -106,9 +107,9 @@ class MigrationDecision {
                     throw new AssertionError(target + " is not present in " + Arrays.toString(state));
 
                 } else if (newAddresses[j] == null) {
-                    log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
-                    callback.migrate(null, state[j], currentIndex, MigrationType.MOVE, -1);
-                    state[currentIndex] = state[j];
+                    log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + i);
+                    callback.migrate(null, state[j], i, MigrationType.MOVE, -1);
+                    state[i] = state[j];
                     state[j] = null;
                     break;
                 } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
@@ -119,6 +120,7 @@ class MigrationDecision {
                 } else {
                     // newAddresses[j] is also present in old partition replicas
                     target = newAddresses[j];
+                    i = j;
                 }
             }
 
