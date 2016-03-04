@@ -194,18 +194,10 @@ public class MigrationManager {
 
             // either source of the migration or owner of the partition (only when replicaIndex > 0)
             boolean source = thisAddress.equals(migrationInfo.getSource());
+            boolean partitionOwner = false;
             if (migrationInfo.getReplicaIndex() > 0 && !source) {
-                boolean owner = thisAddress.equals(migratingPartition.getOwnerOrNull());
-                source = owner;
-
-                if (owner) {
-                    MigrationInfo newMigrationInfo = new MigrationInfo(partitionId, migrationInfo.getReplicaIndex(),
-                            thisAddress, migrationInfo.getDestination(), MigrationType.COPY);
-                    newMigrationInfo.setStatus(migrationInfo.getStatus());
-                    migrationInfo = newMigrationInfo;
-                }
+                source = partitionOwner = thisAddress.equals(migratingPartition.getOwnerOrNull());
             }
-
             boolean destination = thisAddress.equals(migrationInfo.getDestination());
 
             if (source || destination) {
@@ -222,7 +214,10 @@ public class MigrationManager {
                 }
 
                 MigrationEndpoint endpoint = source ? MigrationEndpoint.SOURCE : MigrationEndpoint.DESTINATION;
-                FinalizeMigrationOperation op = new FinalizeMigrationOperation(migrationInfo, endpoint, success);
+                FinalizeMigrationOperation op = new FinalizeMigrationOperation(
+                        partitionOwner ? migrationInfo.copy().setType(MigrationType.COPY) : migrationInfo,
+                        endpoint, success);
+
                 op.setPartitionId(partitionId)
                         .setNodeEngine(nodeEngine)
                         .setValidateTarget(false)
@@ -750,7 +745,6 @@ public class MigrationManager {
                             partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
                     partition.setReplicaAddress(migrationInfo.getReplicaIndex(), migrationInfo.getDestination());
 
-//                    if (migrationInfo.getType() == MigrationType.MOVE_COPY_BACK) {
                     if (migrationInfo.getKeepReplicaIndex() > -1) {
                         partition.setReplicaAddress(migrationInfo.getKeepReplicaIndex(), migrationInfo.getSource());
                     }

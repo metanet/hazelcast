@@ -86,10 +86,6 @@ public class MigrationInfo implements DataSerializable {
         this(partitionId, replicaIndex, source, destination, MigrationType.MOVE, -1);
     }
 
-    public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination, MigrationType type) {
-        this(partitionId, replicaIndex, source, destination, type, -1);
-    }
-
     public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination,
             MigrationType type, int keepReplicaIndex) {
         this.uuid = UuidUtil.newUnsecureUuidString();
@@ -100,6 +96,15 @@ public class MigrationInfo implements DataSerializable {
         this.type = type;
         this.keepReplicaIndex = keepReplicaIndex;
         this.status = MigrationStatus.ACTIVE;
+    }
+
+    public MigrationInfo copy() {
+        MigrationInfo copy = new MigrationInfo(partitionId, replicaIndex, source, destination, type, keepReplicaIndex);
+        copy.uuid = uuid;
+        copy.master = master;
+        copy.status = status;
+        copy.oldKeepReplicaOwner = oldKeepReplicaOwner;
+        return copy;
     }
 
     public Address getSource() {
@@ -126,20 +131,27 @@ public class MigrationInfo implements DataSerializable {
         return type;
     }
 
+    public MigrationInfo setType(MigrationType type) {
+        this.type = type;
+        return this;
+    }
+
     public Address getMaster() {
         return master;
     }
 
-    public void setMaster(Address master) {
+    public MigrationInfo setMaster(Address master) {
         this.master = master;
+        return this;
     }
 
     public Address getOldKeepReplicaOwner() {
         return oldKeepReplicaOwner;
     }
 
-    public void setOldKeepReplicaOwner(Address oldKeepReplicaOwner) {
+    public MigrationInfo setOldKeepReplicaOwner(Address oldKeepReplicaOwner) {
         this.oldKeepReplicaOwner = oldKeepReplicaOwner;
+        return this;
     }
 
     public boolean startProcessing() {
@@ -158,8 +170,9 @@ public class MigrationInfo implements DataSerializable {
         return status;
     }
 
-    public void setStatus(MigrationStatus status) {
+    public MigrationInfo setStatus(MigrationStatus status) {
         this.status = status;
+        return this;
     }
 
     public boolean isValid() {
@@ -217,9 +230,6 @@ public class MigrationInfo implements DataSerializable {
         }
     }
 
-    //CHECKSTYLE:OFF
-    // This equals method is to complex for our rules due to many internal object type members
-
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -239,8 +249,6 @@ public class MigrationInfo implements DataSerializable {
     public int hashCode() {
         return uuid.hashCode();
     }
-
-    //CHECKSTYLE:ON
 
     @Override
     public String toString() {
