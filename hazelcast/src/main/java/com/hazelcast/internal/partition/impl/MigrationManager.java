@@ -21,7 +21,6 @@ import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
-import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
@@ -182,7 +181,7 @@ public class MigrationManager {
         delayedResumeMigrationTrigger.executeWithDelay();
     }
 
-    public boolean isMigrationAllowed() {
+    boolean isMigrationAllowed() {
         return migrationPauseCount.get() == 0;
     }
 
@@ -462,7 +461,7 @@ public class MigrationManager {
 
             partitionServiceLock.lock();
             try {
-                if (!isMigrationAllowed()) {
+                if (!isAllowed()) {
                     return;
                 }
 
@@ -471,7 +470,7 @@ public class MigrationManager {
                     return;
                 }
 
-                if (!isMigrationAllowed()) {
+                if (!isAllowed()) {
                     return;
                 }
 
@@ -549,8 +548,10 @@ public class MigrationManager {
             partitionEventManager.sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
         }
 
-        private boolean isMigrationAllowed() {
-            if (MigrationManager.this.isMigrationAllowed()) {
+        private boolean isAllowed() {
+            boolean migrationAllowed = isMigrationAllowed();
+            boolean hasMigrationTasks = migrationQueue.hasMigrationTasks();
+            if (migrationAllowed && !hasMigrationTasks) {
                 return true;
             }
             migrationQueue.add(this);
@@ -623,7 +624,7 @@ public class MigrationManager {
                 }
                 processMigrationResult(result);
             } catch (Throwable t) {
-                final Level level = migrationEndpointsActive() ? Level.WARNING : Level.FINEST;
+                final Level level = isValid() ? Level.WARNING : Level.FINEST;
                 logger.log(level, "Error [" + t.getClass() + ": " + t.getMessage() + "] during " + migrationInfo);
                 logger.finest(t);
                 migrationOperationFailed();
@@ -642,23 +643,29 @@ public class MigrationManager {
             InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
             Address owner = partition.getOwnerOrNull();
             if (owner == null) {
-                logger.severe("ERROR: partition owner is not set! -> partitionId=" + migrationInfo.getPartitionId()
-                        + " , " + partition + " -VS- " + migrationInfo);
+                if (isValid()) {
+                    logger.severe("ERROR: partition owner is not set! -> partitionId=" + migrationInfo.getPartitionId()
+                            + " , " + partition + " -VS- " + migrationInfo);
+                }
                 return false;
             }
 
             if (migrationInfo.getType() == MigrationType.MOVE/* || migrationInfo.getType() == MigrationType.MOVE_COPY_BACK*/) {
                 Address replica = partition.getReplicaAddress(migrationInfo.getReplicaIndex());
                 if (replica == null) {
-                    logger.severe("ERROR: partition replica owner is not set! -> partitionId="
-                            + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo);
+                    if (isValid()) {
+                        logger.severe("ERROR: partition replica owner is not set! -> partitionId="
+                                + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo);
+                    }
                     return false;
                 }
 
                 if (!replica.equals(migrationInfo.getSource())) {
-                    logger.severe("ERROR: partition replica owner is not the source of migration! -> partitionId="
-                            + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo
-                            + " found owner= " + replica);
+                    if (isValid()) {
+                        logger.severe("ERROR: partition replica owner is not the source of migration! -> partitionId="
+                                + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo
+                                + " found owner= " + replica);
+                    }
                     return false;
                 }
             }
@@ -677,8 +684,8 @@ public class MigrationManager {
                 }
                 migrationOperationSucceeded();
             } else {
-                final Level level = migrationEndpointsActive() ? Level.WARNING : Level.FINEST;
-                logger.log(Level.SEVERE, "Migration failed: " + migrationInfo);
+                final Level level = isValid() ? Level.WARNING : Level.FINEST;
+                logger.log(level, "Migration failed: " + migrationInfo);
                 migrationOperationFailed();
             }
         }
@@ -693,7 +700,7 @@ public class MigrationManager {
                 Object response = future.get();
                 return (Boolean) nodeEngine.toObject(response);
             } catch (Throwable e) {
-                final Level level = nodeEngine.isRunning() && migrationEndpointsActive() ? Level.WARNING : Level.FINEST;
+                final Level level = nodeEngine.isRunning() && isValid() ? Level.WARNING : Level.FINEST;
                 logger.log(level, "Failed migration from " + fromMember + " for " + migrationRequestOp.getMigrationInfo(), e);
             }
             return Boolean.FALSE;
@@ -722,7 +729,7 @@ public class MigrationManager {
             pauseMigration();
             // Re-execute RepartitioningTask when all other migration tasks are done,
             // an imbalance may occur because of this failure.
-            migrationQueue.add(new RepartitioningTask());
+            triggerRepartitioning();
             resumeMigrationEventually();
         }
 
@@ -759,12 +766,6 @@ public class MigrationManager {
                 partitionServiceLock.unlock();
             }
             partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
-        }
-
-        private boolean migrationEndpointsActive() {
-            final ClusterServiceImpl clusterService = node.getClusterService();
-            return clusterService.getMember(migrationInfo.getSource()) != null
-                    && clusterService.getMember(migrationInfo.getDestination()) != null;
         }
 
         @Override
