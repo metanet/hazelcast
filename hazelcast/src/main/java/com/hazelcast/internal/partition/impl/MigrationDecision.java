@@ -109,6 +109,7 @@ class MigrationDecision {
                     log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + currentIndex);
                     callback.migrate(null, state[j], currentIndex, MigrationType.MOVE, -1);
                     state[currentIndex] = state[j];
+                    state[j] = null;
                     break;
                 } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
                     log("MOVE2 " + newAddresses[j] + " to index: " + j);

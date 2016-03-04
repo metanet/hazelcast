@@ -77,6 +77,18 @@ public class MigrationDecisionTest {
     }
 
     @Test
+    public void test4()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5704), null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5704), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, CALLBACK);
+    }
+
+    @Test
     public void testRandom()
             throws UnknownHostException {
         for (int i = 0; i < 100; i++) {
