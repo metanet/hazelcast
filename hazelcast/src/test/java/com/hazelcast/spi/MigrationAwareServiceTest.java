@@ -26,6 +26,7 @@ import com.hazelcast.instance.TestUtil;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.logging.ILogger;
+import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationEndpoint;
 import com.hazelcast.partition.MigrationType;
 import com.hazelcast.test.AssertTask;
@@ -42,7 +43,9 @@ import org.junit.runner.RunWith;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -51,7 +54,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
+import static com.hazelcast.test.TestPartitionUtils.getReplicaVersions;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -62,7 +67,7 @@ import static org.junit.Assert.assertTrue;
 public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     private static final String BACKUP_COUNT_PROP = "backups.count";
-    private static final int PARTITION_COUNT = 333;
+    private static final int PARTITION_COUNT = 111;
     private static final int PARALLEL_REPLICATIONS = 0;
 
     private TestHazelcastInstanceFactory factory;
@@ -97,6 +102,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         for (int i = 1; i <= InternalPartition.MAX_REPLICA_COUNT; i++) {
             startNodes(config, 1);
             assertSize(backupCount);
+            assertReplicaVersions(backupCount);
         }
     }
 
@@ -124,6 +130,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         startNodes(config, InternalPartition.MAX_REPLICA_COUNT);
         assertSize(backupCount);
+        assertReplicaVersions(backupCount);
     }
 
     @Test
@@ -251,7 +258,43 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                 }
                 assertEquals(s.toString(), expectedSize, total);
             }
-        }, 30);
+        }, 180);
+    }
+
+    private void assertReplicaVersions(int backupCount) throws InterruptedException {
+        final Collection<HazelcastInstance> instances = factory.getAllHazelcastInstances();
+        final Map<Address, Node> nodes = new HashMap<Address, Node>();
+
+        backupCount = Math.min(backupCount, instances.size() - 1);
+
+        for (HazelcastInstance instance : instances) {
+            Node node = getNode(instance);
+            nodes.put(node.getThisAddress(), node);
+        }
+
+        for (Node node : nodes.values()) {
+            InternalPartitionService partitionService = node.getPartitionService();
+            InternalPartition[] partitions = partitionService.getInternalPartitions();
+
+            for (InternalPartition partition : partitions) {
+                if (partition.isLocal()) {
+                    long[] replicaVersions = getReplicaVersions(node, partition.getPartitionId());
+                    for (int replica = 1; replica <= backupCount; replica++) {
+                        Address address = partition.getReplicaAddress(replica);
+                        assertNotNull(partition.toString(), address);
+                        Node backupNode = nodes.get(address);
+                        assertNotNull(backupNode);
+
+                        long[] backupReplicaVersions = getReplicaVersions(backupNode, partition.getPartitionId());
+                        for (int i = replica - 1; i < backupCount; i++) {
+                            assertEquals("Owner: " + node.getThisAddress() + ", Backup: " + address
+                                    + ", PartitionId: " + partition.getPartitionId() + ", Replica: " + (i + 1),
+                                    replicaVersions[i], backupReplicaVersions[i]);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private SampleMigrationAwareService getService(HazelcastInstance hz) {
@@ -318,7 +361,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         @Override
         public void commitMigration(PartitionMigrationEvent event) {
-            logger.info("COMMIT: " + event.toString() + "\n");
+//            logger.info("COMMIT: " + event.toString() + "\n");
             if (event.getMigrationEndpoint() == MigrationEndpoint.SOURCE) {
                 if (event.getMigrationType() == MigrationType.MOVE) {
                     if (event.getKeepReplicaIndex() == -1 || event.getKeepReplicaIndex() > backupCount) {
@@ -335,7 +378,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         @Override
         public void rollbackMigration(PartitionMigrationEvent event) {
-            logger.info("ROLLBACK: " + event.toString() + "\n");
+//            logger.info("ROLLBACK: " + event.toString() + "\n");
             if (event.getMigrationEndpoint() == MigrationEndpoint.DESTINATION) {
                 data.remove(event.getPartitionId());
             }
@@ -343,7 +386,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         @Override
         public void clearPartitionReplica(int partitionId) {
-            logger.info("CLEAR: " + partitionId);
+//            logger.info("CLEAR: " + partitionId);
 //            new UnsupportedOperationException().printStackTrace();
             data.remove(partitionId);
         }

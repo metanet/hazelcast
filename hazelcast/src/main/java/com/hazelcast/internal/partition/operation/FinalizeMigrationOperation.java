@@ -19,10 +19,11 @@ package com.hazelcast.internal.partition.operation;
 import com.hazelcast.internal.partition.MigrationCycleOperation;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
-import com.hazelcast.internal.partition.impl.MigrationManager;
+import com.hazelcast.internal.partition.impl.PartitionReplicaManager;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.partition.MigrationType;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.PartitionAwareOperation;
@@ -30,6 +31,7 @@ import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 // runs locally...
 public final class FinalizeMigrationOperation extends AbstractOperation
@@ -50,12 +52,6 @@ public final class FinalizeMigrationOperation extends AbstractOperation
         InternalPartitionServiceImpl partitionService = getService();
 
         int partitionId = getPartitionId();
-        MigrationManager migrationManager = partitionService.getMigrationManager();
-//        MigrationInfo migrationInfo = migrationManager.getActiveMigration(partitionId);
-//        if (migrationInfo == null) {
-//            return;
-//        }
-
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
 
         PartitionMigrationEvent event = new PartitionMigrationEvent(endpoint, migrationInfo.getType(), partitionId,
@@ -64,13 +60,22 @@ public final class FinalizeMigrationOperation extends AbstractOperation
             finishMigration(event, service);
         }
 
-        if (endpoint == MigrationEndpoint.SOURCE && success) {
-            partitionService.clearPartitionReplicaVersions(partitionId);
+        PartitionReplicaManager replicaManager = partitionService.getReplicaManager();
+        if (endpoint == MigrationEndpoint.SOURCE && migrationInfo.getType() == MigrationType.MOVE && success) {
+            int keepReplicaIndex = migrationInfo.getKeepReplicaIndex();
+            if (keepReplicaIndex < 0) {
+                replicaManager.clearPartitionReplicaVersions(partitionId);
+            } else if (keepReplicaIndex > 1) {
+                long[] versions = replicaManager.getPartitionReplicaVersions(partitionId);
+                Arrays.fill(versions, 0, keepReplicaIndex - 1, 0);
+                // TODO: no need to set versions back right now. actual version array is modified directly.
+                // replicaManager.setPartitionReplicaVersions(partitionId, versions, keepReplicaIndex);
+            }
         } else if (endpoint == MigrationEndpoint.DESTINATION && !success) {
-            partitionService.clearPartitionReplicaVersions(partitionId);
+            // TODO: !!! handle destination rollback !!!
+            replicaManager.clearPartitionReplicaVersions(partitionId);
         }
 
-//        migrationManager.removeActiveMigration(partitionId);
         if (success) {
             nodeEngine.onPartitionMigrate(migrationInfo);
         }

@@ -744,17 +744,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return replicaManager.getPartitionReplicaVersions(partitionId);
     }
 
-    // called in operation threads
-    @Override
-    public void setPartitionReplicaVersions(int partitionId, long[] versions, int replicaOffset) {
-        replicaManager.setPartitionReplicaVersions(partitionId, versions, replicaOffset);
-    }
-
-    @Override
-    public void clearPartitionReplicaVersions(int partitionId) {
-        replicaManager.clearPartitionReplicaVersions(partitionId);
-    }
-
     @Override
     public Map<Address, List<Integer>> getMemberPartitionsMap() {
         final Collection<Member> dataMembers = node.getClusterService().getMembers(DATA_MEMBER_SELECTOR);

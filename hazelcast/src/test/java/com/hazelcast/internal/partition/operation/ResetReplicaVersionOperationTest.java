@@ -17,9 +17,10 @@
 
 package com.hazelcast.internal.partition.operation;
 
-import com.hazelcast.logging.ILogger;
-import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
+import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.internal.partition.impl.PartitionReplicaManager;
+import com.hazelcast.logging.ILogger;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.Before;
@@ -40,7 +41,7 @@ import static org.mockito.Mockito.when;
 public class ResetReplicaVersionOperationTest {
 
     @Mock
-    private InternalPartitionService partitionService;
+    private InternalPartitionServiceImpl partitionService;
 
     @Mock
     private NodeEngineImpl nodeEngine;
@@ -102,11 +103,13 @@ public class ResetReplicaVersionOperationTest {
         final ResetReplicaVersionOperation operation = createOperation(partitionId, replicaIndex, reason, initialAssignment);
 
         when(partitionService.getPartitionReplicaVersions(partitionId)).thenReturn(versions);
+        PartitionReplicaManager replicaManager = mock(PartitionReplicaManager.class);
+        when(partitionService.getReplicaManager()).thenReturn(replicaManager);
 
         operation.run();
 
-        verify(partitionService).clearPartitionReplicaVersions(partitionId);
-        verify(partitionService).setPartitionReplicaVersions(partitionId, updatedVersions, replicaIndex);
+        verify(replicaManager).clearPartitionReplicaVersions(partitionId);
+        verify(replicaManager).setPartitionReplicaVersions(partitionId, updatedVersions, replicaIndex);
     }
 
     private ResetReplicaVersionOperation createOperation(final int partitionId, final int replicaIndex,

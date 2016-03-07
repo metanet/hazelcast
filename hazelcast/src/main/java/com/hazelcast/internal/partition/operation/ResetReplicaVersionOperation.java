@@ -16,12 +16,13 @@
 
 package com.hazelcast.internal.partition.operation;
 
+import com.hazelcast.internal.partition.InternalPartition;
+import com.hazelcast.internal.partition.MigrationCycleOperation;
+import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
+import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
+import com.hazelcast.internal.partition.impl.PartitionReplicaManager;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.internal.partition.MigrationCycleOperation;
-import com.hazelcast.internal.partition.InternalPartition;
-import com.hazelcast.internal.partition.InternalPartitionService;
-import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.PartitionAwareOperation;
 
@@ -29,6 +30,7 @@ import java.io.IOException;
 import java.util.Arrays;
 
 // runs locally...
+// TODO: not used!
 public final class ResetReplicaVersionOperation extends AbstractOperation
         implements PartitionAwareOperation, MigrationCycleOperation {
 
@@ -44,7 +46,7 @@ public final class ResetReplicaVersionOperation extends AbstractOperation
     @Override
     public void run() throws Exception {
         int partitionId = getPartitionId();
-        InternalPartitionService partitionService = getService();
+        InternalPartitionServiceImpl partitionService = getService();
         long[] versions = partitionService.getPartitionReplicaVersions(partitionId);
         // InternalPartitionService.getPartitionReplicaVersions() returns internal
         // version array, we need to clone it here
@@ -73,8 +75,9 @@ public final class ResetReplicaVersionOperation extends AbstractOperation
 
         // clear and set replica versions back to ensure backup replica does not have
         // version numbers of prior replicas
-        partitionService.clearPartitionReplicaVersions(partitionId);
-        partitionService.setPartitionReplicaVersions(partitionId, versions, replicaIndex);
+        PartitionReplicaManager replicaManager = partitionService.getReplicaManager();
+        replicaManager.clearPartitionReplicaVersions(partitionId);
+        replicaManager.setPartitionReplicaVersions(partitionId, versions, replicaIndex);
     }
 
     private void resetSyncWaitingVersionsAfterReplicaIndex(long[] versions, int replicaIndex) {

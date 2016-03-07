@@ -498,31 +498,12 @@ public class MigrationManager {
             final MutableInteger lostCount = new MutableInteger();
             final MutableInteger migrationCount = new MutableInteger();
 
-            for (int i = 0; i < newState.length; i++) {
-                final int partitionId = i;
-                final InternalPartitionImpl currentPartition = partitionStateManager.getPartitionImpl(partitionId);
+            for (int partitionId = 0; partitionId < newState.length; partitionId++) {
+                InternalPartitionImpl currentPartition = partitionStateManager.getPartitionImpl(partitionId);
                 Address[] newReplicas = newState[partitionId];
 
                 MigrationDecision.migrate(currentPartition.getReplicaAddresses(), newReplicas,
-                        new MigrationDecision.MigrationCallback() {
-                            @Override
-                            public void migrate(Address currentOwner, Address newOwner, int replicaIndex,
-                                    MigrationType type, int keepReplicaIndex) {
-
-                                if (currentOwner == null && replicaIndex == 0) {
-                                    lostCount.value++;
-                                    assignNewPartitionOwner(partitionId, currentPartition, newOwner);
-                                } else {
-                                    migrationCount.value++;
-                                    MigrationInfo migration = new MigrationInfo(partitionId, replicaIndex, currentOwner,
-                                            newOwner, type, keepReplicaIndex);
-                                    if (keepReplicaIndex > 0) {
-                                        migration.setOldKeepReplicaOwner(currentPartition.getReplicaAddress(keepReplicaIndex));
-                                    }
-                                    scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
-                                }
-                            }
-                        });
+                        new MigrationTaskScheduler(currentPartition, migrationCount, lostCount));
             }
 
             logMigrationStatistics(migrationCount.value, lostCount.value);
@@ -578,6 +559,38 @@ public class MigrationManager {
             return true;
         }
 
+        private class MigrationTaskScheduler implements MigrationDecision.MigrationCallback {
+            private final int partitionId;
+            private final InternalPartitionImpl partition;
+            private final MutableInteger migrationCount;
+            private final MutableInteger lostCount;
+
+            public MigrationTaskScheduler(InternalPartitionImpl partition, MutableInteger migrationCount,
+                    MutableInteger lostCount) {
+                partitionId = partition.getPartitionId();
+                this.partition = partition;
+                this.migrationCount = migrationCount;
+                this.lostCount = lostCount;
+            }
+
+            @Override
+            public void migrate(Address currentOwner, Address newOwner, int replicaIndex,
+                    MigrationType type, int keepReplicaIndex) {
+
+                if (currentOwner == null && replicaIndex == 0) {
+                    lostCount.value++;
+                    assignNewPartitionOwner(partitionId, partition, newOwner);
+                } else {
+                    migrationCount.value++;
+                    MigrationInfo migration = new MigrationInfo(partitionId, replicaIndex, currentOwner,
+                            newOwner, type, keepReplicaIndex);
+                    if (keepReplicaIndex > 0) {
+                        migration.setOldKeepReplicaOwner(partition.getReplicaAddress(keepReplicaIndex));
+                    }
+                    scheduleMigration(migration, MigrateTaskReason.REPARTITIONING);
+                }
+            }
+        }
     }
 
     class MigrateTask implements MigrationRunnable {

@@ -254,7 +254,7 @@ public class MigrationInfo implements DataSerializable {
     public String toString() {
         final StringBuilder sb = new StringBuilder("MigrationInfo{");
         sb.append("uuid=").append(uuid);
-        sb.append("partitionId=").append(partitionId);
+        sb.append(", partitionId=").append(partitionId);
         sb.append(", replicaIndex=").append(replicaIndex);
         sb.append(", source=").append(source);
         sb.append(", destination=").append(destination);

@@ -17,11 +17,11 @@
 package com.hazelcast.internal.partition.operation;
 
 import com.hazelcast.core.HazelcastException;
-import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.MigrationManager;
+import com.hazelcast.internal.partition.impl.PartitionReplicaManager;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
@@ -129,8 +129,11 @@ public final class MigrationOperation extends BaseMigrationOperation {
 
     private void afterMigrate() {
         if (success) {
-            InternalPartitionService partitionService = getService();
-            partitionService.setPartitionReplicaVersions(migrationInfo.getPartitionId(), replicaVersions, 1);
+            InternalPartitionServiceImpl partitionService = getService();
+            PartitionReplicaManager replicaManager = partitionService.getReplicaManager();
+            int replicaOffset = migrationInfo.getReplicaIndex() <= 1 ? 1 : migrationInfo.getReplicaIndex();
+            replicaManager.setPartitionReplicaVersions(migrationInfo.getPartitionId(), replicaVersions,
+                    replicaOffset);
             if (getLogger().isFinestEnabled()) {
                 getLogger().finest("ReplicaVersions are set after migration. partitionId="
                         + migrationInfo.getPartitionId() + " replicaVersions=" + Arrays.toString(replicaVersions));
