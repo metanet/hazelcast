@@ -794,6 +794,7 @@ public class MigrationManager {
                     }
 
                 } else {
+                    migrationInfo.setStatus(MigrationStatus.FAILED);
                     internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 }
 
