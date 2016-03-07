@@ -44,6 +44,7 @@ import com.hazelcast.util.scheduler.CoalescingDelayedTrigger;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.Future;
@@ -372,6 +373,27 @@ public class MigrationManager {
         partitionServiceLock.lock();
         try {
             completedMigrations.retainAll(migrations);
+        } finally {
+            partitionServiceLock.unlock();
+        }
+    }
+
+    private void evictCompletedMigrations(MigrationInfo currentMigration) {
+        partitionServiceLock.lock();
+        try {
+            assert completedMigrations.contains(currentMigration);
+
+            Iterator<MigrationInfo> iter = completedMigrations.iterator();
+            while (iter.hasNext()) {
+                MigrationInfo migration = iter.next();
+                iter.remove();
+
+                // evict completed migrations including current migration
+                if (migration.equals(currentMigration)) {
+                    return;
+                }
+            }
+
         } finally {
             partitionServiceLock.unlock();
         }
@@ -729,7 +751,9 @@ public class MigrationManager {
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
                 partitionService.getPartitionStateManager().incrementVersion(2); // TODO move this into constant
-                partitionService.syncPartitionRuntimeState();
+                if (partitionService.syncPartitionRuntimeState()) {
+                    evictCompletedMigrations(migrationInfo);
+                }
             } finally {
                 partitionServiceLock.unlock();
             }
@@ -774,7 +798,9 @@ public class MigrationManager {
                 }
 
                 scheduleActiveMigrationFinalization(migrationInfo);
-                partitionService.syncPartitionRuntimeState();
+                if (partitionService.syncPartitionRuntimeState()) {
+                    evictCompletedMigrations(migrationInfo);
+                }
             } finally {
                 partitionServiceLock.unlock();
             }

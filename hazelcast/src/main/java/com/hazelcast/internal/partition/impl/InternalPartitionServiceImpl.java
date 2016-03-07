@@ -84,7 +84,7 @@ import java.util.logging.Level;
 
 import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
 import static com.hazelcast.util.FutureUtil.logAllExceptions;
-import static com.hazelcast.util.FutureUtil.waitWithDeadline;
+import static com.hazelcast.util.FutureUtil.returnWithDeadline;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
@@ -459,18 +459,18 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    void syncPartitionRuntimeState() {
-        syncPartitionRuntimeState(node.clusterService.getMemberImpls());
+    boolean syncPartitionRuntimeState() {
+        return syncPartitionRuntimeState(node.clusterService.getMemberImpls());
     }
 
-    void syncPartitionRuntimeState(Collection<MemberImpl> members) {
+    boolean syncPartitionRuntimeState(Collection<MemberImpl> members) {
         if (!partitionStateManager.isInitialized()) {
             // do not send partition state until initialized!
-            return;
+            return false;
         }
 
         if (!node.isMaster()) {
-            return;
+            return false;
         }
 
         lock.lock();
@@ -478,24 +478,34 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             PartitionRuntimeState partitionState = createPartitionState(members);
             OperationService operationService = nodeEngine.getOperationService();
 
-            List<Future> calls = firePartitionStateOperation(members, partitionState, operationService);
-            waitWithDeadline(calls, 3, TimeUnit.SECONDS, partitionStateSyncTimeoutHandler);
+            List<Future<Boolean>> calls = firePartitionStateOperation(members, partitionState, operationService);
+            Collection<Boolean> results = returnWithDeadline(calls, 10, TimeUnit.SECONDS, partitionStateSyncTimeoutHandler);
+
+            if (calls.size() == results.size()) {
+                for (Boolean result : results) {
+                    if (!result) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            return false;
         } finally {
             lock.unlock();
         }
     }
 
-    private List<Future> firePartitionStateOperation(Collection<MemberImpl> members,
+    private List<Future<Boolean>> firePartitionStateOperation(Collection<MemberImpl> members,
                                                      PartitionRuntimeState partitionState,
                                                      OperationService operationService) {
         final ClusterServiceImpl clusterService = node.clusterService;
-        List<Future> calls = new ArrayList<Future>(members.size());
+        List<Future<Boolean>> calls = new ArrayList<Future<Boolean>>(members.size());
         for (MemberImpl member : members) {
             if (!(member.localMember() || clusterService.isMemberRemovedWhileClusterIsNotActive(member.getAddress()))) {
                 try {
                     Address address = member.getAddress();
                     PartitionStateOperation operation = new PartitionStateOperation(partitionState, true);
-                    Future<Object> f = operationService.invokeOnTarget(SERVICE_NAME, operation, address);
+                    Future<Boolean> f = operationService.invokeOnTarget(SERVICE_NAME, operation, address);
                     calls.add(f);
                 } catch (Exception e) {
                     logger.finest(e);
