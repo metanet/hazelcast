@@ -50,6 +50,14 @@ class MigrationDecision {
         int currentIndex = 0;
         while (currentIndex < oldAddresses.length) {
 
+            log("STATE: " + Arrays.toString(state));
+            Set<Address> verify = new HashSet<Address>();
+            for (Address s : state) {
+                if (s != null) {
+                    assert verify.add(s);
+                }
+            }
+
             if (newAddresses[currentIndex] == null) {
                 if (state[currentIndex] != null) {
                     log("new address is null at index: " + currentIndex);
@@ -61,11 +69,22 @@ class MigrationDecision {
             }
 
             if (state[currentIndex] == null) {
-                log("COPY " + newAddresses[currentIndex] + " to index: " + currentIndex);
-                callback.migrate(null, newAddresses[currentIndex], currentIndex, MigrationType.COPY, -1);
-                state[currentIndex] = newAddresses[currentIndex];
-                currentIndex++;
-                continue;
+                int i = getReplicaIndex(state, newAddresses[currentIndex]);
+                if (i == -1) {
+                    log("COPY " + newAddresses[currentIndex] + " to index: " + currentIndex);
+                    callback.migrate(null, newAddresses[currentIndex], currentIndex, MigrationType.COPY, -1);
+                    state[currentIndex] = newAddresses[currentIndex];
+                    currentIndex++;
+                    continue;
+                } else if (i > currentIndex) {
+                    log("SHIFT UP2 " + state[i] + " from old addresses index: " + i + " to index: " + currentIndex);
+                    callback.migrate(null, state[i], i, MigrationType.MOVE, -1);
+                    state[currentIndex] = state[i];
+                    state[i] = null;
+                } else {
+                    throw new AssertionError("INITIAL: " + Arrays.toString(oldAddresses) + " CURRENT: " + Arrays.toString(state)
+                            + " FINAL: " + Arrays.toString(newAddresses));
+                }
             }
 
             if (newAddresses[currentIndex].equals(state[currentIndex])) {
@@ -121,14 +140,6 @@ class MigrationDecision {
                     // newAddresses[j] is also present in old partition replicas
                     target = newAddresses[j];
                     i = j;
-                }
-            }
-
-            log("STATE: " + Arrays.toString(state));
-            Set<Address> verify = new HashSet<Address>();
-            for (Address s : state) {
-                if (s != null) {
-                    assert verify.add(s);
                 }
             }
         }
