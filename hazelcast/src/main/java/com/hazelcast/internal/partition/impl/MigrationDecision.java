@@ -81,6 +81,7 @@ class MigrationDecision {
                     callback.migrate(null, state[i], currentIndex, MigrationType.MOVE, -1);
                     state[currentIndex] = state[i];
                     state[i] = null;
+                    continue;
                 } else {
                     throw new AssertionError(
                             "Migration decision algorithm failed during SHIFT UP! INITIAL: " + Arrays.toString(oldAddresses)
