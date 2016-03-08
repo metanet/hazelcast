@@ -435,7 +435,12 @@ public class MigrationManager {
 
     // TODO BASRI addActiveMigration method runs with partition service lock but this one and some others do not.
     public List<MigrationInfo> getCompletedMigrations() {
-        return new ArrayList<MigrationInfo>(completedMigrations);
+        partitionServiceLock.lock();
+        try {
+            return new ArrayList<MigrationInfo>(completedMigrations);
+        } finally {
+            partitionServiceLock.unlock();
+        }
     }
 
     public boolean hasOnGoingMigration() {
