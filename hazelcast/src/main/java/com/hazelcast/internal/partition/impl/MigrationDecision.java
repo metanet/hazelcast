@@ -27,7 +27,6 @@ import static com.hazelcast.internal.partition.impl.InternalPartitionImpl.getRep
 
 /**
  * TODO: Javadoc Pending...
- *
  */
 class MigrationDecision {
 
@@ -36,6 +35,12 @@ class MigrationDecision {
     }
 
     static void migrate(Address[] oldAddresses, Address[] newAddresses, MigrationCallback callback) {
+
+        if (oldAddresses.length != newAddresses.length) {
+            throw new IllegalArgumentException(
+                    "replica addresses with different lengths! old: " + Arrays.toString(oldAddresses) + " new: " + Arrays
+                            .toString(newAddresses));
+        }
 
         Address[] state = new Address[oldAddresses.length];
         System.arraycopy(oldAddresses, 0, state, 0, oldAddresses.length);
@@ -78,12 +83,13 @@ class MigrationDecision {
                     continue;
                 } else if (i > currentIndex) {
                     log("SHIFT UP2 " + state[i] + " from old addresses index: " + i + " to index: " + currentIndex);
-                    callback.migrate(null, state[i], i, MigrationType.MOVE, -1);
+                    callback.migrate(null, state[i], currentIndex, MigrationType.MOVE, -1);
                     state[currentIndex] = state[i];
                     state[i] = null;
                 } else {
-                    throw new AssertionError("INITIAL: " + Arrays.toString(oldAddresses) + " CURRENT: " + Arrays.toString(state)
-                            + " FINAL: " + Arrays.toString(newAddresses));
+                    throw new AssertionError(
+                            "Migration decision algorithm failed during SHIFT UP! INITIAL: " + Arrays.toString(oldAddresses)
+                                    + " CURRENT: " + Arrays.toString(state) + " FINAL: " + Arrays.toString(newAddresses));
                 }
             }
 
@@ -105,11 +111,18 @@ class MigrationDecision {
             // IT IS A MOVE COPY BACK
             if (getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
                 int keepReplicaIndex = getReplicaIndex(newAddresses, state[currentIndex]);
-                log("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex
-                        + " with keepReplicaIndex: " + keepReplicaIndex);
 
-                callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex,
-                        MigrationType.MOVE, keepReplicaIndex);
+                if (keepReplicaIndex <= currentIndex) {
+                    throw new AssertionError(
+                            "Migration decision algorithm failed during MOVE COPY BACK! INITIAL: " + Arrays.toString(oldAddresses)
+                                    + " CURRENT: " + Arrays.toString(state) + " FINAL: " + Arrays.toString(newAddresses));
+                }
+
+                log("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex + " with keepReplicaIndex: "
+                        + keepReplicaIndex);
+
+                callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex, MigrationType.MOVE,
+                        keepReplicaIndex);
 
                 state[keepReplicaIndex] = state[currentIndex];
                 state[currentIndex] = newAddresses[currentIndex];
@@ -123,8 +136,9 @@ class MigrationDecision {
                 int j = getReplicaIndex(state, target);
 
                 if (j == -1) {
-                    throw new AssertionError(target + " is not present in " + Arrays.toString(state));
-
+                    throw new AssertionError("Migration algorithm failed during SHIFT UP! " + target
+                            + " is not present in " + Arrays.toString(state) + "INITIAL: " + Arrays.toString(oldAddresses)
+                            + " FINAL: " + Arrays.toString(newAddresses));
                 } else if (newAddresses[j] == null) {
                     log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + i);
                     callback.migrate(null, state[j], i, MigrationType.MOVE, -1);
@@ -143,7 +157,11 @@ class MigrationDecision {
                 }
             }
         }
-        assert Arrays.equals(state, newAddresses) : Arrays.toString(state) + " vs " + Arrays.toString(newAddresses);
+
+        if (!Arrays.equals(state, newAddresses)) {
+            throw new AssertionError("Migration decisions failed! INITIAL: " + Arrays.toString(oldAddresses)
+                    + " CURRENT: " + Arrays.toString(state) + " FINAL: " + Arrays.toString(newAddresses));
+        }
     }
 
     static boolean isCyclic(Address[] oldReplicas, Address[] newReplicas) {
