@@ -137,7 +137,7 @@ class MigrationDecision {
                             + " FINAL: " + Arrays.toString(newAddresses));
                 } else if (newAddresses[j] == null) {
                     log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + i);
-                    callback.migrate(null, state[j], i, MigrationType.MOVE, -1);
+                    callback.migrate(state[i], state[j], i, MigrationType.MOVE, -1);
                     state[i] = state[j];
                     state[j] = null;
                     break;

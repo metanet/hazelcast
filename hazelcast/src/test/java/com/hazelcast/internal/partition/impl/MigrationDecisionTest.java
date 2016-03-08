@@ -17,6 +17,7 @@
 package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.internal.partition.InternalPartition;
+import com.hazelcast.internal.partition.impl.MigrationDecision.MigrationCallback;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationType;
 import com.sun.istack.internal.NotNull;
@@ -27,18 +28,113 @@ import java.util.Arrays;
 import java.util.Random;
 
 import static com.hazelcast.internal.partition.impl.MigrationDecision.migrate;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 public class MigrationDecisionTest {
 
-    private static final MigrationDecision.MigrationCallback CALLBACK = new MigrationDecision.MigrationCallback() {
-        @Override
-        public void migrate(Address currentOwner, Address newOwner, int replicaIndex, MigrationType type,
-                int keepReplicaIndex) {
-        }
-    };
+    private MigrationCallback callback = mock(MigrationCallback.class);
 
     @Test
-    public void test()
+    public void test_MOVE()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5702), new Address(
+                "localhost", 5705), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5705), 2, MigrationType.MOVE, -1);
+    }
+
+    @Test
+    public void test_COPY()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), null, new Address("localhost",
+                5703), null, null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5704), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(null, new Address("localhost", 5704), 1, MigrationType.COPY, -1);
+    }
+
+    @Test
+    public void test_MOVE_COPY_BACK_withNullKeepReplicaIndex()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), null, new Address("localhost",
+                5703), null, null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5701), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 1);
+    }
+
+    @Test
+    public void test_MOVE_COPY_BACK_withNullNonNullKeepReplicaIndex()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5701), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 1);
+    }
+
+    @Test
+    public void test_MOVE_COPY_BACK_and_MOVE()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), null, null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5701), new Address(
+                "localhost", 5702), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 1);
+        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5702), 2, MigrationType.MOVE, -1);
+    }
+
+    @Test
+    public void test_SHIFT_UP()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), null, new Address("localhost",
+                5703), new Address("localhost", 5704), null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5703), new Address(
+                "localhost", 5704), null, null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+
+        verify(callback).migrate(null, new Address("localhost", 5703), 1, MigrationType.MOVE, -1);
+        verify(callback).migrate(null, new Address("localhost", 5704), 2, MigrationType.MOVE, -1);
+    }
+
+    @Test
+    public void test_SHIFT_UPS_performedBy_MOVE()
+            throws UnknownHostException {
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
+                "localhost", 5703), new Address("localhost", 5704), null, null, null};
+
+        final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5703), new Address(
+                "localhost", 5704), new Address("localhost", 5705), null, null, null};
+
+        migrate(oldAddresses, newAddresses, callback);
+
+        verify(callback).migrate(new Address("localhost", 5704), new Address("localhost", 5705), 3, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5704), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5703), 1, MigrationType.MOVE, -1);
+    }
+
+    @Test
+    public void test_MOVE_COPY_BACK_performedAfterKnownNewReplicaOwnerKickedOutOfReplicas()
             throws UnknownHostException {
 
         final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
@@ -48,12 +144,15 @@ public class MigrationDecisionTest {
                 "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5702), new Address("localhost",
                 5701), null};
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
-
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 5);
+        verify(callback).migrate(new Address("localhost", 5705), new Address("localhost", 5706), 3, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5705), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5703), 1, MigrationType.MOVE, 4);
     }
 
     @Test
-    public void test2()
+    public void test_MOVE_COPY_BACK_performedBeforeNonConflicting_SHIFT_UP()
             throws UnknownHostException {
         final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
                 "localhost", 5703), new Address("localhost", 5705), null, null, null};
@@ -61,11 +160,14 @@ public class MigrationDecisionTest {
         final Address[] newAddresses = new Address[]{new Address("localhost", 5704), new Address("localhost", 5703), new Address(
                 "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5701), null, null};
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 4);
+        verify(callback).migrate(new Address("localhost", 5705), new Address("localhost", 5706), 3, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5705), 2, MigrationType.MOVE, -1);
     }
 
     @Test
-    public void test3()
+    public void test_MOVE_toNull()
             throws UnknownHostException {
         final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
                 "localhost", 5703), new Address("localhost", 5705), null, null, null};
@@ -73,11 +175,12 @@ public class MigrationDecisionTest {
         final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
                 "localhost", 5703), null, null, null, null};
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5705), null, 3, MigrationType.MOVE, -1);
     }
 
     @Test
-    public void test4()
+    public void test_SHIFT_UP_toReplicaIndexWithExistingOwner()
             throws UnknownHostException {
         final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
                 "localhost", 5703), new Address("localhost", 5704), null, null, null};
@@ -85,11 +188,12 @@ public class MigrationDecisionTest {
         final Address[] newAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5704), new Address(
                 "localhost", 5703), null, null, null, null};
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5704), 1, MigrationType.MOVE, -1);
     }
 
     @Test
-    public void test5()
+    public void test_MOVE_performedAfter_SHIFT_UP_toReplicaIndexWithExistingOwnerKicksItOutOfCluster()
             throws UnknownHostException {
         final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
                 "localhost", 5703), new Address("localhost", 5704), null, null, null};
@@ -97,43 +201,23 @@ public class MigrationDecisionTest {
         final Address[] newAddresses = new Address[]{new Address("localhost", 5702), new Address("localhost", 5704), new Address(
                 "localhost", 5703), null, null, null, null};
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5704), 1, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5702), 0, MigrationType.MOVE, -1);
     }
 
     @Test
-    public void test6()
+    public void test_SHIFT_UP_multipleTimes()
             throws UnknownHostException {
-        final Address[] oldAddresses = new Address[]{new Address("localhost", 5701), new Address("localhost", 5702), new Address(
-                "localhost", 5703), new Address("localhost", 5704), null, null, null};
-
-        final Address[] newAddresses = new Address[]{new Address("localhost", 5702), new Address("localhost", 5704), new Address(
-                "localhost", 5703), new Address("localhost", 5705), null, null, null};
-
-        migrate(oldAddresses, newAddresses, CALLBACK);
-    }
-
-    @Test
-    public void test7()
-            throws UnknownHostException {
-        final Address[] oldAddresses = new Address[]{new Address("localhost", 5702), null, new Address(
-                "localhost", 5703), new Address("localhost", 5704), null, null, null};
+        final Address[] oldAddresses = new Address[]{new Address("localhost", 5702), null, new Address("localhost",
+                5703), new Address("localhost", 5704), null, null, null};
 
         final Address[] newAddresses = new Address[]{new Address("localhost", 5702), new Address("localhost", 5703), new Address(
                 "localhost", 5704), null, null, null, null};
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
-    }
-
-    @Test
-    public void test8()
-            throws UnknownHostException {
-        final Address[] oldAddresses = new Address[]{new Address("localhost", 5702), null, new Address(
-                "localhost", 5703), new Address("localhost", 5704), null, null, null};
-
-        final Address[] newAddresses = new Address[]{new Address("localhost", 5702), new Address("localhost", 5703), null, new Address(
-                "localhost", 5704), null, null, null};
-
-        migrate(oldAddresses, newAddresses, CALLBACK);
+        migrate(oldAddresses, newAddresses, callback);
+        verify(callback).migrate(null, new Address("localhost", 5703), 1, MigrationType.MOVE, -1);
+        verify(callback).migrate(null, new Address("localhost", 5704), 2, MigrationType.MOVE, -1);
     }
 
     @Test
@@ -146,7 +230,8 @@ public class MigrationDecisionTest {
         }
     }
 
-    private static void testRandom(int initialLen) throws java.net.UnknownHostException {
+    private void testRandom(int initialLen)
+            throws java.net.UnknownHostException {
         Address[] oldAddresses = new Address[InternalPartition.MAX_REPLICA_COUNT];
         for (int i = 0; i < initialLen; i++) {
             oldAddresses[i] = newAddress(5000 + i);
@@ -160,10 +245,10 @@ public class MigrationDecisionTest {
 
         shuffle(newAddresses, initialLen + newLen);
 
-        migrate(oldAddresses, newAddresses, CALLBACK);
+        migrate(oldAddresses, newAddresses, callback);
     }
 
-    private static void shuffle(Address[] array, int len) {
+    private void shuffle(Address[] array, int len) {
         int index;
         Address temp;
         Random random = new Random();
@@ -176,7 +261,9 @@ public class MigrationDecisionTest {
     }
 
     @NotNull
-    private static Address newAddress(int port) throws java.net.UnknownHostException {
+    private Address newAddress(int port)
+            throws java.net.UnknownHostException {
         return new Address("localhost", port);
     }
+
 }
