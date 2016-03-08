@@ -56,12 +56,7 @@ class MigrationDecision {
         while (currentIndex < oldAddresses.length) {
 
             log("STATE: " + Arrays.toString(state));
-            Set<Address> verify = new HashSet<Address>();
-            for (Address s : state) {
-                if (s != null) {
-                    assert verify.add(s);
-                }
-            }
+            verifyState(oldAddresses, newAddresses, state);
 
             if (newAddresses[currentIndex] == null) {
                 if (state[currentIndex] != null) {
@@ -161,6 +156,19 @@ class MigrationDecision {
         if (!Arrays.equals(state, newAddresses)) {
             throw new AssertionError("Migration decisions failed! INITIAL: " + Arrays.toString(oldAddresses)
                     + " CURRENT: " + Arrays.toString(state) + " FINAL: " + Arrays.toString(newAddresses));
+        }
+    }
+
+    private static void verifyState(Address[] oldAddresses, Address[] newAddresses, Address[] state) {
+        Set<Address> verify = new HashSet<Address>();
+        for (Address s : state) {
+            if (s != null) {
+                if (!verify.add(s)) {
+                    throw new AssertionError("Migration decision algorithm failed! DUPLICATE REPLICA ADDRESSES! INITIAL: "
+                            + Arrays.toString(oldAddresses) + " CURRENT: " + Arrays.toString(state) + " FINAL: "
+                            + Arrays.toString(newAddresses));
+                }
+            }
         }
     }
 
