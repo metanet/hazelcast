@@ -174,6 +174,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         testPartitionDataSize_whenBackupNodesTerminatedConcurrently(3);
     }
 
+    // TODO: rename!
     private void testPartitionDataSize_whenBackupNodesTerminatedConcurrently(int backupCount) throws InterruptedException {
         Config config = getConfig(backupCount);
 

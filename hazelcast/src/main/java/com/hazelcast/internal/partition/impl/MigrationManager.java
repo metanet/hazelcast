@@ -41,7 +41,6 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.MutableInteger;
 import com.hazelcast.util.Preconditions;
-import com.hazelcast.util.scheduler.CoalescingDelayedTrigger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -90,10 +89,9 @@ public class MigrationManager {
     @Probe(name = "lastRepartitionTime")
     private final AtomicLong lastRepartitionTime = new AtomicLong();
 
-    private final CoalescingDelayedTrigger delayedResumeMigrationTrigger;
-
     final long partitionMigrationInterval;
     private final long partitionMigrationTimeout;
+    private final long migrationPauseDelayMs;
 
     // updates will be done under lock, but reads will be multithreaded.
     private volatile MigrationInfo activeMigrationInfo;
@@ -120,42 +118,13 @@ public class MigrationManager {
 
         partitionStateManager = partitionService.getPartitionStateManager();
 
-        ExecutionService executionService = nodeEngine.getExecutionService();
-
         migrationThread = new MigrationThread(this, node.getHazelcastThreadGroup(), node.getLogger(MigrationThread.class));
 
         long intervalMillis = node.groupProperties.getMillis(GroupProperty.PARTITION_MIGRATION_INTERVAL);
         partitionMigrationInterval = (intervalMillis > 0 ? intervalMillis : 0);
         partitionMigrationTimeout = node.groupProperties.getMillis(GroupProperty.PARTITION_MIGRATION_TIMEOUT);
 
-        long maxMigrationDelayMs = calculateMaxMigrationDelayOnMemberRemoved();
-        long minMigrationDelayMs = calculateMigrationDelayOnMemberRemoved(maxMigrationDelayMs);
-        this.delayedResumeMigrationTrigger = new CoalescingDelayedTrigger(
-                executionService, minMigrationDelayMs, maxMigrationDelayMs, new Runnable() {
-            @Override
-            public void run() {
-                resumeMigration();
-            }
-        });
-    }
-
-    private long calculateMaxMigrationDelayOnMemberRemoved() {
-        // hard limit for migration pause is half of the call timeout. otherwise we might experience timeouts
-        return node.groupProperties.getMillis(GroupProperty.OPERATION_CALL_TIMEOUT_MILLIS) / 2;
-    }
-
-    private long calculateMigrationDelayOnMemberRemoved(long maxDelayMs) {
-        long migrationDelayMs = node.groupProperties.getMillis(GroupProperty.MIGRATION_MIN_DELAY_ON_MEMBER_REMOVED_SECONDS);
-
-        long connectionErrorDetectionIntervalMs = node.groupProperties.getMillis(GroupProperty.CONNECTION_MONITOR_INTERVAL)
-                * node.groupProperties.getInteger(GroupProperty.CONNECTION_MONITOR_MAX_FAULTS) * 5;
-        migrationDelayMs = Math.max(migrationDelayMs, connectionErrorDetectionIntervalMs);
-
-        long heartbeatIntervalMs = node.groupProperties.getMillis(GroupProperty.HEARTBEAT_INTERVAL_SECONDS);
-        migrationDelayMs = Math.max(migrationDelayMs, heartbeatIntervalMs * 3);
-
-        migrationDelayMs = Math.min(migrationDelayMs, maxDelayMs);
-        return migrationDelayMs;
+        migrationPauseDelayMs = node.groupProperties.getMillis(GroupProperty.MIGRATION_MIN_DELAY_ON_MEMBER_REMOVED_SECONDS);
     }
 
     @Probe(name = "migrationActive")
@@ -182,7 +151,13 @@ public class MigrationManager {
     }
 
     void resumeMigrationEventually() {
-        delayedResumeMigrationTrigger.executeWithDelay();
+        ExecutionService executionService = nodeEngine.getExecutionService();
+        executionService.schedule(new Runnable() {
+            @Override
+            public void run() {
+                resumeMigration();
+            }
+        }, migrationPauseDelayMs, TimeUnit.MILLISECONDS);
     }
 
     boolean isMigrationAllowed() {
