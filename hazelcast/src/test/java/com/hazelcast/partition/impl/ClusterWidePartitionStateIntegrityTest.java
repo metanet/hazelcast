@@ -280,7 +280,7 @@ public class ClusterWidePartitionStateIntegrityTest extends HazelcastTestSupport
 
         @Override
         public boolean allow(Packet packet, Address endpoint) {
-            return !packet.isHeaderSet(Packet.HEADER_OP) || allowOperation(packet, endpoint);
+            return !packet.isFlagSet(Packet.FLAG_OP) || allowOperation(packet, endpoint);
         }
 
         private boolean allowOperation(Packet packet, Address endpoint) {
