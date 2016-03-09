@@ -96,11 +96,11 @@ public final class PartitionRuntimeState implements IdentifiedDataSerializable {
             partitionInfos.add(partitionInfo);
         }
 
-        if (!unmatchAddresses.isEmpty()) {
+        if (logger.isFineEnabled() && !unmatchAddresses.isEmpty()) {
             // it can happen that the primary address at any given moment is not known,
             // most probably because master node has updated/published the partition table yet
             // or partition table update is not received yet.
-            logger.warning("Unknown owner addresses in partition state! "
+            logger.fine("Unknown owner addresses in partition state! "
                     + "(Probably they have recently joined to or left the cluster.) " + unmatchAddresses);
         }
     }

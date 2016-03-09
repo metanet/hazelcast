@@ -31,7 +31,6 @@ import com.hazelcast.partition.membergroup.MemberGroup;
 import com.hazelcast.partition.membergroup.MemberGroupFactory;
 import com.hazelcast.partition.membergroup.MemberGroupFactoryFactory;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -179,10 +178,9 @@ public class PartitionStateManager {
         return node.isLiteMember() ? 0 : 1;
     }
 
-    Collection<MigrationInfo> removeDeadAddress(Address deadAddress) {
-        Collection<MigrationInfo> migrations = new ArrayList<MigrationInfo>();
+    void removeDeadAddress(Collection<MigrationInfo> migrations, Address address) {
         for (InternalPartitionImpl partition : partitions) {
-            int index = partition.removeAddress(deadAddress);
+            int index = partition.removeAddress(address);
 
             // address is not replica of this partition
             if (index == -1) {
@@ -228,12 +226,10 @@ public class PartitionStateManager {
                     MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination,
                             -1, -1, i, index);
                     migrations.add(migration);
-                    logger.info("Scheduling " + migration + "\n");
                     break;
                 }
             }
         }
-        return migrations;
     }
 
     InternalPartition[] getPartitions() {

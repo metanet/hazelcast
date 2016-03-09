@@ -172,9 +172,10 @@ public class MigrationManager {
             boolean source = thisAddress.equals(migrationInfo.getSource());
             boolean destination = thisAddress.equals(migrationInfo.getDestination());
 
+            assert migrationInfo.getStatus() == MigrationStatus.SUCCESS
+                    || migrationInfo.getStatus() == MigrationStatus.FAILED : "Invalid migration: " + migrationInfo;
+
             if (source || destination) {
-                assert migrationInfo.getStatus() == MigrationStatus.SUCCESS
-                        || migrationInfo.getStatus() == MigrationStatus.FAILED : "Invalid migration: " + migrationInfo;
                 boolean success = migrationInfo.getStatus() == MigrationStatus.SUCCESS;
 
                 MigrationParticipant participant = source ? MigrationParticipant.SOURCE : MigrationParticipant.DESTINATION;
@@ -284,6 +285,8 @@ public class MigrationManager {
                     && migrationInfo.getDestinationCurrentReplicaIndex() > 0
                     && migrationInfo.getDestinationNewReplicaIndex() == 0) {
                 // shift up when a partition owner is removed
+                assert migrationInfo.getStatus() == MigrationStatus.SUCCESS
+                        : "Promotion status should be SUCCESS! -> " + migrationInfo.getStatus();
                 PromoteFromBackupOperation op = new PromoteFromBackupOperation(PartitionReplicaChangeReason.MEMBER_REMOVED,
                         migrationInfo.getSource(), migrationInfo.getDestinationCurrentReplicaIndex());
                 op.setPartitionId(migrationInfo.getPartitionId()).setNodeEngine(nodeEngine).setService(partitionService);
@@ -633,27 +636,23 @@ public class MigrationManager {
             }
 
             try {
-                if (!checkPartitionOwner()) {
+                MemberImpl partitionOwner = getPartitionOwner();
+                if (partitionOwner == null) {
+                    logger.fine("Partition owner is null. Ignoring migration task.");
                     return;
                 }
+
                 internalMigrationListener.onMigrationStart(MigrationParticipant.MASTER, migrationInfo);
                 partitionService.getPartitionEventManager()
                         .sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.STARTED);
 
-                Boolean result;
                 if (logger.isFineEnabled()) {
                     logger.fine("Starting Migration: " + migrationInfo);
                 }
 
-                MemberImpl partitionOwner = getPartitionOwner();
-                if (partitionOwner == null) {
-                    logger.warning("Partition owner is unknown! " + migrationInfo);
-                    result = Boolean.FALSE;
-                } else {
-                    MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo,
+                MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo,
                             partitionService.getPartitionStateVersion());
-                    result = executeMigrateOperation(migrationRequestOp, partitionOwner);
-                }
+                Boolean result = executeMigrateOperation(migrationRequestOp, partitionOwner);
                 processMigrationResult(result);
             } catch (Throwable t) {
                 final Level level = isValid() ? Level.WARNING : Level.FINEST;
@@ -664,54 +663,23 @@ public class MigrationManager {
         }
 
         private MemberImpl getPartitionOwner() {
-            // always replicate data from partition owner
-            InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
-            Address source = partition.getOwnerOrNull();
-            return source != null ? node.getClusterService().getMember(source) : null;
-        }
-
-        // TODO: needs cleanup
-        private boolean checkPartitionOwner() {
             InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
             Address owner = partition.getOwnerOrNull();
             if (owner == null) {
                 if (isValid()) {
-                    logger.severe("ERROR: partition owner is not set! -> partitionId=" + migrationInfo.getPartitionId()
+                    logger.severe("Partition owner is not set! -> partitionId=" + migrationInfo.getPartitionId()
                             + " , " + partition + " -VS- " + migrationInfo);
                 }
-                return false;
+                return null;
             }
 
-//            if (migrationInfo.getType() == MigrationType.MOVE) {
-//                Address replica = partition.getReplicaAddress(migrationInfo.getSourceCurrentReplicaIndex());
-//                if (replica == null) {
-//                    if (isValid()) {
-//                        logger.severe("ERROR: partition replica owner is not set! -> partitionId="
-//                                + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo);
-//                    }
-//                    return false;
-//                }
-//
-//                if (!replica.equals(migrationInfo.getSource())) {
-//                    if (isValid()) {
-//                        logger.severe("ERROR: partition replica owner is not the source of migration! -> partitionId="
-//                                + migrationInfo.getPartitionId() + " , " + partition + " -VS- " + migrationInfo
-//                                + " found owner= " + replica);
-//                    }
-//                    return false;
-//                }
-//            }
-
-            return true;
+            return node.getClusterService().getMember(owner);
         }
 
         private void processMigrationResult(Boolean result) {
             if (!migrationInfo.isValid()) {
-                logger.severe("-------------- INVALID-------------- " + migrationInfo);
                 migrationOperationFailed();
-                return;
-            }
-            if (Boolean.TRUE.equals(result)) {
+            } else if (Boolean.TRUE.equals(result)) {
 //                if (logger.isFineEnabled()) {
                     logger.info("Finished Migration: " + migrationInfo);
 //                }

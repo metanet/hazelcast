@@ -63,7 +63,7 @@ public final class FinalizeMigrationOperation extends AbstractOperation
         Collection<MigrationAwareService> migrationAwareServices = nodeEngine.getServices(MigrationAwareService.class);
 
         // Old backup owner is not notified about migration until migration
-        // is committed on destination. This is the only place ob backup owner
+        // is committed on destination. This is the only place on backup owner
         // knows replica is moved away from itself.
         if (nodeEngine.getThisAddress().equals(migrationInfo.getSource())
                 && migrationInfo.getSourceCurrentReplicaIndex() > 0) {
