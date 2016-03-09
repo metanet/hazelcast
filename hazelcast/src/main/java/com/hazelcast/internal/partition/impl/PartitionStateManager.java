@@ -182,21 +182,40 @@ public class PartitionStateManager {
     Collection<MigrationInfo> removeDeadAddress(Address deadAddress) {
         Collection<MigrationInfo> migrations = new ArrayList<MigrationInfo>();
         for (InternalPartitionImpl partition : partitions) {
-            final int index = partition.removeAddress(deadAddress);
+            int index = partition.removeAddress(deadAddress);
 
             // address is not replica of this partition
             if (index == -1) {
                 continue;
             }
 
-            // if owner is null, promote 1.backup to owner
+
+            // if owner is null, promote 1st non-null backup to owner
             // don't touch to the other backups
             if (index == 0) {
-                partition.swapAddresses(0, 1);
+                Address destination = null;
+                for (int i = index + 1; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
+                    destination = partition.getReplicaAddress(i);
+                    if (destination != null) {
+                        partition.swapAddresses(0, i);
+                        index = i;
+                        break;
+                    }
+                }
+
+                if (destination != null) {
+                    // TODO: how do we inform the services about promotion?
+                    // run promotion when you get this completed migration?
+                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination, -1, -1, 1, 0);
+                    migration.setMaster(node.getThisAddress());
+                    migration.setStatus(MigrationInfo.MigrationStatus.SUCCESS);
+                    partitionService.getMigrationManager().addCompletedMigration(migration);
+                }
             }
 
-            Address owner;
-            if ((owner = partition.getOwnerOrNull()) == null) {
+            logger.info("Partition: " + partition.getPartitionId() + ", Replica: " + index + " is removed: " + partition);
+
+            if (partition.getOwnerOrNull() == null) {
                 // we lost the partition!
                 continue;
             }
@@ -206,8 +225,10 @@ public class PartitionStateManager {
             for (int i = InternalPartition.MAX_REPLICA_COUNT - 1; i > index; i--) {
                 destination = partition.getReplicaAddress(i);
                 if (destination != null) {
-                    // create a new migration from owner to destination for replica-index
-                    migrations.add(new MigrationInfo(partition.getPartitionId(), index, owner, destination));
+                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination,
+                            -1, -1, i, index);
+                    migrations.add(migration);
+                    logger.info("Scheduling " + migration + "\n");
                     break;
                 }
             }

@@ -19,7 +19,6 @@ package com.hazelcast.internal.partition.impl;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.impl.MigrationDecision.MigrationCallback;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.MigrationType;
 import com.sun.istack.internal.NotNull;
 import org.junit.Test;
 
@@ -45,8 +44,8 @@ public class MigrationDecisionTest {
                 "localhost", 5705), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5705), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5701), 0, -1, new Address("localhost", 5704), -1, 0);
+        verify(callback).migrate(new Address("localhost", 5703), 2, -1, new Address("localhost", 5705), -1, 2);
     }
 
     @Test
@@ -59,7 +58,7 @@ public class MigrationDecisionTest {
                 "localhost", 5703), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(null, new Address("localhost", 5704), 1, MigrationType.COPY, -1);
+        verify(callback).migrate(null, -1, -1, new Address("localhost", 5704), -1, 1);
     }
 
     @Test
@@ -72,7 +71,7 @@ public class MigrationDecisionTest {
                 "localhost", 5703), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 1);
+        verify(callback).migrate(new Address("localhost", 5701), 0, 1, new Address("localhost", 5704), -1, 0);
     }
 
     @Test
@@ -85,7 +84,7 @@ public class MigrationDecisionTest {
                 "localhost", 5703), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 1);
+        verify(callback).migrate(new Address("localhost", 5701), 0, 1, new Address("localhost", 5704), -1, 0);
     }
 
     @Test
@@ -98,8 +97,8 @@ public class MigrationDecisionTest {
                 "localhost", 5702), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 1);
-        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5702), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5701), 0, 1, new Address("localhost", 5704), -1, 0);
+        verify(callback).migrate(new Address("localhost", 5703), 2, -1, new Address("localhost", 5702), -1, 2);
     }
 
     @Test
@@ -113,8 +112,8 @@ public class MigrationDecisionTest {
 
         migrate(oldAddresses, newAddresses, callback);
 
-        verify(callback).migrate(null, new Address("localhost", 5703), 1, MigrationType.MOVE, -1);
-        verify(callback).migrate(null, new Address("localhost", 5704), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(null, -1, -1, new Address("localhost", 5703), 2, 1);
+        verify(callback).migrate(null, -1, -1, new Address("localhost", 5704), 3, 2);
     }
 
     @Test
@@ -128,9 +127,9 @@ public class MigrationDecisionTest {
 
         migrate(oldAddresses, newAddresses, callback);
 
-        verify(callback).migrate(new Address("localhost", 5704), new Address("localhost", 5705), 3, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5704), 2, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5703), 1, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5704), 3, -1, new Address("localhost", 5705), -1, 3);
+        verify(callback).migrate(new Address("localhost", 5703), 2, -1, new Address("localhost", 5704), -1, 2);
+        verify(callback).migrate(new Address("localhost", 5702), 1, -1, new Address("localhost", 5703), -1, 1);
     }
 
     @Test
@@ -145,10 +144,10 @@ public class MigrationDecisionTest {
                 5701), null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 5);
-        verify(callback).migrate(new Address("localhost", 5705), new Address("localhost", 5706), 3, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5705), 2, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5703), 1, MigrationType.MOVE, 4);
+        verify(callback).migrate(new Address("localhost", 5701), 0, 5, new Address("localhost", 5704), -1, 0);
+        verify(callback).migrate(new Address("localhost", 5705), 3, -1, new Address("localhost", 5706), -1, 3);
+        verify(callback).migrate(new Address("localhost", 5703), 2, -1, new Address("localhost", 5705), -1, 2);
+        verify(callback).migrate(new Address("localhost", 5702), 1, 4, new Address("localhost", 5703), -1, 1);
     }
 
     @Test
@@ -161,9 +160,9 @@ public class MigrationDecisionTest {
                 "localhost", 5705), new Address("localhost", 5706), new Address("localhost", 5701), null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5704), 0, MigrationType.MOVE, 4);
-        verify(callback).migrate(new Address("localhost", 5705), new Address("localhost", 5706), 3, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5703), new Address("localhost", 5705), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5701), 0, 4, new Address("localhost", 5704), -1, 0);
+        verify(callback).migrate(new Address("localhost", 5705), 3, -1, new Address("localhost", 5706), -1, 3);
+        verify(callback).migrate(new Address("localhost", 5703), 2, -1, new Address("localhost", 5705), -1, 2);
     }
 
     @Test
@@ -176,7 +175,7 @@ public class MigrationDecisionTest {
                 "localhost", 5703), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5705), null, 3, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5705), 3, -1, null, -1, -1);
     }
 
     @Test
@@ -189,7 +188,7 @@ public class MigrationDecisionTest {
                 "localhost", 5703), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5704), 1, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5702), 1, -1, new Address("localhost", 5704), 3, 1);
     }
 
     @Test
@@ -202,8 +201,8 @@ public class MigrationDecisionTest {
                 "localhost", 5703), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(new Address("localhost", 5702), new Address("localhost", 5704), 1, MigrationType.MOVE, -1);
-        verify(callback).migrate(new Address("localhost", 5701), new Address("localhost", 5702), 0, MigrationType.MOVE, -1);
+        verify(callback).migrate(new Address("localhost", 5702), 1, -1, new Address("localhost", 5704), 3, 1);
+        verify(callback).migrate(new Address("localhost", 5701), 0, -1, new Address("localhost", 5702), -1, 0);
     }
 
     @Test
@@ -216,8 +215,8 @@ public class MigrationDecisionTest {
                 "localhost", 5704), null, null, null, null};
 
         migrate(oldAddresses, newAddresses, callback);
-        verify(callback).migrate(null, new Address("localhost", 5703), 1, MigrationType.MOVE, -1);
-        verify(callback).migrate(null, new Address("localhost", 5704), 2, MigrationType.MOVE, -1);
+        verify(callback).migrate(null, -1, -1, new Address("localhost", 5703), 2, 1);
+        verify(callback).migrate(null, -1, -1, new Address("localhost", 5704), 3, 2);
     }
 
     @Test

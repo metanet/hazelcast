@@ -20,10 +20,8 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
-import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
-import com.hazelcast.spi.NodeEngine;
 
 /**
  * TODO: Javadoc Pending...
@@ -66,14 +64,15 @@ final class InternalPartitionListener implements PartitionListener {
                 // it is possible that I might become owner while waiting for sync request from the previous owner.
                 // I should check whether if have failed to get backups from the owner and lost the partition for
                 // some backups.
-                promoteFromBackups(partitionId, reason, oldAddress);
+//                promoteFromBackups(partitionId, reason, oldAddress);
             }
             partitionService.getReplicaManager().cancelReplicaSync(partitionId);
         }
 
-        if (replicaIndex == 0 && newAddress == null && node.isRunning() && node.joined()) {
-            logOwnerOfPartitionIsRemoved(event);
-        }
+        // TODO: not needed anymore! we already have partition lost listener
+//        if (replicaIndex == 0 && newAddress == null && node.isRunning() && node.joined()) {
+//            logOwnerOfPartitionIsRemoved(event);
+//        }
         if (node.isMaster()) {
             partitionService.getPartitionStateManager().incrementVersion();
         }
@@ -127,19 +126,19 @@ final class InternalPartitionListener implements PartitionListener {
 //        nodeEngine.getOperationService().executeOperation(op);
 //    }
 
-    private void promoteFromBackups(int partitionId, PartitionReplicaChangeReason reason, Address oldAddress) {
-        NodeEngine nodeEngine = node.nodeEngine;
-        PromoteFromBackupOperation op = new PromoteFromBackupOperation(reason, oldAddress);
-        op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
-        nodeEngine.getOperationService().executeOperation(op);
-    }
+//    private void promoteFromBackups(int partitionId, PartitionReplicaChangeReason reason, Address oldAddress) {
+//        NodeEngine nodeEngine = node.nodeEngine;
+//        PromoteFromBackupOperation op = new PromoteFromBackupOperation(reason, oldAddress, 1);
+//        op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
+//        nodeEngine.getOperationService().executeOperation(op);
+//    }
 
-    private void logOwnerOfPartitionIsRemoved(PartitionReplicaChangeEvent event) {
-        String warning =
-                "Owner of partition is being removed! " + "Possible data loss for partitionId=" + event.getPartitionId()
-                        + " , " + event;
-        logger.warning(warning);
-    }
+//    private void logOwnerOfPartitionIsRemoved(PartitionReplicaChangeEvent event) {
+//        String warning =
+//                "Owner of partition is being removed! " + "Possible data loss for partitionId=" + event.getPartitionId()
+//                        + " , " + event;
+//        logger.warning(warning);
+//    }
 
     void addChildListener(PartitionListener listener) {
         PartitionListenerNode head = listenerHead;

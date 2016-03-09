@@ -28,7 +28,6 @@ import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationEndpoint;
-import com.hazelcast.partition.MigrationType;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -67,7 +66,7 @@ import static org.junit.Assert.assertTrue;
 public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     private static final String BACKUP_COUNT_PROP = "backups.count";
-    private static final int PARTITION_COUNT = 111;
+    private static final int PARTITION_COUNT = 6;
     private static final int PARALLEL_REPLICATIONS = 0;
 
     private TestHazelcastInstanceFactory factory;
@@ -151,13 +150,44 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     private void testPartitionDataSize_whenBackupNodesTerminated(int backupCount) throws InterruptedException {
         Config config = getConfig(backupCount);
 
-        startNodes(config, InternalPartition.MAX_REPLICA_COUNT + 1);
-        HazelcastInstance hz = factory.getAllHazelcastInstances().iterator().next();
+        HazelcastInstance hz = factory.newHazelcastInstance(config);
+        startNodes(config, backupCount + 1);
         fill(hz);
         assertSize(backupCount);
 
         terminateNodes(backupCount);
         assertSize(backupCount);
+    }
+
+    @Test
+    public void testPartitionDataSize_whenBackupNodesTerminatedConcurrently_singleBackup() throws InterruptedException {
+        testPartitionDataSize_whenBackupNodesTerminatedConcurrently(1);
+    }
+
+    @Test
+    public void testPartitionDataSize_whenBackupNodesTerminatedConcurrently_twoBackups() throws InterruptedException {
+        testPartitionDataSize_whenBackupNodesTerminatedConcurrently(2);
+    }
+
+    @Test
+    public void testPartitionDataSize_whenBackupNodesTerminatedConcurrently_threeBackups() throws InterruptedException {
+        testPartitionDataSize_whenBackupNodesTerminatedConcurrently(3);
+    }
+
+    private void testPartitionDataSize_whenBackupNodesTerminatedConcurrently(int backupCount) throws InterruptedException {
+        Config config = getConfig(backupCount);
+
+        HazelcastInstance hz = factory.newHazelcastInstance(config);
+        fill(hz);
+        assertSize(backupCount);
+
+        while (factory.getAllHazelcastInstances().size() < InternalPartition.MAX_REPLICA_COUNT + 1) {
+            startNodes(config, backupCount + 1);
+            assertSize(backupCount);
+
+            terminateNodes(backupCount);
+            assertSize(backupCount);
+        }
     }
 
     @Test
@@ -258,7 +288,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                 }
                 assertEquals(s.toString(), expectedSize, total);
             }
-        }, 180);
+        }, 100);
     }
 
     private void assertReplicaVersions(int backupCount) throws InterruptedException {
@@ -363,14 +393,12 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         public void commitMigration(PartitionMigrationEvent event) {
 //            logger.info("COMMIT: " + event.toString() + "\n");
             if (event.getMigrationEndpoint() == MigrationEndpoint.SOURCE) {
-                if (event.getMigrationType() == MigrationType.MOVE) {
-                    if (event.getKeepReplicaIndex() == -1 || event.getKeepReplicaIndex() > backupCount) {
-                        data.remove(event.getPartitionId());
-                    }
+                if (event.getNewReplicaIndex() == -1 || event.getNewReplicaIndex() > backupCount) {
+                    data.remove(event.getPartitionId());
                 }
             }
             if (event.getMigrationEndpoint() == MigrationEndpoint.DESTINATION) {
-                if (event.getReplicaIndex() > backupCount) {
+                if (event.getNewReplicaIndex() > backupCount) {
                     assertNull(data.get(event.getPartitionId()));
                 }
             }
@@ -380,7 +408,9 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         public void rollbackMigration(PartitionMigrationEvent event) {
 //            logger.info("ROLLBACK: " + event.toString() + "\n");
             if (event.getMigrationEndpoint() == MigrationEndpoint.DESTINATION) {
-                data.remove(event.getPartitionId());
+                if (event.getCurrentReplicaIndex() == -1 || event.getCurrentReplicaIndex() > backupCount) {
+                    data.remove(event.getPartitionId());
+                }
             }
         }
 

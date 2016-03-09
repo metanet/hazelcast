@@ -329,11 +329,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             boolean isThisNodeNewMaster = node.isMaster() && !thisAddress.equals(lastMaster);
             if (isThisNodeNewMaster) {
+                // pause migration before scheduling FetchMostRecentPartitionTableTask
+                // it will resume at the end
+                migrationManager.pauseMigration();
                 migrationManager.schedule(new FetchMostRecentPartitionTableTask(partitionStateVersionBeforeMemberRemove));
             }
             lastMaster = node.getMasterAddress();
 
-            // TODO: here or before all other actions?
+            // TODO: still needed?
             // Pause migration and let all other members notice the dead member
             // Otherwise new master may take action fast and send new partition state
             // before other members realize the dead one.
@@ -346,10 +349,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 migrationManager.schedule(new RepairPartitionTableTask(deadAddress));
             }
 
-            // TODO: when master node changes, migration should be resumed after most recent ptable is chosen.
-            if (!isThisNodeNewMaster) {
-                migrationManager.resumeMigrationEventually();
-            }
+            migrationManager.resumeMigrationEventually();
         } finally {
             lock.unlock();
         }
@@ -414,7 +414,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             int partitionId = migrationInfo.getPartitionId();
             InternalPartitionImpl partition = (InternalPartitionImpl) partitions[partitionId];
-            partition.setReplicaAddress(migrationInfo.getReplicaIndex(), migrationInfo.getDestination());
+            partition.setReplicaAddress(migrationInfo.getDestinationNewReplicaIndex(), migrationInfo.getDestination());
 
             return new PartitionRuntimeState(logger, memberInfos, partitions, completedMigrations, getPartitionStateVersion() + 1);
         } finally {
@@ -952,16 +952,43 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 return;
             }
 
-            Collection<MigrationInfo> migrationInfos = partitionStateManager.removeDeadAddress(deadAddress);
-            for (MigrationInfo migrationInfo : migrationInfos) {
-                if (logger.isFinestEnabled()) {
-                    logger.finest("Scheduling repair migration: " + migrationInfo + " removed address: " + deadAddress);
+            List<MigrationRunnable> tasks = new LinkedList<MigrationRunnable>();
+
+            lock.lock();
+            try {
+                Collection<MigrationInfo> migrations = partitionStateManager.removeDeadAddress(deadAddress);
+                syncPartitionRuntimeState();
+
+                try {
+                    MigrationRunnable task;
+                    while ((task = migrationManager.migrationQueue.poll(0 ,TimeUnit.MILLISECONDS)) != null) {
+                        tasks.add(task);
+                    }
+                } catch (InterruptedException e) {
+                    logger.warning("RepairPartitionTableTask is interrupted!");
                 }
-                migrationManager.scheduleMigration(migrationInfo, MigrateTaskReason.REPAIR_PARTITION_TABLE);
+
+                if (!migrations.isEmpty()) {
+                    logger.info("Scheduling " + migrations.size() + " migrations to fix missing backups");
+                    for (MigrationInfo migrationInfo : migrations) {
+    //                    if (logger.isFinestEnabled()) {
+                            logger.info("Scheduling repair migration: " + migrationInfo + " removed address: " + deadAddress);
+    //                    }
+                        migrationManager.scheduleMigration(migrationInfo, MigrateTaskReason.REPAIR_PARTITION_TABLE);
+                    }
+                }
+            } finally {
+                lock.unlock();
             }
 
-            migrationManager.triggerRepartitioning();
-            syncPartitionRuntimeState();
+            if (tasks.isEmpty()) {
+                migrationManager.triggerRepartitioning();
+            } else {
+                for (MigrationRunnable task : tasks) {
+                    assert task instanceof RepairPartitionTableTask : "Invalid task: " + String.valueOf(task);
+                    migrationManager.schedule(task);
+                }
+            }
         }
 
         @Override
@@ -1083,7 +1110,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             }
 
             syncPartitionRuntimeState();
-            migrationManager.resumeMigrationEventually();
+            migrationManager.resumeMigration();
         }
 
         @Override

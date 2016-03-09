@@ -25,7 +25,7 @@ import java.io.IOException;
  */
 public enum MigrationType {
 
-    MOVE(0), COPY(1);/*, MOVE_COPY_BACK(2);*/
+    MOVE(0), COPY(1), SHIFT_UP(2);
 
     private final int code;
 
@@ -44,8 +44,8 @@ public enum MigrationType {
                 return MOVE;
             case 1:
                 return COPY;
-//            case 2:
-//                return MOVE_COPY_BACK;
+            case 2:
+                return SHIFT_UP;
         }
         throw new IllegalArgumentException("Code: " + code);
     }

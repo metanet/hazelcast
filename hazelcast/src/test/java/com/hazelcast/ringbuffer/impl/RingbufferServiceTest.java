@@ -32,7 +32,7 @@ public class RingbufferServiceTest extends HazelcastTestSupport {
     public void rollbackMigration() {
         Ringbuffer ringbuffer = hz.getRingbuffer("foo");
         int partitionId = getPartitionId(hz, ringbuffer.getName());
-        PartitionMigrationEvent partitionEvent = new PartitionMigrationEvent(DESTINATION, partitionId);
+        PartitionMigrationEvent partitionEvent = new PartitionMigrationEvent(DESTINATION, partitionId, -1, 0);
 
         service.rollbackMigration(partitionEvent);
 

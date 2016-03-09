@@ -64,14 +64,15 @@ public final class PromoteFromBackupOperation
         implements PartitionAwareOperation, MigrationCycleOperation {
 
     private final PartitionReplicaChangeReason reason;
-
     private final Address oldAddress;
+    private final int promotedReplicaIndex;
 
     private ILogger logger;
 
-    public PromoteFromBackupOperation(PartitionReplicaChangeReason reason, Address oldAddress) {
+    public PromoteFromBackupOperation(PartitionReplicaChangeReason reason, Address oldAddress, int promotedReplicaIndex) {
         this.reason = reason;
         this.oldAddress = oldAddress;
+        this.promotedReplicaIndex = promotedReplicaIndex;
     }
 
     void initLogger() {
@@ -145,7 +146,8 @@ public final class PromoteFromBackupOperation
         }
 
         try {
-            sendToAllMigrationAwareServices(new PartitionMigrationEvent(DESTINATION, getPartitionId()));
+            sendToAllMigrationAwareServices(new PartitionMigrationEvent(DESTINATION, getPartitionId(),
+                    promotedReplicaIndex, 0));
         } finally {
             clearPartitionMigratingFlag();
         }

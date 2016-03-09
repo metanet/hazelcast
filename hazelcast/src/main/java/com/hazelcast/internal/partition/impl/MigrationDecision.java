@@ -17,7 +17,6 @@
 package com.hazelcast.internal.partition.impl;
 
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.MigrationType;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -31,7 +30,8 @@ import static com.hazelcast.internal.partition.impl.InternalPartitionImpl.getRep
 class MigrationDecision {
 
     interface MigrationCallback {
-        void migrate(Address currentOwner, Address newOwner, int replicaIndex, MigrationType type, int keepReplicaIndex);
+        void migrate(Address source, int sourceCurrentReplicaIndex, int sourceNewReplicaIndex,
+                Address destination, int destinationCurrentReplicaIndex, int destinationNewReplicaIndex);
     }
 
     static void migrate(Address[] oldAddresses, Address[] newAddresses, MigrationCallback callback) {
@@ -61,7 +61,7 @@ class MigrationDecision {
             if (newAddresses[currentIndex] == null) {
                 if (state[currentIndex] != null) {
                     log("new address is null at index: " + currentIndex);
-                    callback.migrate(state[currentIndex], null, currentIndex, MigrationType.MOVE, -1);
+                    callback.migrate(state[currentIndex], currentIndex, -1, null, -1, -1);
                     state[currentIndex] = null;
                 }
                 currentIndex++;
@@ -72,13 +72,13 @@ class MigrationDecision {
                 int i = getReplicaIndex(state, newAddresses[currentIndex]);
                 if (i == -1) {
                     log("COPY " + newAddresses[currentIndex] + " to index: " + currentIndex);
-                    callback.migrate(null, newAddresses[currentIndex], currentIndex, MigrationType.COPY, -1);
+                    callback.migrate(null, -1, -1, newAddresses[currentIndex], -1, currentIndex);
                     state[currentIndex] = newAddresses[currentIndex];
                     currentIndex++;
                     continue;
                 } else if (i > currentIndex) {
                     log("SHIFT UP2 " + state[i] + " from old addresses index: " + i + " to index: " + currentIndex);
-                    callback.migrate(null, state[i], currentIndex, MigrationType.MOVE, -1);
+                    callback.migrate(null, -1, -1, state[i], i, currentIndex);
                     state[currentIndex] = state[i];
                     state[i] = null;
                     continue;
@@ -98,7 +98,7 @@ class MigrationDecision {
             if (getReplicaIndex(newAddresses, state[currentIndex]) == -1
                     && getReplicaIndex(state, newAddresses[currentIndex]) == -1) {
                 log("MOVE " + newAddresses[currentIndex] + " to index: " + currentIndex);
-                callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex, MigrationType.MOVE, -1);
+                callback.migrate(state[currentIndex], currentIndex, -1, newAddresses[currentIndex], -1, currentIndex);
                 state[currentIndex] = newAddresses[currentIndex];
                 currentIndex++;
                 continue;
@@ -117,8 +117,7 @@ class MigrationDecision {
                 log("MOVE_COPY_BACK " + newAddresses[currentIndex] + " to index: " + currentIndex + " with keepReplicaIndex: "
                         + keepReplicaIndex);
 
-                callback.migrate(state[currentIndex], newAddresses[currentIndex], currentIndex, MigrationType.MOVE,
-                        keepReplicaIndex);
+                callback.migrate(state[currentIndex], currentIndex, keepReplicaIndex, newAddresses[currentIndex], -1, currentIndex);
 
                 state[keepReplicaIndex] = state[currentIndex];
                 state[currentIndex] = newAddresses[currentIndex];
@@ -137,13 +136,13 @@ class MigrationDecision {
                             + " FINAL: " + Arrays.toString(newAddresses));
                 } else if (newAddresses[j] == null) {
                     log("SHIFT UP " + state[j] + " from old addresses index: " + j + " to index: " + i);
-                    callback.migrate(state[i], state[j], i, MigrationType.MOVE, -1);
+                    callback.migrate(state[i], i, -1, state[j], j, i);
                     state[i] = state[j];
                     state[j] = null;
                     break;
                 } else if (getReplicaIndex(state, newAddresses[j]) == -1) { //
                     log("MOVE2 " + newAddresses[j] + " to index: " + j);
-                    callback.migrate(state[j], newAddresses[j], j, MigrationType.MOVE, -1);
+                    callback.migrate(state[j], j, -1, newAddresses[j], -1, j);
                     state[j] = newAddresses[j];
                     break;
                 } else {

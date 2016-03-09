@@ -23,7 +23,6 @@ import com.hazelcast.internal.partition.impl.PartitionReplicaManager;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.partition.MigrationEndpoint;
-import com.hazelcast.partition.MigrationType;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.PartitionAwareOperation;
@@ -32,6 +31,7 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 
 // runs locally...
 public final class FinalizeMigrationOperation extends AbstractOperation
@@ -54,18 +54,35 @@ public final class FinalizeMigrationOperation extends AbstractOperation
         int partitionId = getPartitionId();
         NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
 
-        PartitionMigrationEvent event = new PartitionMigrationEvent(endpoint, migrationInfo.getType(), partitionId,
-                migrationInfo.getReplicaIndex(), migrationInfo.getKeepReplicaIndex());
-        for (MigrationAwareService service : nodeEngine.getServices(MigrationAwareService.class)) {
+        PartitionMigrationEvent event = new PartitionMigrationEvent(endpoint, partitionId,
+                endpoint == MigrationEndpoint.SOURCE
+                        ? migrationInfo.getSourceCurrentReplicaIndex() : migrationInfo.getDestinationCurrentReplicaIndex(),
+                endpoint == MigrationEndpoint.SOURCE
+                        ? migrationInfo.getSourceNewReplicaIndex() : migrationInfo.getDestinationNewReplicaIndex());
+
+        Collection<MigrationAwareService> migrationAwareServices = nodeEngine.getServices(MigrationAwareService.class);
+
+        // Old backup owner is not notified about migration until migration
+        // is committed on destination. This is the only place ob backup owner
+        // knows replica is moved away from itself.
+        if (nodeEngine.getThisAddress().equals(migrationInfo.getSource())
+                && migrationInfo.getSourceCurrentReplicaIndex() > 0) {
+            // execute beforeMigration on old backup before commit/rollback
+            for (MigrationAwareService service : migrationAwareServices) {
+                beforeMigration(event, service);
+            }
+        }
+
+        for (MigrationAwareService service : migrationAwareServices) {
             finishMigration(event, service);
         }
 
         PartitionReplicaManager replicaManager = partitionService.getReplicaManager();
-        if (endpoint == MigrationEndpoint.SOURCE && migrationInfo.getType() == MigrationType.MOVE && success) {
-            int keepReplicaIndex = migrationInfo.getKeepReplicaIndex();
+        if (endpoint == MigrationEndpoint.SOURCE && success) {
+            int keepReplicaIndex = migrationInfo.getSourceNewReplicaIndex();
             if (keepReplicaIndex < 0) {
                 replicaManager.clearPartitionReplicaVersions(partitionId);
-            } else if (keepReplicaIndex > 1) {
+            } else if (migrationInfo.getSourceCurrentReplicaIndex() != keepReplicaIndex && keepReplicaIndex > 1) {
                 long[] versions = replicaManager.getPartitionReplicaVersions(partitionId);
                 Arrays.fill(versions, 0, keepReplicaIndex - 1, 0);
                 // TODO: no need to set versions back right now. actual version array is modified directly.
@@ -78,6 +95,14 @@ public final class FinalizeMigrationOperation extends AbstractOperation
 
         if (success) {
             nodeEngine.onPartitionMigrate(migrationInfo);
+        }
+    }
+
+    private void beforeMigration(PartitionMigrationEvent event, MigrationAwareService service) {
+        try {
+            service.beforeMigration(event);
+        } catch (Throwable e) {
+            getLogger().warning("Error before migration -> " + event, e);
         }
     }
 

@@ -20,7 +20,6 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
-import com.hazelcast.partition.MigrationType;
 import com.hazelcast.util.UuidUtil;
 
 import java.io.DataInput;
@@ -66,15 +65,18 @@ public class MigrationInfo implements DataSerializable {
 
     private String uuid;
     private int partitionId;
-    private int replicaIndex;
+
     private Address source;
     private Address destination;
     private Address master;
-    private MigrationType type = MigrationType.MOVE;
-    private int keepReplicaIndex = -1;
+
+    private int sourceCurrentReplicaIndex;
+    private int sourceNewReplicaIndex;
+    private int destinationCurrentReplicaIndex;
+    private int destinationNewReplicaIndex;
 
     // TODO: fix name
-    private Address oldKeepReplicaOwner;
+    private Address oldReplicaOwner;
 
     private final AtomicBoolean processing = new AtomicBoolean(false);
     private volatile MigrationStatus status;
@@ -82,28 +84,27 @@ public class MigrationInfo implements DataSerializable {
     public MigrationInfo() {
     }
 
-    public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination) {
-        this(partitionId, replicaIndex, source, destination, MigrationType.MOVE, -1);
-    }
-
-    public MigrationInfo(int partitionId, int replicaIndex, Address source, Address destination,
-            MigrationType type, int keepReplicaIndex) {
+    public MigrationInfo(int partitionId, Address source, Address destination, int sourceCurrentReplicaIndex,
+            int sourceNewReplicaIndex, int destinationCurrentReplicaIndex, int destinationNewReplicaIndex) {
         this.uuid = UuidUtil.newUnsecureUuidString();
         this.partitionId = partitionId;
-        this.replicaIndex = replicaIndex;
         this.source = source;
         this.destination = destination;
-        this.type = type;
-        this.keepReplicaIndex = keepReplicaIndex;
+        this.sourceCurrentReplicaIndex = sourceCurrentReplicaIndex;
+        this.sourceNewReplicaIndex = sourceNewReplicaIndex;
+        this.destinationCurrentReplicaIndex = destinationCurrentReplicaIndex;
+        this.destinationNewReplicaIndex = destinationNewReplicaIndex;
         this.status = MigrationStatus.ACTIVE;
     }
 
     public MigrationInfo copy() {
-        MigrationInfo copy = new MigrationInfo(partitionId, replicaIndex, source, destination, type, keepReplicaIndex);
+        MigrationInfo copy = new MigrationInfo(partitionId, source, destination, sourceCurrentReplicaIndex,
+                sourceNewReplicaIndex, destinationCurrentReplicaIndex, destinationNewReplicaIndex);
+
         copy.uuid = uuid;
         copy.master = master;
         copy.status = status;
-        copy.oldKeepReplicaOwner = oldKeepReplicaOwner;
+        copy.oldReplicaOwner = oldReplicaOwner;
         return copy;
     }
 
@@ -119,20 +120,39 @@ public class MigrationInfo implements DataSerializable {
         return partitionId;
     }
 
-    public int getReplicaIndex() {
-        return replicaIndex;
+    public int getSourceCurrentReplicaIndex() {
+        return sourceCurrentReplicaIndex;
     }
 
-    public int getKeepReplicaIndex() {
-        return keepReplicaIndex;
+    public int getSourceNewReplicaIndex() {
+        return sourceNewReplicaIndex;
     }
 
-    public MigrationType getType() {
-        return type;
+    public MigrationInfo setSourceCurrentReplicaIndex(int sourceCurrentReplicaIndex) {
+        this.sourceCurrentReplicaIndex = sourceCurrentReplicaIndex;
+        return this;
     }
 
-    public MigrationInfo setType(MigrationType type) {
-        this.type = type;
+    public MigrationInfo setSourceNewReplicaIndex(int sourceNewReplicaIndex) {
+        this.sourceNewReplicaIndex = sourceNewReplicaIndex;
+        return this;
+    }
+
+    public int getDestinationCurrentReplicaIndex() {
+        return destinationCurrentReplicaIndex;
+    }
+
+    public MigrationInfo setDestinationCurrentReplicaIndex(int destinationCurrentReplicaIndex) {
+        this.destinationCurrentReplicaIndex = destinationCurrentReplicaIndex;
+        return this;
+    }
+
+    public int getDestinationNewReplicaIndex() {
+        return destinationNewReplicaIndex;
+    }
+
+    public MigrationInfo setDestinationNewReplicaIndex(int destinationNewReplicaIndex) {
+        this.destinationNewReplicaIndex = destinationNewReplicaIndex;
         return this;
     }
 
@@ -145,12 +165,12 @@ public class MigrationInfo implements DataSerializable {
         return this;
     }
 
-    public Address getOldKeepReplicaOwner() {
-        return oldKeepReplicaOwner;
+    public Address getOldReplicaOwner() {
+        return oldReplicaOwner;
     }
 
-    public MigrationInfo setOldKeepReplicaOwner(Address oldKeepReplicaOwner) {
-        this.oldKeepReplicaOwner = oldKeepReplicaOwner;
+    public MigrationInfo setOldReplicaOwner(Address oldKeepReplicaOwner) {
+        this.oldReplicaOwner = oldKeepReplicaOwner;
         return this;
     }
 
@@ -183,9 +203,10 @@ public class MigrationInfo implements DataSerializable {
     public void writeData(ObjectDataOutput out) throws IOException {
         out.writeUTF(uuid);
         out.writeInt(partitionId);
-        out.writeByte(replicaIndex);
-        out.writeByte(keepReplicaIndex);
-        MigrationType.writeTo(type, out);
+        out.writeByte(sourceCurrentReplicaIndex);
+        out.writeByte(sourceNewReplicaIndex);
+        out.writeByte(destinationCurrentReplicaIndex);
+        out.writeByte(destinationNewReplicaIndex);
         MigrationStatus.writeTo(status, out);
 
         boolean hasFrom = source != null;
@@ -197,10 +218,10 @@ public class MigrationInfo implements DataSerializable {
 
         master.writeData(out);
 
-        boolean hasOld = oldKeepReplicaOwner != null;
+        boolean hasOld = oldReplicaOwner != null;
         out.writeBoolean(hasOld);
         if (hasOld) {
-            oldKeepReplicaOwner.writeData(out);
+            oldReplicaOwner.writeData(out);
         }
     }
 
@@ -208,9 +229,10 @@ public class MigrationInfo implements DataSerializable {
     public void readData(ObjectDataInput in) throws IOException {
         uuid = in.readUTF();
         partitionId = in.readInt();
-        replicaIndex = in.readByte();
-        keepReplicaIndex = in.readByte();
-        type = MigrationType.readFrom(in);
+        sourceCurrentReplicaIndex = in.readByte();
+        sourceNewReplicaIndex = in.readByte();
+        destinationCurrentReplicaIndex = in.readByte();
+        destinationNewReplicaIndex = in.readByte();
         status = MigrationStatus.readFrom(in);
 
         boolean hasFrom = in.readBoolean();
@@ -225,8 +247,8 @@ public class MigrationInfo implements DataSerializable {
         master.readData(in);
 
         if (in.readBoolean()) {
-            oldKeepReplicaOwner = new Address();
-            oldKeepReplicaOwner.readData(in);
+            oldReplicaOwner = new Address();
+            oldReplicaOwner.readData(in);
         }
     }
 
@@ -255,12 +277,13 @@ public class MigrationInfo implements DataSerializable {
         final StringBuilder sb = new StringBuilder("MigrationInfo{");
         sb.append("uuid=").append(uuid);
         sb.append(", partitionId=").append(partitionId);
-        sb.append(", replicaIndex=").append(replicaIndex);
         sb.append(", source=").append(source);
+        sb.append(", sourceCurrentReplicaIndex=").append(sourceCurrentReplicaIndex);
+        sb.append(", sourceNewReplicaIndex=").append(sourceNewReplicaIndex);
         sb.append(", destination=").append(destination);
+        sb.append(", destinationCurrentReplicaIndex=").append(destinationCurrentReplicaIndex);
+        sb.append(", destinationNewReplicaIndex=").append(destinationNewReplicaIndex);
         sb.append(", master=").append(master);
-        sb.append(", keepReplicaIndex=").append(keepReplicaIndex);
-        sb.append(", type=").append(type);
         sb.append(", processing=").append(processing);
         sb.append(", status=").append(status);
         sb.append('}');

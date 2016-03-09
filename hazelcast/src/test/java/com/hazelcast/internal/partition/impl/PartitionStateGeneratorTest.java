@@ -45,6 +45,7 @@ import org.junit.runner.RunWith;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -75,6 +76,36 @@ public class PartitionStateGeneratorTest {
     public void testRandomPartitionGenerator() throws Exception {
         final MemberGroupFactory memberGroupFactory = new SingleMemberGroupFactory();
         test(memberGroupFactory);
+    }
+
+    @Test
+    public void test() throws Exception {
+        PartitionStateGenerator generator = new PartitionStateGeneratorImpl();
+        Address[][] state = new Address[][] {
+                    new Address[] {
+                            new Address("127.0.0.1", 5000),
+                            new Address("127.0.0.1", 5002),
+                            new Address("127.0.0.1", 5003),
+                            new Address("127.0.0.1", 5001),
+                            null, null, null}};
+
+        InternalPartition[] partitions = new InternalPartition[1];
+        partitions[0] = new DummyInternalPartition(state[0]);
+        System.out.println("initial: " + Arrays.toString(state[0]));
+
+        // remove member
+        state[0][2] = null;
+        System.out.println("member-removed: " + Arrays.toString(state[0]));
+
+        Member[] newMembers = {
+                new MemberImpl(new Address("127.0.0.1", 5000), false),
+                new MemberImpl(new Address("127.0.0.1", 5001), false),
+                new MemberImpl(new Address("127.0.0.1", 5002), false)};
+
+        Address[][] newState =
+                generator.reArrange(new SingleMemberGroupFactory().createMemberGroups(Arrays.asList(newMembers)), partitions);
+
+        System.out.println("repartitioned: " + Arrays.toString(newState[0]));
     }
 
     //"random host groups may cause non-uniform distribution of partitions when node size go down significantly!")

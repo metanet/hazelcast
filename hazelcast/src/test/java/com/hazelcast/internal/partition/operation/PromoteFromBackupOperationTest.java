@@ -145,7 +145,7 @@ public class PromoteFromBackupOperationTest {
     }
 
     private PromoteFromBackupOperation createOperation(final int partitionId, final PartitionReplicaChangeReason reason) {
-        final PromoteFromBackupOperation operation = new PromoteFromBackupOperation(reason, null);
+        final PromoteFromBackupOperation operation = new PromoteFromBackupOperation(reason, null, 1);
         operation.setPartitionId(partitionId);
         operation.setNodeEngine(nodeEngine);
         operation.setServiceName(SERVICE_NAME);
