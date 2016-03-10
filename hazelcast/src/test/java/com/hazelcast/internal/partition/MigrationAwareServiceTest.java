@@ -23,8 +23,13 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.TestUtil;
+import com.hazelcast.internal.serialization.SerializationService;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.Packet;
+import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
+import com.hazelcast.nio.tcp.PacketFilter;
 import com.hazelcast.partition.MigrationEndpoint;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.BackupAwareOperation;
@@ -34,6 +39,7 @@ import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
+import com.hazelcast.spi.impl.SpiDataSerializerHook;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastTestRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -46,6 +52,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -74,7 +81,9 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     private static final String BACKUP_COUNT_PROP = "backups.count";
     private static final int PARTITION_COUNT = 111;
-    private static final int PARALLEL_REPLICATIONS = 0;
+    private static final int PARALLEL_REPLICATIONS = 10;
+    private static final int BACKUP_SYNC_INTERVAL = 1;
+    private static final float BACKUP_BLOCK_RATIO = 0.65f;
 
     @Parameterized.Parameters(name = "backupCount:{0},nodeCount:{1}")
     public static Collection<Object[]> parameters() {
@@ -92,6 +101,8 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     @Parameterized.Parameter(1)
     public int nodeCount;
+
+    private boolean antiEntropyEnabled = false;
 
     @Before
     public void setup() {
@@ -156,6 +167,26 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
             terminateNodes(backupCount);
             assertSize(backupCount);
         }
+    }
+
+    @Test
+    public void testPartitionData_withAntiEntropy() throws InterruptedException {
+        antiEntropyEnabled = true;
+
+        HazelcastInstance[] instances = factory.newInstances(getConfig(backupCount), nodeCount);
+        for (HazelcastInstance instance : instances) {
+            Node node = getNode(instance);
+            FirewallingMockConnectionManager cm = (FirewallingMockConnectionManager) node.getConnectionManager();
+            cm.setPacketFilter(new BackupPacketFilter(node.getSerializationService(), BACKUP_BLOCK_RATIO));
+        }
+        warmUpPartitions(instances);
+
+        for (HazelcastInstance instance : instances) {
+            fill(instance);
+        }
+
+        assertSize(backupCount);
+        assertReplicaVersions(backupCount);
     }
 
     private void fill(HazelcastInstance hz) {
@@ -296,7 +327,11 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         config.getServicesConfig().addServiceConfig(serviceConfig);
         config.setProperty(GroupProperty.PARTITION_COUNT, String.valueOf(PARTITION_COUNT));
-        config.setProperty(GroupProperty.PARTITION_MAX_PARALLEL_REPLICATIONS, String.valueOf(PARALLEL_REPLICATIONS));
+        config.setProperty(GroupProperty.MIGRATION_MIN_DELAY_ON_MEMBER_REMOVED_SECONDS, String.valueOf(1));
+        config.setProperty(GroupProperty.PARTITION_BACKUP_SYNC_INTERVAL, String.valueOf(BACKUP_SYNC_INTERVAL));
+
+        int parallelReplications = antiEntropyEnabled ? PARALLEL_REPLICATIONS : 0;
+        config.setProperty(GroupProperty.PARTITION_MAX_PARALLEL_REPLICATIONS, String.valueOf(parallelReplications));
         return config;
     }
 
@@ -445,6 +480,37 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         @Override
         public String getServiceName() {
             return SampleMigrationAwareService.SERVICE_NAME;
+        }
+    }
+
+    private static class BackupPacketFilter implements PacketFilter {
+        final SerializationService serializationService;
+        final float ratio;
+
+        public BackupPacketFilter(SerializationService serializationService, float ratio) {
+            this.serializationService = serializationService;
+            this.ratio = ratio;
+        }
+
+        @Override
+        public boolean allow(Packet packet, Address endpoint) {
+            return !packet.isFlagSet(Packet.FLAG_OP) || allowOperation(packet);
+        }
+
+        private boolean allowOperation(Packet packet) {
+            try {
+                ObjectDataInput input = serializationService.createObjectDataInput(packet);
+                boolean identified = input.readBoolean();
+                if (identified) {
+                    int factory = input.readInt();
+                    int type = input.readInt();
+                    boolean isBackup = factory == SpiDataSerializerHook.F_ID && type == SpiDataSerializerHook.BACKUP;
+                    return !isBackup || Math.random() > ratio;
+                }
+            } catch (IOException e) {
+                throw new HazelcastException(e);
+            }
+            return true;
         }
     }
 }
