@@ -946,7 +946,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return partitionEventManager;
     }
 
-    private class SearchAndRepairPartitionTableTask implements MigrationRunnable {
+    private class SearchAndRepairPartitionTableTask extends AbstractMigrationRunnable {
 
         @Override
         public void run() {
@@ -974,25 +974,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
 
         @Override
-        public void invalidate(Address address) {
-        }
-
-        @Override
-        public void invalidate(int partitionId) {
-        }
-
-        @Override
-        public boolean isValid() {
-            return true;
-        }
-
-        @Override
         public boolean isPauseable() {
             return false;
         }
     }
 
-    private class RepairPartitionTableTask implements MigrationRunnable {
+    private class RepairPartitionTableTask extends AbstractMigrationRunnable {
         private final Address deadAddress;
 
         RepairPartitionTableTask(Address deadAddress) {
@@ -1048,25 +1035,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
 
         @Override
-        public void invalidate(Address address) {
-        }
-
-        @Override
-        public void invalidate(int partitionId) {
-        }
-
-        @Override
-        public boolean isValid() {
-            return true;
-        }
-
-        @Override
         public boolean isPauseable() {
             return false;
         }
     }
 
-    private class FetchMostRecentPartitionTableTask implements MigrationRunnable {
+    private class FetchMostRecentPartitionTableTask extends AbstractMigrationRunnable {
 
         private final Address thisAddress = node.getThisAddress();
 
@@ -1166,21 +1140,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             // TODO: ptable will be sync'ed by repair task
 //            syncPartitionRuntimeState();
             migrationManager.resumeMigration();
-        }
-
-        @Override
-        public void invalidate(Address address) {
-
-        }
-
-        @Override
-        public void invalidate(int partitionId) {
-
-        }
-
-        @Override
-        public boolean isValid() {
-            return true;
         }
 
         @Override

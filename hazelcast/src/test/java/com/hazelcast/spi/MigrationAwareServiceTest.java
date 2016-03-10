@@ -66,7 +66,7 @@ import static org.junit.Assert.assertTrue;
 public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     private static final String BACKUP_COUNT_PROP = "backups.count";
-    private static final int PARTITION_COUNT = 6;
+    private static final int PARTITION_COUNT = 111;
     private static final int PARALLEL_REPLICATIONS = 0;
 
     private TestHazelcastInstanceFactory factory;
@@ -152,6 +152,8 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         startNodes(config, backupCount + 1);
+        warmUpPartitions(factory.getAllHazelcastInstances());
+
         fill(hz);
         assertSize(backupCount);
 

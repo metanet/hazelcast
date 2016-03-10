@@ -43,15 +43,13 @@ import com.hazelcast.util.MutableInteger;
 import com.hazelcast.util.Preconditions;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
@@ -101,6 +99,9 @@ public class MigrationManager {
 
     @Probe
     private final AtomicLong completedMigrationCounter = new AtomicLong();
+
+    // set after a migration failed and cleared after repartitioning is scheduled
+    private final AtomicBoolean migrationFailureFlag = new AtomicBoolean(false);
 
     private volatile InternalMigrationListener internalMigrationListener
             = new InternalMigrationListener.NopInternalMigrationListener();
@@ -559,7 +560,6 @@ public class MigrationManager {
 
         @Override
         public void invalidate(int partitionId) {
-
         }
 
         @Override
@@ -723,17 +723,34 @@ public class MigrationManager {
             } finally {
                 partitionServiceLock.unlock();
             }
-            partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.FAILED);
 
+            partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.FAILED);
+            triggerRepartitioningAfterMigrationFailure();
+        }
+
+        private void triggerRepartitioningAfterMigrationFailure() {
             // Migration failed.
             // Pause migration process for a small amount of time, if a migration attempt is failed.
             // Otherwise, migration failures can do a busy spin until migration problem is resolved.
             // Migration can fail either a node's just joined and not completed start yet or it's just left the cluster.
-            pauseMigration();
+
             // Re-execute RepartitioningTask when all other migration tasks are done,
             // an imbalance may occur because of this failure.
-            triggerRepartitioning();
-            resumeMigrationEventually();
+
+            if (migrationFailureFlag.compareAndSet(false, true)) {
+                schedule(new AbstractMigrationRunnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            pauseMigration();
+                            triggerRepartitioning();
+                            resumeMigrationEventually();
+                        } finally {
+                            migrationFailureFlag.set(false);
+                        }
+                    }
+                });
+            }
         }
 
         private void migrationOperationSucceeded() {
@@ -752,29 +769,20 @@ public class MigrationManager {
                     // updates partition table after successful commit
                     InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
 
-                    Set<Address> set = new HashSet<Address>();
-
                     // TODO: set replica addresses in a batch, instead of setting individually
-                    check(partition, set);
-
                     if (migrationInfo.getSourceCurrentReplicaIndex() > -1) {
                         partition.setReplicaAddress(migrationInfo.getSourceCurrentReplicaIndex(), null);
-                        check(partition, set);
                     }
 
                     if (migrationInfo.getDestinationCurrentReplicaIndex() > -1) {
                         partition.setReplicaAddress(migrationInfo.getDestinationCurrentReplicaIndex(), null);
-                        check(partition, set);
                     }
 
                     partition.setReplicaAddress(migrationInfo.getDestinationNewReplicaIndex(), migrationInfo.getDestination());
-                    check(partition, set);
 
                     if (migrationInfo.getSourceNewReplicaIndex() > -1) {
                         partition.setReplicaAddress(migrationInfo.getSourceNewReplicaIndex(), migrationInfo.getSource());
-                        check(partition, set);
                     }
-
 
                 } else {
                     migrationInfo.setStatus(MigrationStatus.FAILED);
@@ -789,23 +797,6 @@ public class MigrationManager {
                 partitionServiceLock.unlock();
             }
             partitionService.getPartitionEventManager().sendMigrationEvent(migrationInfo, MigrationEvent.MigrationStatus.COMPLETED);
-        }
-
-        private void check(InternalPartitionImpl partition, Set<Address> set) {
-            set.clear();
-
-            Address[] addresses = partition.getReplicaAddresses();
-            int counter = 0;
-            for (Address address : addresses) {
-                if (address != null) {
-                    counter++;
-                    set.add(address);
-                }
-            }
-
-            if (counter != set.size()) {
-                throw new AssertionError("Replicas: " + Arrays.toString(addresses));
-            }
         }
 
         @Override
