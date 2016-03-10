@@ -17,6 +17,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -40,9 +41,15 @@ public class MigrationCommitTest
 
     private static final int PARTITION_COUNT = 2;
 
+    private TestHazelcastInstanceFactory factory;
+
+    @Before
+    public void init() {
+        factory = createHazelcastInstanceFactory(3);
+    }
+
     @Test
     public void shouldCommitMigrationWhenMasterIsMigrationSource() {
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(createConfig());
 
         final Config config2 = createConfig();
@@ -69,7 +76,6 @@ public class MigrationCommitTest
 
     @Test
     public void shouldCommitMigrationWhenMasterIsDestination() {
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(2);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(createConfig());
 
         warmUpPartitions(hz1);
@@ -97,7 +103,6 @@ public class MigrationCommitTest
         final Config config1 = createConfig();
         config1.setLiteMember(true);
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
@@ -125,7 +130,6 @@ public class MigrationCommitTest
         config1.setLiteMember(true);
         config1.addListenerConfig(new ListenerConfig(new TerminateOnMigrationComplete()));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final CollectMigrationTaskOnRollback listener2 = new CollectMigrationTaskOnRollback();
@@ -174,7 +178,6 @@ public class MigrationCommitTest
                 migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
@@ -207,7 +210,6 @@ public class MigrationCommitTest
         final Config config1 = createConfig();
         config1.setLiteMember(true);
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final Config config2 = createConfig();
@@ -255,7 +257,6 @@ public class MigrationCommitTest
                 migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
@@ -294,7 +295,6 @@ public class MigrationCommitTest
         final DelayMigrationStartOnMaster masterListener = new DelayMigrationStartOnMaster(migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
@@ -335,7 +335,6 @@ public class MigrationCommitTest
                 migrationStartLatch);
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final HazelcastInstance hz2 = factory.newHazelcastInstance(createConfig());
@@ -369,7 +368,6 @@ public class MigrationCommitTest
         final CollectMigrationTaskOnCommit masterListener = new CollectMigrationTaskOnCommit();
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) getPartitionService(hz1);
@@ -409,7 +407,6 @@ public class MigrationCommitTest
         final AssertNonEmptyCompletedMigrationsOnSecondMigrationStart masterListener = new AssertNonEmptyCompletedMigrationsOnSecondMigrationStart();
         config1.addListenerConfig(new ListenerConfig(masterListener));
 
-        final TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory(3);
         final HazelcastInstance hz1 = factory.newHazelcastInstance(config1);
 
         final Config config2 = createConfig();
@@ -454,7 +451,7 @@ public class MigrationCommitTest
         return null;
     }
 
-    private static void resetInternalPartitionListener(HazelcastInstance instance) {
+    static void resetInternalMigrationListener(final HazelcastInstance instance) {
         final InternalPartitionServiceImpl partitionService = (InternalPartitionServiceImpl) getPartitionService(instance);
         partitionService.resetInternalMigrationListener();
     }
@@ -506,7 +503,7 @@ public class MigrationCommitTest
             MigrationInfo collected = migrationInfoRef.get();
             commit = migrationInfo.equals(collected);
             if (commit) {
-                resetInternalPartitionListener(instance);
+                resetInternalMigrationListener(instance);
             } else {
                 System.err.println(
                         "collect commit failed! collected migration: " + collected + " rollback migration: " + migrationInfo
@@ -538,7 +535,7 @@ public class MigrationCommitTest
                         instance);
                 final MigrationManager migrationManager = partitionService.getMigrationManager();
                 nonEmptyCompletedMigrationsVerified = !migrationManager.getCompletedMigrations().isEmpty();
-                resetInternalPartitionListener(instance);
+                resetInternalMigrationListener(instance);
             } else {
                 start = true;
             }
@@ -566,7 +563,7 @@ public class MigrationCommitTest
         @Override
         public void onMigrationCommit(MigrationParticipant participant, MigrationInfo migrationInfo) {
             assertOpenEventually(migrationCommitLatch);
-            resetInternalPartitionListener(instance);
+            resetInternalMigrationListener(instance);
         }
 
         @Override
@@ -591,7 +588,7 @@ public class MigrationCommitTest
         @Override
         public void onMigrationStart(MigrationParticipant participant, MigrationInfo migrationInfo) {
             assertOpenEventually(migrationStartLatch);
-            resetInternalPartitionListener(instance);
+            resetInternalMigrationListener(instance);
         }
 
         @Override
@@ -622,7 +619,7 @@ public class MigrationCommitTest
         @Override
         public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
             rollback.compareAndSet(false, true);
-            resetInternalPartitionListener(instance);
+            resetInternalMigrationListener(instance);
         }
 
         @Override
@@ -667,7 +664,7 @@ public class MigrationCommitTest
         public void onMigrationRollback(MigrationParticipant participant, MigrationInfo migrationInfo) {
             rollback = true;
 
-            resetInternalPartitionListener(instance);
+            resetInternalMigrationListener(instance);
         }
 
         @Override
@@ -701,7 +698,7 @@ public class MigrationCommitTest
             final int memberCount = instance.getCluster().getMembers().size();
             other.getLifecycleService().terminate();
             assertClusterSizeEventually(memberCount - 1, instance);
-            resetInternalPartitionListener(instance);
+            resetInternalMigrationListener(instance);
         }
 
         @Override
@@ -754,7 +751,7 @@ public class MigrationCommitTest
                 System.err.println("ERR: migration is not successful " + migrationInfo + " participant: " + participant);
             }
 
-            resetInternalPartitionListener(instance);
+            resetInternalMigrationListener(instance);
             instance.getLifecycleService().terminate();
         }
 
@@ -799,7 +796,7 @@ public class MigrationCommitTest
             MigrationInfo collected = migrationInfoRef.get();
             commit = migrationInfo.equals(collected);
             if (commit) {
-                resetInternalPartitionListener(instance);
+                resetInternalMigrationListener(instance);
             } else {
                 System.err.println(
                         "collect commit failed! collected migration: " + collected + " rollback migration: " + migrationInfo
@@ -848,7 +845,7 @@ public class MigrationCommitTest
             MigrationInfo collected = migrationInfoRef.get();
             rollback = migrationInfo.equals(collected);
             if (rollback) {
-                resetInternalPartitionListener(instance);
+                resetInternalMigrationListener(instance);
             } else {
                 System.err.println(
                         "collect rollback failed! collected migration: " + collected + " rollback migration: " + migrationInfo
