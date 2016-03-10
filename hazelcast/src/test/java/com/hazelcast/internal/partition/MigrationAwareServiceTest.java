@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.hazelcast.spi;
+package com.hazelcast.internal.partition;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.ServiceConfig;
@@ -23,13 +23,19 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.TestUtil;
-import com.hazelcast.internal.partition.InternalPartition;
-import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.AbstractOperation;
+import com.hazelcast.spi.BackupAwareOperation;
+import com.hazelcast.spi.ManagedService;
+import com.hazelcast.spi.MigrationAwareService;
+import com.hazelcast.spi.NodeEngine;
+import com.hazelcast.spi.Operation;
+import com.hazelcast.spi.PartitionMigrationEvent;
+import com.hazelcast.spi.PartitionReplicationEvent;
 import com.hazelcast.test.AssertTask;
-import com.hazelcast.test.HazelcastSerialClassRunner;
+import com.hazelcast.test.HazelcastTestRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
@@ -38,8 +44,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -50,7 +58,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 import static com.hazelcast.test.TestPartitionUtils.getReplicaVersions;
@@ -59,8 +66,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-@RunWith(HazelcastSerialClassRunner.class)
-//@RunWith(HazelcastParallelClassRunner.class)
+//@RunParallel
+@RunWith(HazelcastTestRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 //@Ignore // related issue https://github.com/hazelcast/hazelcast/issues/5444
 public class MigrationAwareServiceTest extends HazelcastTestSupport {
@@ -69,7 +76,22 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     private static final int PARTITION_COUNT = 111;
     private static final int PARALLEL_REPLICATIONS = 0;
 
+    @Parameterized.Parameters(name = "backupCount:{0},nodeCount:{1}")
+    public static Collection<Object[]> parameters() {
+        return Arrays.asList(new Object[][] {
+                {1, 2}, {1, InternalPartition.MAX_REPLICA_COUNT},
+                {2, 3}, {2, InternalPartition.MAX_REPLICA_COUNT},
+                {3, 4}, {3, InternalPartition.MAX_REPLICA_COUNT},
+        });
+    }
+
     private TestHazelcastInstanceFactory factory;
+
+    @Parameterized.Parameter(0)
+    public int backupCount;
+
+    @Parameterized.Parameter(1)
+    public int nodeCount;
 
     @Before
     public void setup() {
@@ -77,28 +99,14 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testPartitionDataSize_whenNodesStartedSequentially_withSingleBackup() throws InterruptedException {
-        testPartitionDataSize_whenNodesStartedSequentially(1);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenNodesStartedSequentially_withTwoBackups() throws InterruptedException {
-        testPartitionDataSize_whenNodesStartedSequentially(2);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenNodesStartedSequentially_withThreeBackups() throws InterruptedException {
-        testPartitionDataSize_whenNodesStartedSequentially(3);
-    }
-
-    private void testPartitionDataSize_whenNodesStartedSequentially(int backupCount) throws InterruptedException {
+    public void testPartitionData_whenNodesStartedSequentially() throws InterruptedException {
         Config config = getConfig(backupCount);
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         fill(hz);
         assertSize(backupCount);
 
-        for (int i = 1; i <= InternalPartition.MAX_REPLICA_COUNT; i++) {
+        for (int i = 1; i <= nodeCount; i++) {
             startNodes(config, 1);
             assertSize(backupCount);
             assertReplicaVersions(backupCount);
@@ -106,52 +114,24 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testPartitionDataSize_whenNodesStartedParallel_withSingleBackup() throws InterruptedException {
-        testPartitionDataSize_whenNodesStartedParallel(1);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenNodesStartedParallel_withTwoBackups() throws InterruptedException {
-        testPartitionDataSize_whenNodesStartedParallel(2);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenNodesStartedParallel_withThreeBackups() throws InterruptedException {
-        testPartitionDataSize_whenNodesStartedParallel(3);
-    }
-
-    private void testPartitionDataSize_whenNodesStartedParallel(int backupCount) throws InterruptedException {
+    public void testPartitionData_whenNodesStartedParallel() throws InterruptedException {
         Config config = getConfig(backupCount);
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         fill(hz);
         assertSize(backupCount);
 
-        startNodes(config, InternalPartition.MAX_REPLICA_COUNT);
+        startNodes(config, nodeCount);
         assertSize(backupCount);
         assertReplicaVersions(backupCount);
     }
 
     @Test
-    public void testPartitionDataSize_whenBackupNodesTerminated_withSingleBackup() throws InterruptedException {
-        testPartitionDataSize_whenBackupNodesTerminated(1);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenBackupNodesTerminated_withTwoBackups() throws InterruptedException {
-        testPartitionDataSize_whenBackupNodesTerminated(2);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenBackupNodesTerminated_withThreeBackups() throws InterruptedException {
-        testPartitionDataSize_whenBackupNodesTerminated(3);
-    }
-
-    private void testPartitionDataSize_whenBackupNodesTerminated(int backupCount) throws InterruptedException {
+    public void testPartitionData_whenBackupNodesTerminated() throws InterruptedException {
         Config config = getConfig(backupCount);
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
-        startNodes(config, backupCount + 1);
+        startNodes(config, nodeCount);
         warmUpPartitions(factory.getAllHazelcastInstances());
 
         fill(hz);
@@ -162,48 +142,20 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     }
 
     @Test
-    public void testPartitionDataSize_whenBackupNodesTerminatedConcurrently_singleBackup() throws InterruptedException {
-        testPartitionDataSize_whenBackupNodesTerminatedConcurrently(1);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenBackupNodesTerminatedConcurrently_twoBackups() throws InterruptedException {
-        testPartitionDataSize_whenBackupNodesTerminatedConcurrently(2);
-    }
-
-    @Test
-    public void testPartitionDataSize_whenBackupNodesTerminatedConcurrently_threeBackups() throws InterruptedException {
-        testPartitionDataSize_whenBackupNodesTerminatedConcurrently(3);
-    }
-
-    // TODO: rename!
-    private void testPartitionDataSize_whenBackupNodesTerminatedConcurrently(int backupCount) throws InterruptedException {
+    public void testPartitionData_whenBackupNodesStartedTerminated() throws InterruptedException {
         Config config = getConfig(backupCount);
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         fill(hz);
         assertSize(backupCount);
 
-        while (factory.getAllHazelcastInstances().size() < InternalPartition.MAX_REPLICA_COUNT + 1) {
+        while (factory.getAllHazelcastInstances().size() < (nodeCount + 1)) {
             startNodes(config, backupCount + 1);
             assertSize(backupCount);
 
             terminateNodes(backupCount);
             assertSize(backupCount);
         }
-    }
-
-    @Test
-    public void testPartitionDataSize_whenNodeGracefullyShutdown() throws InterruptedException {
-        Config config = getConfig(1);
-
-        HazelcastInstance hz = factory.newHazelcastInstance(config);
-        fill(hz);
-
-        HazelcastInstance hz2 = factory.newHazelcastInstance(config);
-        hz2.shutdown();
-
-        assertSize(1);
     }
 
     private void fill(HazelcastInstance hz) {
@@ -493,67 +445,6 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         @Override
         public String getServiceName() {
             return SampleMigrationAwareService.SERVICE_NAME;
-        }
-    }
-
-    @Test
-    public void migrationCommitEvents_shouldBeEqual_onSource_and_onDestination() throws Exception {
-        Config config = new Config();
-        final MigrationEventCounterService counter = new MigrationEventCounterService();
-        ServiceConfig serviceConfig = new ServiceConfig()
-                .setEnabled(true).setName("event-counter")
-                .setServiceImpl(counter);
-        config.getServicesConfig().addServiceConfig(serviceConfig);
-
-        final HazelcastInstance hz = factory.newHazelcastInstance(config);
-        warmUpPartitions(hz);
-
-        final AssertTask assertTask = new AssertTask() {
-            final InternalPartitionService partitionService = getNode(hz).getPartitionService();
-
-            @Override
-            public void run() throws Exception {
-                assertEquals(0, partitionService.getMigrationQueueSize());
-                assertEquals(counter.sourceCommits.get(), counter.destinationCommits.get());
-            }
-        };
-
-        factory.newHazelcastInstance(config);
-        assertTrueEventually(assertTask);
-
-        factory.newHazelcastInstance(config);
-        assertTrueEventually(assertTask);
-    }
-
-    private static class MigrationEventCounterService implements MigrationAwareService {
-
-        final AtomicInteger sourceCommits = new AtomicInteger();
-        final AtomicInteger destinationCommits = new AtomicInteger();
-
-        @Override
-        public Operation prepareReplicationOperation(PartitionReplicationEvent event) {
-            return null;
-        }
-
-        @Override
-        public void beforeMigration(PartitionMigrationEvent event) {
-        }
-
-        @Override
-        public void commitMigration(PartitionMigrationEvent event) {
-            if (event.getMigrationEndpoint() == MigrationEndpoint.SOURCE) {
-                sourceCommits.incrementAndGet();
-            } else {
-                destinationCommits.incrementAndGet();
-            }
-        }
-
-        @Override
-        public void rollbackMigration(PartitionMigrationEvent event) {
-        }
-
-        @Override
-        public void clearPartitionReplica(int partitionId) {
         }
     }
 }
