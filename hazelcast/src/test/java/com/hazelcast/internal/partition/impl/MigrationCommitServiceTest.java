@@ -10,7 +10,6 @@ import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.nio.Address;
-import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.BackupAwareOperation;
 import com.hazelcast.spi.MigrationAwareService;
@@ -18,6 +17,7 @@ import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
 import com.hazelcast.spi.impl.operationservice.InternalOperationService;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.ExpectedRuntimeException;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -31,6 +31,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -42,6 +43,8 @@ import static com.hazelcast.internal.partition.impl.MigrationCommitTest.resetInt
 import static com.hazelcast.internal.partition.impl.MigrationManager.MigrateTaskReason.REPARTITIONING;
 import static com.hazelcast.spi.partition.MigrationEndpoint.DESTINATION;
 import static com.hazelcast.spi.partition.MigrationEndpoint.SOURCE;
+import static com.hazelcast.test.TestPartitionUtils.getReplicaVersions;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
@@ -57,7 +60,7 @@ public class MigrationCommitServiceTest
 
     private static final int PARTITION_COUNT = 10;
 
-    private static final int BACKUP_COUNT = 3;
+    private static final int BACKUP_COUNT = 6;
 
     private TestHazelcastInstanceFactory factory;
 
@@ -100,7 +103,8 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionOwnerMoveCommit() {
+    public void testPartitionOwnerMoveCommit()
+            throws InterruptedException {
         final MigrationInfo migration = findPartitionOwnerMigration();
 
         migrate(migration);
@@ -110,7 +114,8 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionOwnerMoveRollback() {
+    public void testPartitionOwnerMoveRollback()
+            throws InterruptedException {
         final MigrationInfo migration = findPartitionOwnerMigration();
 
         final RejectMigration listener = new RejectMigration();
@@ -127,7 +132,8 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionBackupMoveCommit() {
+    public void testPartitionBackupMoveCommit()
+            throws InterruptedException {
         final MigrationInfo migration = findPartitionBackupMoveMigration();
 
         migrate(migration);
@@ -137,7 +143,8 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionBackupMoveRollback() {
+    public void testPartitionBackupMoveRollback()
+            throws InterruptedException {
         final MigrationInfo migration = findPartitionBackupMoveMigration();
 
         final RejectMigration listener = new RejectMigration();
@@ -154,7 +161,8 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionOwnerMoveCopyBackCommitWithOldOwnerOfKeepReplicaIndex() {
+    public void testPartitionOwnerMoveCopyBackCommitWithOldOwnerOfKeepReplicaIndex()
+            throws InterruptedException {
         final int partitionId = 5, oldReplicaIndex = 0, newReplicaIndex = 3;
         testMoveCopyBackupWithOldReplicaOwner(partitionId, oldReplicaIndex, newReplicaIndex);
     }
@@ -175,13 +183,15 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionBackupMoveCopyBackCommitWithOldOwnerOfKeepReplicaIndex() {
+    public void testPartitionBackupMoveCopyBackCommitWithOldOwnerOfKeepReplicaIndex()
+            throws InterruptedException {
         final int partitionId = 5, oldReplicaIndex = 2, newReplicaIndex = 4;
         testMoveCopyBackupWithOldReplicaOwner(partitionId, oldReplicaIndex, newReplicaIndex);
     }
 
     private void testMoveCopyBackupWithOldReplicaOwner(final int partitionId, final int oldReplicaIndex,
-                                                       final int newReplicaIndex) {
+                                                       final int newReplicaIndex)
+            throws InterruptedException {
         final MigrationInfo migration = createMoveCopyBackMigration(partitionId, oldReplicaIndex, newReplicaIndex);
         migrate(migration);
 
@@ -254,16 +264,46 @@ public class MigrationCommitServiceTest
         });
     }
 
-    private void assertMigrationSourceCommit(final MigrationInfo migration) {
+    private void assertMigrationSourceCommit(final MigrationInfo migration)
+            throws InterruptedException {
         final MigrationEventCollectingService service = getService(migration.getSource());
 
-        final String msg = getAssertMessage(migration, service);
+        String msg = getAssertMessage(migration, service);
 
         final PartitionMigrationEvent beforeEvent = service.getBeforeEvents().get(0);
         final PartitionMigrationEvent sourceCommitEvent = service.getCommitEvents().get(0);
 
         assertSourcePartitionMigrationEvent(msg, beforeEvent, migration);
         assertSourcePartitionMigrationEvent(msg, sourceCommitEvent, migration);
+
+        assertReplicaVersionsAndServiceData(msg, migration.getSource(), migration.getPartitionId(), migration.getSourceNewReplicaIndex());
+    }
+
+    private void assertReplicaVersionsAndServiceData(String msg, final Address address, final int partitionId, final int replicaIndex)
+            throws InterruptedException {
+        final MigrationEventCollectingService service = getService(address);
+
+        final boolean shouldContainData = replicaIndex != -1 && replicaIndex <= BACKUP_COUNT;
+        assertEquals(msg, shouldContainData, service.containsDataForPartition(partitionId));
+
+        final long[] replicaVersions = getReplicaVersions(factory.getInstance(address), partitionId);
+
+        msg = msg + " , ReplicaVersions: " + Arrays.toString(replicaVersions);
+        if (shouldContainData) {
+            if (replicaIndex == 0) {
+                assertArrayEquals(msg, replicaVersions, new long[]{1, 1, 1, 1, 1, 1});
+            } else {
+                for (int i = 1; i < InternalPartition.MAX_BACKUP_COUNT; i++) {
+                    if ( i < replicaIndex || i > BACKUP_COUNT) {
+                        assertEquals(msg, 0, replicaVersions[i - 1]);
+                    } else {
+                        assertEquals(msg, 1, replicaVersions[i - 1]);
+                    }
+                }
+            }
+        } else {
+            assertArrayEquals(msg, replicaVersions, new long[]{0, 0, 0, 0, 0, 0});
+        }
     }
 
     private String getAssertMessage(MigrationInfo migration, MigrationEventCollectingService service) {
@@ -271,7 +311,8 @@ public class MigrationCommitServiceTest
                 + " , RollbackEvents: " + service.getRollbackEvents();
     }
 
-    private void assertMigrationSourceRollback(final MigrationInfo migration) {
+    private void assertMigrationSourceRollback(final MigrationInfo migration)
+            throws InterruptedException {
         final MigrationEventCollectingService service = getService(migration.getSource());
 
         final String msg = getAssertMessage(migration, service);
@@ -281,9 +322,12 @@ public class MigrationCommitServiceTest
 
         assertSourcePartitionMigrationEvent(msg, beforeEvent, migration);
         assertSourcePartitionMigrationEvent(msg, sourceRollbackEvent, migration);
+
+        assertReplicaVersionsAndServiceData(msg, migration.getSource(), migration.getPartitionId(), migration.getSourceCurrentReplicaIndex());
     }
 
-    private void assertMigrationDestinationCommit(final MigrationInfo migration) {
+    private void assertMigrationDestinationCommit(final MigrationInfo migration)
+            throws InterruptedException {
         final MigrationEventCollectingService service = getService(migration.getDestination());
 
         final String msg = getAssertMessage(migration, service);
@@ -293,6 +337,10 @@ public class MigrationCommitServiceTest
 
         assertDestinationPartitionMigrationEvent(msg, beforeEvent, migration);
         assertDestinationPartitionMigrationEvent(msg, destinationCommitEvent, migration);
+
+        assertTrue(msg, service.containsDataForPartition(migration.getPartitionId()));
+
+        assertReplicaVersionsAndServiceData(msg, migration.getDestination(), migration.getPartitionId(), migration.getDestinationNewReplicaIndex());
     }
 
     private void assertSourcePartitionMigrationEvent(final String msg, final PartitionMigrationEvent event,
@@ -309,7 +357,8 @@ public class MigrationCommitServiceTest
         assertEquals(msg, migration.getDestinationNewReplicaIndex(), event.getNewReplicaIndex());
     }
 
-    private void assertMigrationDestinationRollback(final MigrationInfo migration) {
+    private void assertMigrationDestinationRollback(final MigrationInfo migration)
+            throws InterruptedException {
         final MigrationEventCollectingService service = getService(migration.getDestination());
 
         final String msg = getAssertMessage(migration, service);
@@ -319,6 +368,8 @@ public class MigrationCommitServiceTest
 
         assertDestinationPartitionMigrationEvent(msg, beforeEvent, migration);
         assertDestinationPartitionMigrationEvent(msg, destinationRollbackEvent, migration);
+
+        assertReplicaVersionsAndServiceData(msg, migration.getDestination(), migration.getPartitionId(), migration.getDestinationCurrentReplicaIndex());
     }
 
     private MigrationInfo findPartitionOwnerMigration() {
@@ -515,6 +566,10 @@ public class MigrationCommitServiceTest
             }
         }
 
+        public boolean containsDataForPartition(final int partitionId) {
+            return data.containsKey(partitionId);
+        }
+
         @Override
         public Operation prepareReplicationOperation(PartitionReplicationEvent event) {
             if (!data.containsKey(event.getPartitionId())) {
@@ -609,7 +664,7 @@ public class MigrationCommitServiceTest
 
         @Override
         public void onMigrationComplete(MigrationParticipant participant, MigrationInfo migrationInfo, boolean success) {
-            resetInternalMigrationListener(instance);
+            resetInternalMigrationListener(instance); // TODO WE CAN REMOVE THIS
             throw new ExpectedRuntimeException("migration is failed intentionally");
         }
 
