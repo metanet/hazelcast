@@ -30,7 +30,7 @@ import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.Packet;
 import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
 import com.hazelcast.nio.tcp.PacketFilter;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.BackupAwareOperation;
 import com.hazelcast.spi.ManagedService;

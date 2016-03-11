@@ -26,7 +26,7 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationAccessor;

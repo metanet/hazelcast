@@ -22,7 +22,7 @@ import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.PartitionReplicaManager;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.PartitionAwareOperation;

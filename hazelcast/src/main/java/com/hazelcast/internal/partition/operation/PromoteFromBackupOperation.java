@@ -48,7 +48,7 @@ import java.util.Collection;
 
 import static com.hazelcast.core.MigrationEvent.MigrationStatus.COMPLETED;
 import static com.hazelcast.core.MigrationEvent.MigrationStatus.STARTED;
-import static com.hazelcast.partition.MigrationEndpoint.DESTINATION;
+import static com.hazelcast.spi.partition.MigrationEndpoint.DESTINATION;
 import static com.hazelcast.internal.partition.InternalPartitionService.MIGRATION_EVENT_TOPIC;
 import static com.hazelcast.internal.partition.InternalPartitionService.SERVICE_NAME;
 import static com.hazelcast.internal.partition.PartitionReplicaChangeReason.MEMBER_REMOVED;

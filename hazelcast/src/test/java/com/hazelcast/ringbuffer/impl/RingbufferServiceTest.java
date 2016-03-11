@@ -12,7 +12,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import static com.hazelcast.partition.MigrationEndpoint.DESTINATION;
+import static com.hazelcast.spi.partition.MigrationEndpoint.DESTINATION;
 import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastParallelClassRunner.class)

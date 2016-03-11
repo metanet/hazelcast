@@ -27,7 +27,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.nio.IOUtil;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.partition.IPartitionLostEvent;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.EventFilter;
 import com.hazelcast.spi.EventRegistration;
 import com.hazelcast.spi.EventService;

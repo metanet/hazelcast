@@ -14,39 +14,28 @@
  * limitations under the License.
  */
 
-package com.hazelcast.partition;
+package com.hazelcast.spi.partition;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-/**
- * TODO: Javadoc Pending...
- */
-public enum MigrationType {
+public enum MigrationEndpoint {
 
-    MOVE(0), COPY(1), SHIFT_UP(2);
+    SOURCE(0), DESTINATION(1);
 
-    private final int code;
+    private final byte code;
 
-    MigrationType(int code) {
-        this.code = code;
+    MigrationEndpoint(int code) {
+        this.code = (byte) code;
     }
 
-    public static void writeTo(MigrationType type, DataOutput out) throws IOException {
-        out.writeByte(type.code);
+    public static void writeTo(MigrationEndpoint endpoint, DataOutput out) throws IOException {
+        out.writeByte(endpoint.code);
     }
 
-    public static MigrationType readFrom(DataInput in) throws IOException {
-        final byte code = in.readByte();
-        switch (code) {
-            case 0:
-                return MOVE;
-            case 1:
-                return COPY;
-            case 2:
-                return SHIFT_UP;
-        }
-        throw new IllegalArgumentException("Code: " + code);
+    public static MigrationEndpoint readFrom(DataInput in) throws IOException {
+        byte code = in.readByte();
+        return code == 0 ? SOURCE : DESTINATION;
     }
 }

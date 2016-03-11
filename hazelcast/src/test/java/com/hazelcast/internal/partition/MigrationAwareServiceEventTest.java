@@ -19,7 +19,7 @@ package com.hazelcast.internal.partition;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.ServiceConfig;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;

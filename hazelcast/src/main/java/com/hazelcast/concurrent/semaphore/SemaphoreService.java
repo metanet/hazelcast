@@ -21,7 +21,7 @@ import com.hazelcast.concurrent.semaphore.operations.SemaphoreReplicationOperati
 import com.hazelcast.config.SemaphoreConfig;
 import com.hazelcast.spi.partition.IPartition;
 import com.hazelcast.spi.partition.IPartitionService;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.ClientAwareService;
 import com.hazelcast.spi.ManagedService;
 import com.hazelcast.spi.MemberAttributeServiceEvent;

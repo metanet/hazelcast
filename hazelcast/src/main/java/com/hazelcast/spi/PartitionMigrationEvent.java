@@ -16,7 +16,7 @@
 
 package com.hazelcast.spi;
 
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 
 import java.util.EventObject;
 

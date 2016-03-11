@@ -34,7 +34,7 @@ import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
 import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;

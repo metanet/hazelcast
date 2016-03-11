@@ -25,7 +25,7 @@ import com.hazelcast.internal.partition.impl.InternalMigrationListener.Migration
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.MigrationManager;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.MigrationEndpoint;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.NodeEngine;
