@@ -19,7 +19,6 @@ package com.hazelcast.internal.partition.impl;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.impl.MigrationDecision.MigrationCallback;
 import com.hazelcast.nio.Address;
-import com.sun.istack.internal.NotNull;
 import org.junit.Test;
 
 import java.net.UnknownHostException;
@@ -259,7 +258,6 @@ public class MigrationDecisionTest {
         }
     }
 
-    @NotNull
     private Address newAddress(int port)
             throws java.net.UnknownHostException {
         return new Address("localhost", port);

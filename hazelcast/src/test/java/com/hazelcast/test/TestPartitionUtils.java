@@ -8,8 +8,8 @@ import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceState;
 import com.hazelcast.internal.partition.impl.ReplicaSyncInfo;
 import com.hazelcast.nio.Address;
-import com.hazelcast.partition.IPartition;
 import com.hazelcast.spi.impl.PartitionSpecificRunnable;
+import com.hazelcast.spi.partition.IPartition;
 import com.hazelcast.util.scheduler.ScheduledEntry;
 
 import java.util.ArrayList;
