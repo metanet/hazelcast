@@ -290,13 +290,33 @@ public class MigrationCommitServiceTest
     }
 
     @Test
-    public void testPartitionBackupShiftUpCommitWithNonNullOwnerOfReplicaIndex() {
+    public void testPartitionBackupShiftUpCommitWithNonNullOwnerOfReplicaIndex()
+            throws InterruptedException {
+        final int oldReplicaIndex = NODE_COUNT - 1, newReplicaIndex = NODE_COUNT - 2;
+        final MigrationInfo migration = createShiftUpMigration(PARTITION_ID_TO_MIGRATE, oldReplicaIndex, newReplicaIndex);
 
+        migrateWithSuccess(migration);
+
+        assertMigrationSourceCommit(migration);
+        assertMigrationDestinationCommit(migration);
+    }
+
+    private MigrationInfo createShiftUpMigration(final int partitionId, final int oldReplicaIndex, final int newReplicaIndex) {
+        final InternalPartitionImpl partition = getPartition(instances[0], partitionId);
+        final Address source = partition.getReplicaAddress(newReplicaIndex);
+        final Address destination = partition.getReplicaAddress(oldReplicaIndex);
+        return new MigrationInfo(partitionId, source, destination, newReplicaIndex, -1, oldReplicaIndex, newReplicaIndex);
     }
 
     @Test
-    public void testPartitionBackupShiftUpRollbackWithNonNullOwnerOfReplicaIndex() {
+    public void testPartitionBackupShiftUpRollbackWithNonNullOwnerOfReplicaIndex()
+            throws InterruptedException {
+        final int oldReplicaIndex = NODE_COUNT - 1, newReplicaIndex = NODE_COUNT - 2;
+        final MigrationInfo migration = createShiftUpMigration(PARTITION_ID_TO_MIGRATE, oldReplicaIndex, newReplicaIndex);
 
+        migrateWithFailure(migration);
+
+        assertMigrationDestinationRollback(migration);
     }
 
     @Test

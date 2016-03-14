@@ -90,7 +90,16 @@ public final class FinalizeMigrationOperation extends AbstractOperation
             }
         } else if (endpoint == MigrationEndpoint.DESTINATION && !success) {
             // TODO: !!! handle destination rollback !!!
-            replicaManager.clearPartitionReplicaVersions(partitionId);
+            int destinationCurrentReplicaIndex = migrationInfo.getDestinationCurrentReplicaIndex();
+            if (destinationCurrentReplicaIndex == -1) {
+                replicaManager.clearPartitionReplicaVersions(partitionId);
+            } else {
+                long[] versions = replicaManager.getPartitionReplicaVersions(partitionId);
+                int replicaOffset = migrationInfo.getDestinationCurrentReplicaIndex() <= 1 ? 1 : migrationInfo
+                        .getDestinationCurrentReplicaIndex();
+                // TODO: no need to set versions back right now. actual version array is modified directly.
+                Arrays.fill(versions, 0, replicaOffset - 1, 0);
+            }
         }
 
         if (success) {
