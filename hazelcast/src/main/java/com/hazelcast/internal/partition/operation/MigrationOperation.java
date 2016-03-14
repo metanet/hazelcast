@@ -131,7 +131,7 @@ public final class MigrationOperation extends BaseMigrationOperation {
         if (success) {
             InternalPartitionServiceImpl partitionService = getService();
             PartitionReplicaManager replicaManager = partitionService.getReplicaManager();
-            int replicaOffset = migrationInfo.getSourceCurrentReplicaIndex() <= 1 ? 1 : migrationInfo.getSourceCurrentReplicaIndex();
+            int replicaOffset = migrationInfo.getDestinationNewReplicaIndex() <= 1 ? 1 : migrationInfo.getDestinationNewReplicaIndex();
             replicaManager.setPartitionReplicaVersions(migrationInfo.getPartitionId(), replicaVersions,
                     replicaOffset);
             if (getLogger().isFinestEnabled()) {

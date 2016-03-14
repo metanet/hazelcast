@@ -85,7 +85,7 @@ public class MigrationInfo implements DataSerializable {
     }
 
     public MigrationInfo(int partitionId, Address source, Address destination, int sourceCurrentReplicaIndex,
-            int sourceNewReplicaIndex, int destinationCurrentReplicaIndex, int destinationNewReplicaIndex) {
+                         int sourceNewReplicaIndex, int destinationCurrentReplicaIndex, int destinationNewReplicaIndex) {
         this.uuid = UuidUtil.newUnsecureUuidString();
         this.partitionId = partitionId;
         this.source = source;
@@ -209,12 +209,18 @@ public class MigrationInfo implements DataSerializable {
         out.writeByte(destinationNewReplicaIndex);
         MigrationStatus.writeTo(status, out);
 
-        boolean hasFrom = source != null;
-        out.writeBoolean(hasFrom);
-        if (hasFrom) {
+        boolean hasSource = source != null;
+        out.writeBoolean(hasSource);
+        if (hasSource) {
             source.writeData(out);
         }
-        destination.writeData(out);
+
+        boolean hasDestination = destination != null;
+        out.writeBoolean(hasDestination);
+        if (hasDestination) {
+            destination.writeData(out);
+        }
+
 
         master.writeData(out);
 
@@ -235,13 +241,17 @@ public class MigrationInfo implements DataSerializable {
         destinationNewReplicaIndex = in.readByte();
         status = MigrationStatus.readFrom(in);
 
-        boolean hasFrom = in.readBoolean();
-        if (hasFrom) {
+        boolean hasSource = in.readBoolean();
+        if (hasSource) {
             source = new Address();
             source.readData(in);
         }
-        destination = new Address();
-        destination.readData(in);
+
+        boolean hasDestination = in.readBoolean();
+        if (hasDestination) {
+            destination = new Address();
+            destination.readData(in);
+        }
 
         master = new Address();
         master.readData(in);
