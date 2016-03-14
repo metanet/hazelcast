@@ -318,8 +318,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         lock.lock();
         try {
             final int partitionStateVersionBeforeMemberRemove = partitionStateManager.getVersion();
-            // TODO: why not increment only on master and publish it?
-            // TODO BASRI i updated here to increment only on master
+
             if (node.isMaster() && partitionStateManager.isInitialized()
                     && node.getClusterService().getClusterState() == ClusterState.ACTIVE) {
                 partitionStateManager.incrementVersion();
@@ -336,13 +335,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             }
             lastMaster = node.getMasterAddress();
 
-            // TODO: still needed?
-            // Pause migration and let all other members notice the dead member
-            // Otherwise new master may take action fast and send new partition state
-            // before other members realize the dead one.
             migrationManager.pauseMigration();
 
-            // TODO: this looks fine, a local optimization
             replicaManager.cancelReplicaSyncRequestsTo(deadAddress);
 
             if (node.isMaster()) {
@@ -463,7 +457,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
     }
 
-    // TODO: this is a sync call under lock!
     boolean syncPartitionRuntimeState() {
         return syncPartitionRuntimeState(node.clusterService.getMemberImpls());
     }
@@ -988,9 +981,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         @Override
         public void run() {
-            // TODO: remove log
-            logger.severe("REPAIR FOR " + deadAddress);
-
             if (!partitionStateManager.isInitialized()) {
                 return;
             }

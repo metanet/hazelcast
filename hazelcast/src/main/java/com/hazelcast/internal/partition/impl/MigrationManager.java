@@ -64,7 +64,8 @@ import static com.hazelcast.spi.partition.IPartitionService.SERVICE_NAME;
 public class MigrationManager {
 
     private static final int DEFAULT_PAUSE_MILLIS = 1000;
-    public static final int COMPLETED_MIGRATION_MAX_SIZE = 100;
+
+    private static final int PARTITION_STATE_VERSION_INCREMENT_DELTA_ON_MIGRATION_FAILURE = 2;
 
     enum MigrateTaskReason {
         REPAIR_PARTITION_TABLE,
@@ -224,15 +225,6 @@ public class MigrationManager {
             partitionServiceLock.unlock();
         }
     }
-
-//    public MigrationInfo getActiveMigration(int partitionId) {
-//        MigrationInfo activeMigrationInfo = this.activeMigrationInfo;
-//        if (activeMigrationInfo != null && activeMigrationInfo.getPartitionId() == partitionId) {
-//            return activeMigrationInfo;
-//        }
-//
-//        return null;
-//    }
 
     MigrationInfo getActiveMigration() {
         return activeMigrationInfo;
@@ -405,7 +397,6 @@ public class MigrationManager {
     void onMemberRemove(MemberImpl member) {
         migrationQueue.invalidatePendingMigrations(member.getAddress());
 
-        // TODO: if it's source...?
         Address deadAddress = member.getAddress();
         final MigrationInfo activeMigration = activeMigrationInfo;
         if (activeMigration != null) {
@@ -420,7 +411,6 @@ public class MigrationManager {
         migrationQueue.add(runnable);
     }
 
-    // TODO BASRI addActiveMigration method runs with partition service lock but this one and some others do not.
     public List<MigrationInfo> getCompletedMigrations() {
         partitionServiceLock.lock();
         try {
@@ -441,7 +431,6 @@ public class MigrationManager {
 
     public void reset() {
         migrationQueue.clear();
-        // TODO BASRI IS THIS SAFE?
         activeMigrationInfo = null;
         completedMigrations.clear();
     }
@@ -716,7 +705,8 @@ public class MigrationManager {
                 migrationQueue.invalidatePendingMigrations(migrationInfo.getPartitionId());
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
-                partitionService.getPartitionStateManager().incrementVersion(2); // TODO move this into constant
+                int delta = PARTITION_STATE_VERSION_INCREMENT_DELTA_ON_MIGRATION_FAILURE;
+                partitionService.getPartitionStateManager().incrementVersion(delta);
                 if (partitionService.syncPartitionRuntimeState()) {
                     evictCompletedMigrations(migrationInfo);
                 }
