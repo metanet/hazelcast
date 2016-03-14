@@ -301,13 +301,6 @@ public class MigrationCommitServiceTest
         assertMigrationDestinationCommit(migration);
     }
 
-    private MigrationInfo createShiftUpMigration(final int partitionId, final int oldReplicaIndex, final int newReplicaIndex) {
-        final InternalPartitionImpl partition = getPartition(instances[0], partitionId);
-        final Address source = partition.getReplicaAddress(newReplicaIndex);
-        final Address destination = partition.getReplicaAddress(oldReplicaIndex);
-        return new MigrationInfo(partitionId, source, destination, newReplicaIndex, -1, oldReplicaIndex, newReplicaIndex);
-    }
-
     @Test
     public void testPartitionBackupShiftUpRollbackWithNonNullOwnerOfReplicaIndex()
             throws InterruptedException {
@@ -316,17 +309,32 @@ public class MigrationCommitServiceTest
 
         migrateWithFailure(migration);
 
+        assertMigrationSourceRollback(migration);
         assertMigrationDestinationRollback(migration);
     }
 
     @Test
-    public void testPartitionBackupShiftUpCommitWithNullOwnerOfReplicaIndex() {
+    public void testPartitionBackupShiftUpCommitWithNullOwnerOfReplicaIndex()
+            throws InterruptedException {
+        final int oldReplicaIndex = NODE_COUNT - 1, newReplicaIndex = NODE_COUNT - 2;
+        clearReplicaIndex(PARTITION_ID_TO_MIGRATE, newReplicaIndex);
+        final MigrationInfo migration = createShiftUpMigration(PARTITION_ID_TO_MIGRATE, oldReplicaIndex, newReplicaIndex);
 
+        migrateWithSuccess(migration);
+
+        assertMigrationDestinationCommit(migration);
     }
 
     @Test
-    public void testPartitionBackupShiftUpRollbackWithNullOwnerOfReplicaIndex() {
+    public void testPartitionBackupShiftUpRollbackWithNullOwnerOfReplicaIndex()
+            throws InterruptedException {
+        final int oldReplicaIndex = NODE_COUNT - 1, newReplicaIndex = NODE_COUNT - 2;
+        clearReplicaIndex(PARTITION_ID_TO_MIGRATE, newReplicaIndex);
+        final MigrationInfo migration = createShiftUpMigration(PARTITION_ID_TO_MIGRATE, oldReplicaIndex, newReplicaIndex);
 
+        migrateWithFailure(migration);
+
+        assertMigrationDestinationRollback(migration);
     }
 
     private MigrationInfo createMoveMigration(final int partitionId, final int replicaIndex, final Address destination) {
@@ -350,6 +358,13 @@ public class MigrationCommitServiceTest
 
     private MigrationInfo createCopyMigration(final int partitionId, final int copyReplicaIndex, final Address destination) {
         return new MigrationInfo(partitionId, null, destination, -1, -1, -1, copyReplicaIndex);
+    }
+
+    private MigrationInfo createShiftUpMigration(final int partitionId, final int oldReplicaIndex, final int newReplicaIndex) {
+        final InternalPartitionImpl partition = getPartition(instances[0], partitionId);
+        final Address source = partition.getReplicaAddress(newReplicaIndex);
+        final Address destination = partition.getReplicaAddress(oldReplicaIndex);
+        return new MigrationInfo(partitionId, source, destination, newReplicaIndex, -1, oldReplicaIndex, newReplicaIndex);
     }
 
     private Address clearReplicaIndex(final int partitionId, final int replicaIndexToClear) {
