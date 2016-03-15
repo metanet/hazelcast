@@ -34,10 +34,6 @@ public class PartitionMigrationEvent extends EventObject {
 
     private final int newReplicaIndex;
 
-//    public PartitionMigrationEvent(MigrationEndpoint migrationEndpoint, int partitionId) {
-//        this(migrationEndpoint, partitionId, -1, 0);
-//    }
-
     public PartitionMigrationEvent(MigrationEndpoint migrationEndpoint, int partitionId,
             int currentReplicaIndex, int newReplicaIndex) {
         super(partitionId);

@@ -21,12 +21,11 @@ import com.hazelcast.config.ClasspathXmlConfig;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.MemberGroupConfig;
 import com.hazelcast.config.PartitionGroupConfig;
-import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
-import com.hazelcast.nio.Address;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.PartitionStateGenerator;
+import com.hazelcast.nio.Address;
 import com.hazelcast.partition.membergroup.ConfigMemberGroupFactory;
 import com.hazelcast.partition.membergroup.DefaultMemberGroup;
 import com.hazelcast.partition.membergroup.HostAwareMemberGroupFactory;
@@ -34,15 +33,13 @@ import com.hazelcast.partition.membergroup.MemberGroup;
 import com.hazelcast.partition.membergroup.MemberGroupFactory;
 import com.hazelcast.partition.membergroup.SingleMemberGroupFactory;
 import com.hazelcast.test.HazelcastSerialClassRunner;
+import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
-import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,16 +58,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastSerialClassRunner.class)
-@Category(QuickTest.class)
+@Category({QuickTest.class, ParallelTest.class})
 public class PartitionStateGeneratorTest {
 
     private static final boolean printState = false;
-
-    @BeforeClass
-    @AfterClass
-    public static void init() throws IOException {
-        Hazelcast.shutdownAll();
-    }
 
     @Test
     public void testRandomPartitionGenerator() throws Exception {
