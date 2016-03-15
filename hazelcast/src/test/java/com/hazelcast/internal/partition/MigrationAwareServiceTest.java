@@ -27,10 +27,10 @@ import com.hazelcast.internal.serialization.SerializationService;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.Packet;
 import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
 import com.hazelcast.nio.tcp.PacketFilter;
-import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.BackupAwareOperation;
 import com.hazelcast.spi.ManagedService;
@@ -40,6 +40,7 @@ import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
 import com.hazelcast.spi.impl.SpiDataSerializerHook;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -56,20 +57,21 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
 
 import static com.hazelcast.test.TestPartitionUtils.getReplicaVersions;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(Parameterized.class)
@@ -114,12 +116,11 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         fill(hz);
-        assertSize(backupCount);
+        assertSizeAndData();
 
         for (int i = 1; i <= nodeCount; i++) {
             startNodes(config, 1);
-            assertSize(backupCount);
-            assertReplicaVersions(backupCount);
+            assertSizeAndData();
         }
     }
 
@@ -129,11 +130,10 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         fill(hz);
-        assertSize(backupCount);
+        assertSizeAndData();
 
         startNodes(config, nodeCount);
-        assertSize(backupCount);
-        assertReplicaVersions(backupCount);
+        assertSizeAndData();
     }
 
     @Test
@@ -145,10 +145,10 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         warmUpPartitions(factory.getAllHazelcastInstances());
 
         fill(hz);
-        assertSize(backupCount);
+        assertSizeAndData();
 
         terminateNodes(backupCount);
-        assertSize(backupCount);
+        assertSizeAndData();
     }
 
     @Test
@@ -157,14 +157,14 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         HazelcastInstance hz = factory.newHazelcastInstance(config);
         fill(hz);
-        assertSize(backupCount);
+        assertSizeAndData();
 
         while (factory.getAllHazelcastInstances().size() < (nodeCount + 1)) {
             startNodes(config, backupCount + 1);
-            assertSize(backupCount);
+            assertSizeAndData();
 
             terminateNodes(backupCount);
-            assertSize(backupCount);
+            assertSizeAndData();
         }
     }
 
@@ -184,8 +184,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
             fill(instance);
         }
 
-        assertSize(backupCount);
-        assertReplicaVersions(backupCount);
+        assertSizeAndData();
     }
 
     private void fill(HazelcastInstance hz) {
@@ -235,15 +234,15 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         }
     }
 
-    private void assertSize(final int backupCount) {
+    private void assertSizeAndData() {
         assertTrueEventually(new AssertTask() {
             @Override
             public void run() throws Exception {
                 Collection<HazelcastInstance> instances = factory.getAllHazelcastInstances();
-                int expectedSize = PARTITION_COUNT * Math.min(backupCount + 1, instances.size());
+                final int actualBackupCount = Math.min(backupCount, instances.size() - 1);
+                final int expectedSize = PARTITION_COUNT * (actualBackupCount + 1);
 
                 int total = 0;
-                StringBuilder s = new StringBuilder();
                 for (HazelcastInstance hz : instances) {
                     SampleMigrationAwareService service = getService(hz);
                     total += service.size();
@@ -251,65 +250,59 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                     Node node = getNode(hz);
                     InternalPartitionService partitionService = node.getPartitionService();
                     InternalPartition[] partitions = partitionService.getInternalPartitions();
+                    Address thisAddress = node.getThisAddress();
 
-                    s.append("\nLEAK ").append(node.getThisAddress()).append("\n");
+                    // find leaks
                     for (Integer p : service.data.keySet()) {
-                        int replicaIndex = partitions[p].getReplicaIndex(node.getThisAddress());
-                        if (replicaIndex < 0 || replicaIndex > backupCount) {
-                            s.append(p).append(": ").append(replicaIndex).append("\n");
+                        int replicaIndex = partitions[p].getReplicaIndex(thisAddress);
+                        assertThat("Partition: " + p + " is leaking on " + thisAddress,
+                                replicaIndex, allOf(greaterThanOrEqualTo(0), lessThanOrEqualTo(backupCount)));
+                    }
+
+                    // find missing
+                    for (InternalPartition partition : partitions) {
+                        int replicaIndex = partition.getReplicaIndex(thisAddress);
+                        if (replicaIndex >= 0 && replicaIndex <= backupCount) {
+                            assertTrue("Partition: " + partition.getPartitionId() + ", replica: " + replicaIndex
+                                    + " data is missing on " + thisAddress,
+                                    service.data.containsKey(partition.getPartitionId()));
                         }
                     }
-                    s.append("\n");
 
-                    s.append("MISSING ").append(node.getThisAddress()).append("\n");
+                    // check values
                     for (InternalPartition partition : partitions) {
-                        int replicaIndex = partition.getReplicaIndex(node.getThisAddress());
-                        if (replicaIndex >= 0 && replicaIndex <= backupCount) {
-                            if (!service.data.containsKey(partition.getPartitionId())) {
-                                s.append(partition.getPartitionId()).append(": ").append(replicaIndex).append("\n");
+                        if (partition.isLocal()) {
+                            int partitionId = partition.getPartitionId();
+                            long[] replicaVersions = getReplicaVersions(node, partitionId);
+
+                            for (int replica = 1; replica <= actualBackupCount; replica++) {
+                                Address address = partition.getReplicaAddress(replica);
+                                assertNotNull(partition.toString(), address);
+
+                                HazelcastInstance backupInstance = factory.getInstance(address);
+                                assertNotNull(backupInstance);
+
+                                Node backupNode = getNode(backupInstance);
+                                assertNotNull(backupNode);
+
+                                long[] backupReplicaVersions = getReplicaVersions(backupNode, partitionId);
+                                for (int i = replica - 1; i < actualBackupCount; i++) {
+                                    assertEquals("Owner: " + thisAddress + ", Backup: " + address
+                                            + ", PartitionId: " + partition + ", Replica: " + (i + 1),
+                                            replicaVersions[i], backupReplicaVersions[i]);
+                                }
+
+                                SampleMigrationAwareService backupService = getService(backupInstance);
+                                assertEquals("Partition: " + partitionId + ", replica: " + replica + " on "
+                                        + address + " has stale value! " + Arrays.toString(backupReplicaVersions),
+                                        service.data.get(partitionId), backupService.data.get(partitionId));
                             }
                         }
                     }
                 }
-                assertEquals(s.toString(), expectedSize, total);
+                assertEquals("Missing data!", expectedSize, total);
             }
         }, 100);
-    }
-
-    private void assertReplicaVersions(int backupCount) throws InterruptedException {
-        final Collection<HazelcastInstance> instances = factory.getAllHazelcastInstances();
-        final Map<Address, Node> nodes = new HashMap<Address, Node>();
-
-        backupCount = Math.min(backupCount, instances.size() - 1);
-
-        for (HazelcastInstance instance : instances) {
-            Node node = getNode(instance);
-            nodes.put(node.getThisAddress(), node);
-        }
-
-        for (Node node : nodes.values()) {
-            InternalPartitionService partitionService = node.getPartitionService();
-            InternalPartition[] partitions = partitionService.getInternalPartitions();
-
-            for (InternalPartition partition : partitions) {
-                if (partition.isLocal()) {
-                    long[] replicaVersions = getReplicaVersions(node, partition.getPartitionId());
-                    for (int replica = 1; replica <= backupCount; replica++) {
-                        Address address = partition.getReplicaAddress(replica);
-                        assertNotNull(partition.toString(), address);
-                        Node backupNode = nodes.get(address);
-                        assertNotNull(backupNode);
-
-                        long[] backupReplicaVersions = getReplicaVersions(backupNode, partition.getPartitionId());
-                        for (int i = replica - 1; i < backupCount; i++) {
-                            assertEquals("Owner: " + node.getThisAddress() + ", Backup: " + address
-                                    + ", PartitionId: " + partition.getPartitionId() + ", Replica: " + (i + 1),
-                                    replicaVersions[i], backupReplicaVersions[i]);
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private SampleMigrationAwareService getService(HazelcastInstance hz) {
@@ -338,7 +331,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         private static final String SERVICE_NAME = "SampleMigrationAwareService";
 
-        private final ConcurrentMap<Integer, Object> data = new ConcurrentHashMap<Integer, Object>();
+        private final ConcurrentMap<Integer, Integer> data = new ConcurrentHashMap<Integer, Integer>();
 
         private volatile int backupCount;
 
@@ -358,6 +351,17 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         public void shutdown(boolean terminate) {
         }
 
+        int inc(int partitionId) {
+            Integer count = data.get(partitionId);
+            if (count == null) {
+                count = 1;
+            } else {
+                count++;
+            }
+            data.put(partitionId, count);
+            return count;
+        }
+
         int size() {
             return data.size();
         }
@@ -371,7 +375,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
             if (!data.containsKey(event.getPartitionId())) {
                 throw new HazelcastException("No data found for " + event);
             }
-            return new SampleReplicationOperation();
+            return new SampleReplicationOperation(data.get(event.getPartitionId()));
         }
 
         @Override
@@ -412,10 +416,16 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     }
 
     private static class SamplePutOperation extends AbstractOperation implements BackupAwareOperation {
+
+        int value;
+
+        public SamplePutOperation() {
+        }
+
         @Override
         public void run() throws Exception {
             SampleMigrationAwareService service = getService();
-            service.data.put(getPartitionId(), Boolean.TRUE);
+            value = service.inc(getPartitionId());
         }
 
         @Override
@@ -436,7 +446,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         @Override
         public Operation getBackupOperation() {
-            return new SampleBackupPutOperation();
+            return new SampleBackupPutOperation(value);
         }
 
         @Override
@@ -446,49 +456,58 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     }
 
     private static class SampleBackupPutOperation extends AbstractOperation {
+
+        int value;
+
+        public SampleBackupPutOperation() {
+        }
+
+        public SampleBackupPutOperation(int value) {
+            this.value = value;
+        }
+
         @Override
         public void run() throws Exception {
             SampleMigrationAwareService service = getService();
-            service.data.put(getPartitionId(), Boolean.TRUE);
+            service.data.put(getPartitionId(), value);
+            getLogger().info("Partition: " + getPartitionId() + ", replica: " + getReplicaIndex() + ", value: " + value);
         }
 
         @Override
         public String getServiceName() {
             return SampleMigrationAwareService.SERVICE_NAME;
         }
+
+        @Override
+        protected void writeInternal(ObjectDataOutput out) throws IOException {
+            super.writeInternal(out);
+            out.writeInt(value);
+        }
+
+        @Override
+        protected void readInternal(ObjectDataInput in) throws IOException {
+            super.readInternal(in);
+            value = in.readInt();
+        }
     }
 
-    private static class SampleReplicationOperation extends AbstractOperation {
+    private static class SampleReplicationOperation extends SampleBackupPutOperation {
 
         public SampleReplicationOperation() {
         }
 
-        @Override
-        public void run() throws Exception {
-            // artificial latency!
-            randomLatency();
-            SampleMigrationAwareService service = getService();
-            service.data.put(getPartitionId(), Boolean.TRUE);
-        }
-
-        private void randomLatency() {
-            long duration = (long) (Math.random() * 100);
-            LockSupport.parkNanos(TimeUnit.MICROSECONDS.toNanos(duration) + 100);
-        }
-
-        @Override
-        public String getServiceName() {
-            return SampleMigrationAwareService.SERVICE_NAME;
+        public SampleReplicationOperation(int value) {
+            super(value);
         }
     }
 
     private static class BackupPacketFilter implements PacketFilter {
         final SerializationService serializationService;
-        final float ratio;
+        final float blockRatio;
 
-        public BackupPacketFilter(SerializationService serializationService, float ratio) {
+        public BackupPacketFilter(SerializationService serializationService, float blockRatio) {
             this.serializationService = serializationService;
-            this.ratio = ratio;
+            this.blockRatio = blockRatio;
         }
 
         @Override
@@ -504,7 +523,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                     int factory = input.readInt();
                     int type = input.readInt();
                     boolean isBackup = factory == SpiDataSerializerHook.F_ID && type == SpiDataSerializerHook.BACKUP;
-                    return !isBackup || Math.random() > ratio;
+                    return !isBackup || Math.random() > blockRatio;
                 }
             } catch (IOException e) {
                 throw new HazelcastException(e);
