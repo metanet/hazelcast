@@ -201,20 +201,31 @@ public class PartitionStateManager {
                     }
                 }
 
+                if (logger.isFinestEnabled()) {
+                    if (destination != null) {
+                        // TODO BASRI partition lost
+                        logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. replicaIndex=" + index + " is shifted up to 0. " + partition);
+                    } else {
+                        logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. there is no other replica to shift up. " + partition);
+                    }
+                }
+
                 if (destination != null) {
                     // TODO: how do we inform the services about promotion?
                     // run promotion when you get this completed migration?
-                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination, -1, -1, 1, 0);
+                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination, -1, -1, index, 0);
                     migration.setMaster(node.getThisAddress());
                     migration.setStatus(MigrationInfo.MigrationStatus.SUCCESS);
                     partitionService.getMigrationManager().addCompletedMigration(migration);
+                    partitionService.getMigrationManager().scheduleActiveMigrationFinalization(migration);
                 }
+            } else if (logger.isFinestEnabled()) {
+                logger.finest("partitionId=" + partition.getPartitionId() + " replicaIndex=" + index + " is removed. " + partition);
             }
-
-            logger.info("Partition: " + partition.getPartitionId() + ", Replica: " + index + " is removed: " + partition);
 
             if (partition.getOwnerOrNull() == null) {
                 // we lost the partition!
+                // TODO BASRI partition lost
                 continue;
             }
 

@@ -20,18 +20,16 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.core.MigrationEvent.MigrationStatus;
 import com.hazelcast.instance.MemberImpl;
+import com.hazelcast.internal.partition.InternalPartition;
+import com.hazelcast.internal.partition.InternalPartitionService;
+import com.hazelcast.internal.partition.MigrationCycleOperation;
+import com.hazelcast.internal.partition.impl.InternalPartitionImpl;
+import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.internal.partition.impl.PartitionStateManager;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.spi.partition.IPartitionLostEvent;
-import com.hazelcast.internal.partition.MigrationCycleOperation;
-import com.hazelcast.internal.partition.InternalPartition;
-import com.hazelcast.internal.partition.InternalPartitionService;
-import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
-import com.hazelcast.internal.partition.impl.InternalPartitionImpl;
-import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.EventRegistration;
 import com.hazelcast.spi.EventService;
@@ -41,6 +39,7 @@ import com.hazelcast.spi.PartitionAwareOperation;
 import com.hazelcast.spi.PartitionAwareService;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.partition.IPartitionLostEvent;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -48,11 +47,10 @@ import java.util.Collection;
 
 import static com.hazelcast.core.MigrationEvent.MigrationStatus.COMPLETED;
 import static com.hazelcast.core.MigrationEvent.MigrationStatus.STARTED;
-import static com.hazelcast.spi.partition.MigrationEndpoint.DESTINATION;
 import static com.hazelcast.internal.partition.InternalPartitionService.MIGRATION_EVENT_TOPIC;
 import static com.hazelcast.internal.partition.InternalPartitionService.SERVICE_NAME;
-import static com.hazelcast.internal.partition.PartitionReplicaChangeReason.MEMBER_REMOVED;
 import static com.hazelcast.spi.ExecutionService.SYSTEM_EXECUTOR;
+import static com.hazelcast.spi.partition.MigrationEndpoint.DESTINATION;
 
 // Runs locally when the node becomes owner of a partition
 //
@@ -63,16 +61,14 @@ public final class PromoteFromBackupOperation
         extends AbstractOperation
         implements PartitionAwareOperation, MigrationCycleOperation {
 
-    private final PartitionReplicaChangeReason reason;
     private final Address oldAddress;
-    private final int promotedReplicaIndex;
+    private final int currentReplicaIndex; // TODO BASRI ADD EXPLANATION
 
     private ILogger logger;
 
-    public PromoteFromBackupOperation(PartitionReplicaChangeReason reason, Address oldAddress, int promotedReplicaIndex) {
-        this.reason = reason;
+    public PromoteFromBackupOperation(Address oldAddress, int currentReplicaIndex) {
         this.oldAddress = oldAddress;
-        this.promotedReplicaIndex = promotedReplicaIndex;
+        this.currentReplicaIndex = currentReplicaIndex;
     }
 
     void initLogger() {
@@ -89,8 +85,8 @@ public final class PromoteFromBackupOperation
     @Override
     public void run()
             throws Exception {
-        handleLostBackups();
-        promoteFromBackups();
+        shiftUpReplicaVersions();
+        migrateServices();
     }
 
     @Override
@@ -100,9 +96,6 @@ public final class PromoteFromBackupOperation
     }
 
     private void sendMigrationEvent(final MigrationStatus status) {
-        if (reason != MEMBER_REMOVED) {
-            return;
-        }
         final int partitionId = getPartitionId();
         final NodeEngine nodeEngine = getNodeEngine();
         final Member localMember = nodeEngine.getLocalMember();
@@ -114,88 +107,46 @@ public final class PromoteFromBackupOperation
         eventService.publishEvent(SERVICE_NAME, registrations, event, partitionId);
     }
 
-    void handleLostBackups() {
+    void shiftUpReplicaVersions() {
         final int partitionId = getPartitionId();
         try {
             final InternalPartitionService partitionService = getService();
             // returns the internal array itself, not the copy
             final long[] versions = partitionService.getPartitionReplicaVersions(partitionId);
 
-            if (reason == MEMBER_REMOVED) {
-                final int lostReplicaIndex = getLostReplicaIndex(versions);
-                if (lostReplicaIndex > 0) {
-                    overwriteLostReplicaVersionsWithFirstAvailableVersion(partitionId, versions, lostReplicaIndex);
+
+                if ( currentReplicaIndex > 1 ) {
+                    final long[] versionsCopy = Arrays.copyOf(versions, versions.length);
+
+                    for (int i = currentReplicaIndex; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
+                        versions[i - currentReplicaIndex] = versions[i - 1];
+                    }
+
+                    Arrays.fill(versions , (versions.length - (currentReplicaIndex - 1)), versions.length, 0);
+
+                    if (logger.isFinestEnabled()) {
+                        logger.finest("Partition replica is lost! partitionId=" + partitionId + " lost replicaIndex="
+                                + currentReplicaIndex + " replica versions before shift up=" + Arrays.toString(versionsCopy)
+                                + " replica versions after shift up=" + Arrays.toString(versions));
+                    }
+                } else if (logger.isFinestEnabled()) {
+                    logger.finest("PROMOTE partitionId=" + getPartitionId() + " from currentReplicaIndex=" + currentReplicaIndex);
                 }
 
-                sendPartitionLostEvent(partitionId, lostReplicaIndex);
-            } else {
-                resetSyncWaitingVersions(partitionId, versions);
-            }
         } catch (Throwable e) {
-            logger.warning("Partition lost detection failed. partitionId=" + partitionId, e);
+            logger.warning("Promotion failed. partitionId=" + partitionId + " replicaIndex=" + currentReplicaIndex, e);
         }
     }
 
-    void promoteFromBackups() {
-        if (reason != MEMBER_REMOVED) {
-            return;
-        }
-
-        if (logger.isFinestEnabled()) {
-            logger.finest("Promoting partitionId=" + getPartitionId());
-        }
-
+    void migrateServices() {
         try {
-            sendToAllMigrationAwareServices(new PartitionMigrationEvent(DESTINATION, getPartitionId(),
-                    promotedReplicaIndex, 0));
+            sendToAllMigrationAwareServices(new PartitionMigrationEvent(DESTINATION, getPartitionId(), currentReplicaIndex, 0));
         } finally {
-            clearPartitionMigratingFlag();
+            clearPartitionMigratingFlag(); // TODO BASRI IS THIS NECESSARY
         }
     }
 
-    private int getLostReplicaIndex(final long[] versions) {
-        int biggestLostReplicaIndex = 0;
-
-        for (int replicaIndex = 1; replicaIndex <= versions.length; replicaIndex++) {
-            if (versions[replicaIndex - 1] == InternalPartition.SYNC_WAITING) {
-                biggestLostReplicaIndex = replicaIndex;
-            }
-        }
-
-        return biggestLostReplicaIndex;
-    }
-
-    private void overwriteLostReplicaVersionsWithFirstAvailableVersion(final int partitionId, final long[] versions,
-                                                                       final int lostReplicaIndex) {
-        if (logger.isFinestEnabled()) {
-            logger.finest("Partition replica is lost! partitionId=" + partitionId + " lost-replicaIndex=" + lostReplicaIndex
-                            + " replicaVersions=" + Arrays.toString(versions));
-        }
-
-        final long forcedVersion = lostReplicaIndex < versions.length ? versions[lostReplicaIndex] : 0;
-        for (int replicaIndex = lostReplicaIndex; replicaIndex > 0; replicaIndex--) {
-            versions[replicaIndex - 1] = forcedVersion;
-        }
-    }
-
-    private void resetSyncWaitingVersions(int partitionId, long[] versions) {
-        long[] versionsBeforeReset = null;
-        for (int replicaIndex = 1; replicaIndex <= versions.length; replicaIndex++) {
-            if (versions[replicaIndex - 1] == InternalPartition.SYNC_WAITING) {
-                if (versionsBeforeReset == null) {
-                    versionsBeforeReset = Arrays.copyOf(versions, versions.length);
-                }
-
-                versions[replicaIndex - 1] = 0;
-            }
-        }
-
-        if (logger.isFinestEnabled() && versionsBeforeReset != null) {
-            logger.finest("Resetting all SYNC_WAITING Versions. partitionId=" + partitionId + " versionsBeforeReset=" + Arrays
-                    .toString(versionsBeforeReset));
-        }
-    }
-
+    // TODO BASRI MOVE THIS
     private void sendPartitionLostEvent(int partitionId, int lostReplicaIndex) {
         final IPartitionLostEvent event = new IPartitionLostEvent(partitionId, lostReplicaIndex,
                 getNodeEngine().getThisAddress());

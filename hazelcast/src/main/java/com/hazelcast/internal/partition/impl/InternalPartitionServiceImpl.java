@@ -1120,9 +1120,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     applyNewState(newState, thisAddress);
                 } else {
                     partitionStateManager.incrementVersion();
-                    migrationManager.setCompletedMigrations(allCompletedMigrations);
                     for (MigrationInfo migrationInfo : allCompletedMigrations) {
-                        migrationManager.scheduleActiveMigrationFinalization(migrationInfo);
+                        if (migrationManager.addCompletedMigration(migrationInfo)) {
+                            if (logger.isFinestEnabled()) {
+                                logger.finest("Scheduling migration finalization after finding most recent partition table: "
+                                        + migrationInfo);
+                            }
+                            migrationManager.scheduleActiveMigrationFinalization(migrationInfo);
+                        }
                     }
                 }
             } finally {

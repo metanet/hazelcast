@@ -24,7 +24,6 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
-import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.impl.InternalMigrationListener.MigrationParticipant;
 import com.hazelcast.internal.partition.operation.ClearReplicaOperation;
@@ -34,10 +33,10 @@ import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
 import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
-import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.MutableInteger;
 import com.hazelcast.util.Preconditions;
@@ -281,8 +280,8 @@ public class MigrationManager {
                 // shift up when a partition owner is removed
                 assert migrationInfo.getStatus() == MigrationStatus.SUCCESS
                         : "Promotion status should be SUCCESS! -> " + migrationInfo.getStatus();
-                PromoteFromBackupOperation op = new PromoteFromBackupOperation(PartitionReplicaChangeReason.MEMBER_REMOVED,
-                        migrationInfo.getSource(), migrationInfo.getDestinationCurrentReplicaIndex());
+                // TODO BASRI source is null here. we need to move partition lost event dispatching logic to PartitionStateManger
+                PromoteFromBackupOperation op = new PromoteFromBackupOperation(migrationInfo.getSource(), migrationInfo.getDestinationCurrentReplicaIndex());
                 op.setPartitionId(migrationInfo.getPartitionId()).setNodeEngine(nodeEngine).setService(partitionService);
                 nodeEngine.getOperationService().executeOperation(op);
 
@@ -756,7 +755,6 @@ public class MigrationManager {
                 if (commitSuccessful) {
                     internalMigrationListener.onMigrationCommit(MigrationParticipant.MASTER, migrationInfo);
 
-                    // TODO BASRI after we remove internalpartitionlistener, ptable version update must be done manually
                     // updates partition table after successful commit
                     InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
 

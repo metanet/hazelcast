@@ -19,9 +19,7 @@ package com.hazelcast.internal.partition.impl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.PartitionListener;
-import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
 import com.hazelcast.logging.ILogger;
-import com.hazelcast.nio.Address;
 
 /**
  * TODO: Javadoc Pending...
@@ -29,14 +27,12 @@ import com.hazelcast.nio.Address;
 final class InternalPartitionListener implements PartitionListener {
     private final Node node;
     private final InternalPartitionServiceImpl partitionService;
-    private final Address thisAddress;
     private final ILogger logger;
     private volatile PartitionListenerNode listenerHead;
 
     InternalPartitionListener(Node node, InternalPartitionServiceImpl partitionService) {
         this.node = node;
         this.partitionService = partitionService;
-        this.thisAddress = node.getThisAddress();
         logger = node.getLogger(InternalPartitionService.class);
     }
 
@@ -44,35 +40,11 @@ final class InternalPartitionListener implements PartitionListener {
     public void replicaChanged(PartitionReplicaChangeEvent event) {
         final int partitionId = event.getPartitionId();
         final int replicaIndex = event.getReplicaIndex();
-        final Address newAddress = event.getNewAddress();
-        final Address oldAddress = event.getOldAddress();
-        final PartitionReplicaChangeReason reason = event.getReason();
 
-        final boolean initialAssignment = event.getOldAddress() == null;
-
-        if (replicaIndex > 0) {
-            // backup replica owner changed!
-            if (thisAddress.equals(oldAddress)) {
-                // TODO: do we need to call clear explicitly or is it going to be part of commit?
-//                clearPartition(partitionId, replicaIndex);
-            } else if (thisAddress.equals(newAddress)) {
-                // TODO: is partition replica sync required anymore? we are already copying/migrating backup data.
-//                synchronizePartition(partitionId, replicaIndex, reason, initialAssignment);
-            }
-        } else {
-            if (!initialAssignment && thisAddress.equals(newAddress)) {
-                // it is possible that I might become owner while waiting for sync request from the previous owner.
-                // I should check whether if have failed to get backups from the owner and lost the partition for
-                // some backups.
-//                promoteFromBackups(partitionId, reason, oldAddress);
-            }
+        if (replicaIndex == 0) {
             partitionService.getReplicaManager().cancelReplicaSync(partitionId);
         }
 
-        // TODO: not needed anymore! we already have partition lost listener
-//        if (replicaIndex == 0 && newAddress == null && node.isRunning() && node.joined()) {
-//            logOwnerOfPartitionIsRemoved(event);
-//        }
         if (node.isMaster()) {
             partitionService.getPartitionStateManager().incrementVersion();
         }
@@ -91,54 +63,6 @@ final class InternalPartitionListener implements PartitionListener {
             listenerNode = listenerNode.next;
         }
     }
-
-//    private void clearPartition(final int partitionId, final int oldReplicaIndex) {
-//        NodeEngine nodeEngine = node.nodeEngine;
-//        ClearReplicaOperation op = new ClearReplicaOperation(oldReplicaIndex);
-//        op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
-//        nodeEngine.getOperationService().executeOperation(op);
-//    }
-//
-//    private void synchronizePartition(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
-//            boolean initialAssignment) {
-//        // if not initialized yet, no need to sync, since this is the initial partition assignment
-//        if (partitionService.getPartitionStateManager().isInitialized()) {
-//            long delayMillis = 0L;
-//            if (replicaIndex > 1) {
-//                // immediately trigger replica synchronization for the first backups
-//                // postpone replica synchronization for greater backups to a later time
-//                // high priority is 1st backups
-//                delayMillis = (long) (InternalPartitionService.REPLICA_SYNC_RETRY_DELAY + (Math.random()
-//                        * InternalPartitionService.DEFAULT_REPLICA_SYNC_DELAY));
-//            }
-//
-//            resetReplicaVersion(partitionId, replicaIndex, reason, initialAssignment);
-//            partitionService.getReplicaManager().triggerPartitionReplicaSync(partitionId, replicaIndex, delayMillis);
-//        }
-//    }
-
-//    private void resetReplicaVersion(int partitionId, int replicaIndex, PartitionReplicaChangeReason reason,
-//            boolean initialAssignment) {
-//        NodeEngine nodeEngine = node.nodeEngine;
-//        ResetReplicaVersionOperation op = new ResetReplicaVersionOperation(reason, initialAssignment);
-//        op.setPartitionId(partitionId).setReplicaIndex(replicaIndex).setNodeEngine(nodeEngine)
-//                .setService(partitionService);
-//        nodeEngine.getOperationService().executeOperation(op);
-//    }
-
-//    private void promoteFromBackups(int partitionId, PartitionReplicaChangeReason reason, Address oldAddress) {
-//        NodeEngine nodeEngine = node.nodeEngine;
-//        PromoteFromBackupOperation op = new PromoteFromBackupOperation(reason, oldAddress, 1);
-//        op.setPartitionId(partitionId).setNodeEngine(nodeEngine).setService(partitionService);
-//        nodeEngine.getOperationService().executeOperation(op);
-//    }
-
-//    private void logOwnerOfPartitionIsRemoved(PartitionReplicaChangeEvent event) {
-//        String warning =
-//                "Owner of partition is being removed! " + "Possible data loss for partitionId=" + event.getPartitionId()
-//                        + " , " + event;
-//        logger.warning(warning);
-//    }
 
     void addChildListener(PartitionListener listener) {
         PartitionListenerNode head = listenerHead;

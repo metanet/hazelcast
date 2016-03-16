@@ -82,23 +82,37 @@ public final class FinalizeMigrationOperation extends AbstractOperation
             int keepReplicaIndex = migrationInfo.getSourceNewReplicaIndex();
             if (keepReplicaIndex < 0) {
                 replicaManager.clearPartitionReplicaVersions(partitionId);
+                if (getLogger().isFinestEnabled()) {
+                    getLogger().finest("Replica versions are cleared in source after migration. partitionId=" + partitionId);
+                }
             } else if (migrationInfo.getSourceCurrentReplicaIndex() != keepReplicaIndex && keepReplicaIndex > 1) {
                 long[] versions = replicaManager.getPartitionReplicaVersions(partitionId);
                 Arrays.fill(versions, 0, keepReplicaIndex - 1, 0);
                 // TODO: no need to set versions back right now. actual version array is modified directly.
                 // replicaManager.setPartitionReplicaVersions(partitionId, versions, keepReplicaIndex);
+
+                if (getLogger().isFinestEnabled()) {
+                    getLogger().finest("Replica versions are set after MOVE COPY BACK migration. partitionId=" + partitionId + " replica versions=" + Arrays.toString(versions));
+                }
             }
         } else if (endpoint == MigrationEndpoint.DESTINATION && !success) {
             // TODO: !!! handle destination rollback !!!
             int destinationCurrentReplicaIndex = migrationInfo.getDestinationCurrentReplicaIndex();
             if (destinationCurrentReplicaIndex == -1) {
                 replicaManager.clearPartitionReplicaVersions(partitionId);
+                if (getLogger().isFinestEnabled()) {
+                    getLogger().finest("Replica versions are cleared in destination after failed migration. partitionId=" + partitionId);
+                }
             } else {
                 long[] versions = replicaManager.getPartitionReplicaVersions(partitionId);
                 int replicaOffset = migrationInfo.getDestinationCurrentReplicaIndex() <= 1 ? 1 : migrationInfo
                         .getDestinationCurrentReplicaIndex();
                 // TODO: no need to set versions back right now. actual version array is modified directly.
                 Arrays.fill(versions, 0, replicaOffset - 1, 0);
+
+                if (getLogger().isFinestEnabled()) {
+                    getLogger().finest("Replica versions are rolled back in destination after failed migration. partitionId=" + partitionId + " replica versions=" + Arrays.toString(versions));
+                }
             }
         }
 

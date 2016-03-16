@@ -17,13 +17,12 @@
 
 package com.hazelcast.internal.partition.operation;
 
-import com.hazelcast.logging.ILogger;
-import com.hazelcast.spi.partition.IPartitionLostEvent;
 import com.hazelcast.internal.partition.InternalPartitionService;
-import com.hazelcast.internal.partition.PartitionReplicaChangeReason;
 import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation.InternalPartitionLostEventPublisher;
+import com.hazelcast.logging.ILogger;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.executionservice.InternalExecutionService;
+import com.hazelcast.spi.partition.IPartitionLostEvent;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,8 +33,6 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
 import static com.hazelcast.internal.partition.InternalPartitionService.SERVICE_NAME;
-import static com.hazelcast.internal.partition.PartitionReplicaChangeReason.ASSIGNMENT;
-import static com.hazelcast.internal.partition.PartitionReplicaChangeReason.MEMBER_REMOVED;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
@@ -45,6 +42,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+// TODO BASRI fix this test
 @RunWith(MockitoJUnitRunner.class)
 @Category(QuickTest.class)
 public class PromoteFromBackupOperationTest {
@@ -75,7 +73,7 @@ public class PromoteFromBackupOperationTest {
 
         final ArgumentCaptor<InternalPartitionLostEventPublisher> eventCaptor = createArgumentCaptor();
 
-        invokeOperation(versions, partitionId, MEMBER_REMOVED);
+        invokeOperation(versions, partitionId);
         assertThat(versions, equalTo(expectedVersions));
 
         verifyInternalPartitionLostEvent(partitionId, 0, eventCaptor);
@@ -90,7 +88,7 @@ public class PromoteFromBackupOperationTest {
 
         final ArgumentCaptor<InternalPartitionLostEventPublisher> eventCaptor = createArgumentCaptor();
 
-        invokeOperation(versions, partitionId, MEMBER_REMOVED);
+        invokeOperation(versions, partitionId);
         assertThat(versions, equalTo(expectedVersions));
 
         verifyInternalPartitionLostEvent(partitionId, 1, eventCaptor);
@@ -105,7 +103,7 @@ public class PromoteFromBackupOperationTest {
 
         final ArgumentCaptor<InternalPartitionLostEventPublisher> publisherCaptor = createArgumentCaptor();
 
-        invokeOperation(versions, partitionId, MEMBER_REMOVED);
+        invokeOperation(versions, partitionId);
         assertThat(versions, equalTo(expectedVersions));
 
         verifyInternalPartitionLostEvent(partitionId, 6, publisherCaptor);
@@ -118,7 +116,7 @@ public class PromoteFromBackupOperationTest {
         final long[] expectedVersions = {0, 0, 0, 3, 2, 1};
         final int partitionId = 1;
 
-        invokeOperation(versions, partitionId, ASSIGNMENT);
+        invokeOperation(versions, partitionId);
         assertThat(versions, equalTo(expectedVersions));
     }
 
@@ -136,16 +134,16 @@ public class PromoteFromBackupOperationTest {
         assertEquals(replicaIndex, expectedEvent.getLostReplicaIndex());
     }
 
-    private void invokeOperation(long[] versions, int partitionId, PartitionReplicaChangeReason reason)
+    private void invokeOperation(long[] versions, int partitionId)
             throws Exception {
-        final PromoteFromBackupOperation operation = createOperation(partitionId, reason);
+        final PromoteFromBackupOperation operation = createOperation(partitionId);
         when(partitionService.getPartitionReplicaVersions(partitionId)).thenReturn(versions);
         operation.initLogger();
-        operation.handleLostBackups();
+        operation.shiftUpReplicaVersions();
     }
 
-    private PromoteFromBackupOperation createOperation(final int partitionId, final PartitionReplicaChangeReason reason) {
-        final PromoteFromBackupOperation operation = new PromoteFromBackupOperation(reason, null, 1);
+    private PromoteFromBackupOperation createOperation(final int partitionId) {
+        final PromoteFromBackupOperation operation = new PromoteFromBackupOperation(null, 1);
         operation.setPartitionId(partitionId);
         operation.setNodeEngine(nodeEngine);
         operation.setServiceName(SERVICE_NAME);

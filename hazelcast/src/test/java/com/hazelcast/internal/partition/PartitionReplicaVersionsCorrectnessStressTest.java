@@ -32,8 +32,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import static com.hazelcast.test.TestPartitionUtils.getReplicaAddresses;
+import static com.hazelcast.test.TestPartitionUtils.getReplicaVersions;
 import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 @RunWith(HazelcastSerialClassRunner.class)
@@ -110,8 +111,8 @@ public class PartitionReplicaVersionsCorrectnessStressTest extends AbstractParti
                     int partitionId = partition.getPartitionId();
                     long[] initialReplicaVersions = replicaVersionsByPartitionId.get(partitionId);
                     Integer minSurvivingReplicaIndex = minSurvivingReplicaIndexByPartitionId.get(partitionId);
-                    long[] replicaVersions = TestPartitionUtils.getReplicaVersions(instance, partitionId);
-                    List<Address> addresses = TestPartitionUtils.getReplicaAddresses(instance, partitionId);
+                    long[] replicaVersions = getReplicaVersions(instance, partitionId);
+                    List<Address> addresses = getReplicaAddresses(instance, partitionId);
 
                     String message = log + " PartitionId: " + partitionId
                             + " InitialReplicaVersions: " + Arrays.toString(initialReplicaVersions)
@@ -123,13 +124,17 @@ public class PartitionReplicaVersionsCorrectnessStressTest extends AbstractParti
                     if (minSurvivingReplicaIndex <= 1) {
                         assertArrayEquals(message, initialReplicaVersions, replicaVersions);
                     } else if (numberOfNodesToCrash > 1) {
-                        for (int i = minSurvivingReplicaIndex; i < replicaVersions.length; i++) {
-                            assertEquals(message, initialReplicaVersions[i], replicaVersions[i]);
-                        }
+                        final long[] expected = Arrays.copyOf(initialReplicaVersions, initialReplicaVersions.length);
 
-                        long duplicatedReplicaVersion = initialReplicaVersions[minSurvivingReplicaIndex - 1];
-                        for (int i = 0; i < minSurvivingReplicaIndex; i++) {
-                            assertEquals(duplicatedReplicaVersion, replicaVersions[i]);
+                        boolean verified;
+                        int i = 0;
+                        do {
+                            shiftLeft(expected);
+                            verified = Arrays.equals(expected, replicaVersions);
+                        } while (i < minSurvivingReplicaIndex && !verified);
+
+                        if (!verified) {
+                            fail(message);
                         }
                     } else {
                         fail(message);
@@ -138,4 +143,14 @@ public class PartitionReplicaVersionsCorrectnessStressTest extends AbstractParti
             }
         }
     }
+
+    private void shiftLeft(final long[] versions) {
+        final int r = versions.length - 1;
+        for (int i = 0; i < r; i++) {
+            versions[i] = versions[i + 1];
+        }
+
+        versions[r] = 0;
+    }
+
 }
