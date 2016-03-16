@@ -19,11 +19,11 @@ package com.hazelcast.internal.partition;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.ServiceConfig;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.spi.MigrationAwareService;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
+import com.hazelcast.spi.partition.MigrationEndpoint;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -70,7 +70,6 @@ public class MigrationAwareServiceEventTest extends HazelcastTestSupport {
                 assertEquals(0, partitionService.getMigrationQueueSize());
                 final int source = counter.sourceCommits.get();
                 final int destination = counter.destinationCommits.get();
-                System.err.println("source = " + source + ", destination = " + destination);
                 assertEquals(source, destination);
             }
         };
@@ -98,10 +97,15 @@ public class MigrationAwareServiceEventTest extends HazelcastTestSupport {
 
         @Override
         public void commitMigration(PartitionMigrationEvent event) {
-            if (event.getMigrationEndpoint() == MigrationEndpoint.SOURCE) {
-                sourceCommits.incrementAndGet();
-            } else {
-                destinationCommits.incrementAndGet();
+            // Only count ownership migrations.
+            // For missing (new) backups there are also COPY migrations (call it just replication)
+            // which don't have a source endpoint.
+            if (event.getCurrentReplicaIndex() == 0 || event.getNewReplicaIndex() == 0) {
+                if (event.getMigrationEndpoint() == MigrationEndpoint.SOURCE) {
+                    sourceCommits.incrementAndGet();
+                } else {
+                    destinationCommits.incrementAndGet();
+                }
             }
         }
 

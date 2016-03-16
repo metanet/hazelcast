@@ -46,6 +46,7 @@ import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.SlowTest;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -86,7 +87,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     private static final int BACKUP_SYNC_INTERVAL = 1;
     private static final float BACKUP_BLOCK_RATIO = 0.65f;
 
-    @Parameterized.Parameters(name = "backupCount:{0},nodeCount:{1}")
+    @Parameterized.Parameters(name = "backups:{0},nodes:{1}")
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
                 {1, 2}, {1, InternalPartition.MAX_REPLICA_COUNT},
@@ -151,7 +152,8 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         assertSizeAndData();
     }
 
-    @Test
+    @Test(timeout = 6000 * 10 * 10)
+    @Category(SlowTest.class)
     public void testPartitionData_whenBackupNodesStartedTerminated() throws InterruptedException {
         Config config = getConfig(backupCount);
 
@@ -277,10 +279,10 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
                             for (int replica = 1; replica <= actualBackupCount; replica++) {
                                 Address address = partition.getReplicaAddress(replica);
-                                assertNotNull(partition.toString(), address);
+                                assertNotNull("Replica: " + replica + " is not found in " + partition.toString(), address);
 
                                 HazelcastInstance backupInstance = factory.getInstance(address);
-                                assertNotNull(backupInstance);
+                                assertNotNull("Instance for " + address + " is not found!", backupInstance);
 
                                 Node backupNode = getNode(backupInstance);
                                 assertNotNull(backupNode);
