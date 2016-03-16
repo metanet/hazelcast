@@ -199,8 +199,9 @@ public class MigrationManager {
                 if (node.getThisAddress().equals(partitionOwner)) {
                     removeActiveMigration(partitionId);
                 } else {
+                    // TODO: remove "new IllegalStateException()"
                     logger.severe("Failed to finalize migration because this member " + thisAddress
-                            + " is not a participant of the migration: " + migrationInfo, new Throwable());
+                            + " is not a participant of the migration: " + migrationInfo, new IllegalStateException());
                 }
             }
         } catch (Exception e) {

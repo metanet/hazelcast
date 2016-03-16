@@ -44,8 +44,6 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
-import com.hazelcast.spi.partition.IPartition;
-import com.hazelcast.spi.partition.IPartitionLostEvent;
 import com.hazelcast.partition.NoDataMemberInClusterException;
 import com.hazelcast.partition.PartitionEvent;
 import com.hazelcast.partition.PartitionEventListener;
@@ -60,6 +58,8 @@ import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.PartitionAwareService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.partition.IPartition;
+import com.hazelcast.spi.partition.IPartitionLostEvent;
 import com.hazelcast.util.ExceptionUtil;
 import com.hazelcast.util.FutureUtil.ExceptionHandler;
 import com.hazelcast.util.HashUtil;
@@ -1071,6 +1071,11 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             for (Future<PartitionRuntimeState> future : futures) {
                 try {
                     PartitionRuntimeState state = future.get();
+                    if (state == null) {
+                        // state can be null, if not initialized
+                        continue;
+                    }
+
                     if (version < state.getVersion()) {
                         newState = state;
                         version = state.getVersion();
@@ -1085,9 +1090,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 } catch (MemberLeftException e) {
                     // ignore
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    logger.fine("FetchMostRecentPartitionTableTask is interrupted.");
                 } catch (ExecutionException e) {
-                    e.printStackTrace();
+                    logger.warning("Failed to fetch partition table!", e);
                 }
             }
 
