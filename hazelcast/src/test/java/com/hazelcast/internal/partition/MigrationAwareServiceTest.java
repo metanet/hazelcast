@@ -46,7 +46,6 @@ import com.hazelcast.test.HazelcastParametersRunnerFactory;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.QuickTest;
-import com.hazelcast.test.annotation.SlowTest;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -105,6 +104,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     public int nodeCount;
 
     private boolean antiEntropyEnabled = false;
+    private boolean withoutService = false;
 
     @Before
     public void setup() {
@@ -153,7 +153,23 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     }
 
     @Test(timeout = 6000 * 10 * 10)
-    @Category(SlowTest.class)
+    public void testPartitionAssignments_whenNodesStartedTerminated() throws InterruptedException {
+        withoutService = true;
+        Config config = getConfig(backupCount);
+
+        HazelcastInstance hz = factory.newHazelcastInstance(config);
+        warmUpPartitions(hz);
+
+        while (factory.getAllHazelcastInstances().size() < (nodeCount + 1)) {
+            startNodes(config, backupCount + 1);
+            assertPartitionAssignments();
+
+            terminateNodes(backupCount);
+            assertPartitionAssignments();
+        }
+    }
+
+    @Test(timeout = 6000 * 10 * 10)
     public void testPartitionData_whenBackupNodesStartedTerminated() throws InterruptedException {
         Config config = getConfig(backupCount);
 
@@ -168,6 +184,28 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
             terminateNodes(backupCount);
             assertSizeAndData();
         }
+    }
+
+    private void assertPartitionAssignments() {
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                Collection<HazelcastInstance> instances = factory.getAllHazelcastInstances();
+                final int actualBackupCount = Math.min(backupCount, instances.size() - 1);
+
+                for (HazelcastInstance hz : instances) {
+                    Node node = getNode(hz);
+                    InternalPartitionService partitionService = node.getPartitionService();
+                    InternalPartition[] partitions = partitionService.getInternalPartitions();
+
+                    for (InternalPartition partition : partitions) {
+                        for (int i = 0; i <= actualBackupCount; i++) {
+                            assertNotNull("Replica " + i + " is not found in " + partition, partition.getReplicaAddress(i));
+                        }
+                    }
+                }
+            }
+        });
     }
 
     @Test
@@ -304,7 +342,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                 }
                 assertEquals("Missing data!", expectedSize, total);
             }
-        }, 100);
+        });
     }
 
     private SampleMigrationAwareService getService(HazelcastInstance hz) {
@@ -314,12 +352,15 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
     private Config getConfig(int backupCount) {
         Config config = new Config();
-        ServiceConfig serviceConfig = new ServiceConfig()
-                .setEnabled(true).setName(SampleMigrationAwareService.SERVICE_NAME)
-                .setClassName(SampleMigrationAwareService.class.getName())
-                .addProperty(BACKUP_COUNT_PROP, String.valueOf(backupCount));
 
-        config.getServicesConfig().addServiceConfig(serviceConfig);
+        if (!withoutService) {
+            ServiceConfig serviceConfig = new ServiceConfig()
+                    .setEnabled(true).setName(SampleMigrationAwareService.SERVICE_NAME)
+                    .setClassName(SampleMigrationAwareService.class.getName())
+                    .addProperty(BACKUP_COUNT_PROP, String.valueOf(backupCount));
+            config.getServicesConfig().addServiceConfig(serviceConfig);
+        }
+
         config.setProperty(GroupProperty.PARTITION_COUNT, String.valueOf(PARTITION_COUNT));
         config.setProperty(GroupProperty.MIGRATION_MIN_DELAY_ON_MEMBER_REMOVED_SECONDS, String.valueOf(1));
         config.setProperty(GroupProperty.PARTITION_BACKUP_SYNC_INTERVAL, String.valueOf(BACKUP_SYNC_INTERVAL));
