@@ -34,7 +34,6 @@ import com.hazelcast.internal.partition.operation.MigrationRequestOperation;
 import com.hazelcast.internal.partition.operation.PromoteFromBackupOperation;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
-import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.partition.MigrationEndpoint;
@@ -153,13 +152,15 @@ public class MigrationManager {
     }
 
     void resumeMigrationEventually() {
-        ExecutionService executionService = nodeEngine.getExecutionService();
-        executionService.schedule(new Runnable() {
-            @Override
-            public void run() {
-                resumeMigration();
-            }
-        }, migrationPauseDelayMs, TimeUnit.MILLISECONDS);
+        // TODO: RESUME EVENTUALLY!
+//        ExecutionService executionService = nodeEngine.getExecutionService();
+//        executionService.schedule(new Runnable() {
+//            @Override
+//            public void run() {
+//                resumeMigration();
+//            }
+//        }, migrationPauseDelayMs, TimeUnit.MILLISECONDS);
+        resumeMigration();
     }
 
     boolean isMigrationAllowed() {
@@ -723,7 +724,16 @@ public class MigrationManager {
 
                 MigrationRequestOperation migrationRequestOp = new MigrationRequestOperation(migrationInfo,
                             partitionService.getPartitionStateVersion());
+                long start = Clock.currentTimeMillis();
                 Boolean result = executeMigrateOperation(migrationRequestOp, partitionOwner);
+                long end = Clock.currentTimeMillis();
+
+                if (end - start > 1000) {
+                    logger.severe("================ Result: " + result + ", Owner: " + partitionOwner.getAddress()
+                            + ", owner-member?: " + (node.getClusterService().getMember(partitionOwner.getAddress()) != null)
+                            + ", destination-member?: " + (node.getClusterService().getMember(migrationInfo.getDestination()) != null)
+                            + ", elapsed: " + (end - start) + "ms. -> " + migrationInfo);
+                }
                 processMigrationResult(result);
             } catch (Throwable t) {
                 final Level level = isValid() ? Level.WARNING : Level.FINEST;
