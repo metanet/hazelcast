@@ -22,7 +22,6 @@ import com.hazelcast.core.Member;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
-import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionStateGenerator;
 import com.hazelcast.logging.ILogger;
@@ -178,7 +177,8 @@ public class PartitionStateManager {
         return node.isLiteMember() ? 0 : 1;
     }
 
-    void removeDeadAddress(Collection<MigrationInfo> migrations, Address address) {
+    void removeDeadAddress(Collection<Integer> partitionIdSet, Address address) {
+
         for (InternalPartitionImpl partition : partitions) {
             int index = partition.removeAddress(address);
 
@@ -187,61 +187,74 @@ public class PartitionStateManager {
                 continue;
             }
 
-
-            // if owner is null, promote 1st non-null backup to owner
-            // don't touch to the other backups
-            if (index == 0) {
-                Address destination = null;
-                for (int i = index + 1; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
-                    destination = partition.getReplicaAddress(i);
-                    if (destination != null) {
-                        partition.swapAddresses(0, i);
-                        index = i;
-                        break;
-                    }
-                }
-
-                if (logger.isFinestEnabled()) {
-                    if (destination != null) {
-                        // TODO BASRI partition lost
-                        logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. replicaIndex=" + index + " is shifted up to 0. " + partition);
-                    } else {
-                        logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. there is no other replica to shift up. " + partition);
-                    }
-                }
-
-                if (destination != null) {
-                    // TODO: how do we inform the services about promotion?
-                    // run promotion when you get this completed migration?
-                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination, -1, -1, index, 0);
-                    migration.setMaster(node.getThisAddress());
-                    migration.setStatus(MigrationInfo.MigrationStatus.SUCCESS);
-                    partitionService.getMigrationManager().addCompletedMigration(migration);
-                    partitionService.getMigrationManager().scheduleActiveMigrationFinalization(migration);
-                }
-            } else if (logger.isFinestEnabled()) {
-                logger.finest("partitionId=" + partition.getPartitionId() + " replicaIndex=" + index + " is removed. " + partition);
-            }
-
-            if (partition.getOwnerOrNull() == null) {
-                // we lost the partition!
-                // TODO BASRI partition lost
-                continue;
-            }
-
-            // search for a destination to assign empty index
-            Address destination;
-            for (int i = InternalPartition.MAX_REPLICA_COUNT - 1; i > index; i--) {
-                destination = partition.getReplicaAddress(i);
-                if (destination != null) {
-                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination,
-                            -1, -1, i, index);
-                    migrations.add(migration);
-                    break;
-                }
-            }
+            partitionIdSet.add(partition.getPartitionId());
         }
     }
+
+//    void removeDeadAddress(Collection<MigrationInfo> migrations, Address address) {
+//        for (InternalPartitionImpl partition : partitions) {
+//            int index = partition.removeAddress(address);
+//
+//            // address is not replica of this partition
+//            if (index == -1) {
+//                continue;
+//            }
+//
+//
+//            // if owner is null, promote 1st non-null backup to owner
+//            // don't touch to the other backups
+//            if (index == 0) {
+//                Address destination = null;
+//                for (int i = index + 1; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
+//                    destination = partition.getReplicaAddress(i);
+//                    if (destination != null) {
+//                        partition.swapAddresses(0, i);
+//                        index = i;
+//                        break;
+//                    }
+//                }
+//
+//                if (logger.isFinestEnabled()) {
+//                    if (destination != null) {
+//                        // TODO BASRI partition lost
+//                        logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. replicaIndex=" + index + " is shifted up to 0. " + partition);
+//                    } else {
+//                        logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. there is no other replica to shift up. " + partition);
+//                    }
+//                }
+//
+//                if (destination != null) {
+//                    // TODO: how do we inform the services about promotion?
+//                    // run promotion when you get this completed migration?
+//                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination, -1, -1, index, 0);
+//                    migration.setMaster(node.getThisAddress());
+//                    migration.setStatus(MigrationInfo.MigrationStatus.SUCCESS);
+//                    partitionService.getMigrationManager().addCompletedMigration(migration);
+//                    partitionService.getMigrationManager().scheduleActiveMigrationFinalization(migration);
+//                }
+//            } else if (logger.isFinestEnabled()) {
+//                logger.finest("partitionId=" + partition.getPartitionId() + " replicaIndex=" + index + " is removed. " + partition);
+//            }
+//
+//            if (partition.getOwnerOrNull() == null) {
+//                // we lost the partition!
+//                // TODO BASRI partition lost
+//                continue;
+//            }
+//
+//            // search for a destination to assign empty index
+//            Address destination;
+//            for (int i = InternalPartition.MAX_REPLICA_COUNT - 1; i > index; i--) {
+//                destination = partition.getReplicaAddress(i);
+//                if (destination != null) {
+//                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination,
+//                            -1, -1, i, index);
+//                    migrations.add(migration);
+//                    break;
+//                }
+//            }
+//        }
+//    }
 
     InternalPartition[] getPartitions() {
         return partitions;

@@ -22,6 +22,7 @@ import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.metrics.Probe;
+import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationInfo;
 import com.hazelcast.internal.partition.MigrationInfo.MigrationStatus;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
@@ -200,7 +201,9 @@ public class MigrationManager {
                 } else {
                     // TODO: remove "new IllegalStateException()"
                     logger.severe("Failed to finalize migration because this member " + thisAddress
-                            + " is not a participant of the migration: " + migrationInfo, new IllegalStateException());
+                            + " is not a participant of the migration: " + migrationInfo,
+                            new IllegalStateException(activeMigrationInfo + "\n"
+                                    + partitionStateManager.getPartitionImpl(partitionId).toString()));
                 }
             }
         } catch (Exception e) {
@@ -452,6 +455,70 @@ public class MigrationManager {
         migrationQueue.add(new MigrateTask(migrationInfo, reason));
     }
 
+    void repairPartition(int partitionId) {
+        InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(partitionId);
+
+        if (partition.getOwnerOrNull() == null) {
+            Address destination = null;
+            int index = 1;
+            for (int i = index; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
+                destination = partition.getReplicaAddress(i);
+                if (destination != null) {
+                    partition.swapAddresses(0, i);
+                    index = i;
+                    break;
+                }
+            }
+
+            if (logger.isFinestEnabled()) {
+                if (destination != null) {
+                    // TODO BASRI partition lost
+                    logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. replicaIndex=" + index
+                            + " is shifted up to 0. " + partition);
+                } else {
+                    logger.finest("partitionId=" + partition.getPartitionId() + " owner is removed. there is no other replica to shift up. " + partition);
+                }
+            }
+
+            if (destination != null) {
+                // TODO: how do we inform the services about promotion?
+                // run promotion when you get this completed migration?
+                MigrationInfo migration =
+                        new MigrationInfo(partition.getPartitionId(), null, destination, -1, -1, index, 0);
+                migration.setMaster(node.getThisAddress());
+                migration.setStatus(MigrationInfo.MigrationStatus.SUCCESS);
+                partitionService.getMigrationManager().addCompletedMigration(migration);
+                partitionService.getMigrationManager().scheduleActiveMigrationFinalization(migration);
+            }
+        }
+
+        if (partition.getOwnerOrNull() == null) {
+            // we lost the partition!
+            // TODO BASRI partition lost
+            return;
+        }
+
+        int lastIndex = InternalPartition.MAX_REPLICA_COUNT - 1;
+        for (int index = 1; index < InternalPartition.MAX_REPLICA_COUNT; index++) {
+            if (partition.getReplicaAddress(index) != null) {
+                continue;
+            }
+
+            // search for a destination to assign empty index
+            Address destination;
+            for (int i = lastIndex; i > index; i--) {
+                destination = partition.getReplicaAddress(i);
+                if (destination != null) {
+                    MigrationInfo migration = new MigrationInfo(partition.getPartitionId(), null, destination,
+                            -1, -1, i, index);
+                    scheduleMigration(migration, MigrateTaskReason.REPAIR_PARTITION_TABLE);
+                    lastIndex = i - 1;
+                    break;
+                }
+            }
+        }
+    }
+
     private class RepartitioningTask implements MigrationRunnable {
 
         private volatile boolean valid = true;
@@ -628,6 +695,21 @@ public class MigrationManager {
                 MemberImpl partitionOwner = getPartitionOwner();
                 if (partitionOwner == null) {
                     logger.fine("Partition owner is null. Ignoring migration task.");
+//                    triggerRepartitioningAfterMigrationFailure();
+                    return;
+                }
+
+                if (migrationInfo.getSource() != null) {
+                    if (node.getClusterService().getMember(migrationInfo.getSource()) == null) {
+                        logger.fine("Source is not member anymore. Ignoring migration task.");
+                        triggerRepartitioningAfterMigrationFailure();
+                        return;
+                    }
+                }
+
+                if (node.getClusterService().getMember(migrationInfo.getDestination()) == null) {
+                    logger.fine("Destination is not member anymore. Ignoring migration task.");
+                    triggerRepartitioningAfterMigrationFailure();
                     return;
                 }
 

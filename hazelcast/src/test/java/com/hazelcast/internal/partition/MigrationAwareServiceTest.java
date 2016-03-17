@@ -57,6 +57,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -162,9 +163,27 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
         while (factory.getAllHazelcastInstances().size() < (nodeCount + 1)) {
             startNodes(config, backupCount + 1);
-            assertPartitionAssignments();
-
             terminateNodes(backupCount);
+            assertPartitionAssignments();
+        }
+    }
+
+    @Test(timeout = 6000 * 10 * 10)
+    public void testPartitionAssignments_whenNodesStartedTerminated_withRestart() throws InterruptedException {
+        withoutService = true;
+        Config config = getConfig(backupCount);
+
+        HazelcastInstance hz = factory.newHazelcastInstance(config);
+        warmUpPartitions(hz);
+
+        Collection<Address> addresses = Collections.emptySet();
+
+        while (factory.getAllHazelcastInstances().size() < (nodeCount + 1)) {
+            int startCount = (backupCount + 1) - addresses.size();
+            startNodes(config, addresses);
+            startNodes(config, startCount);
+
+            addresses = terminateNodes(backupCount);
             assertPartitionAssignments();
         }
     }
@@ -200,7 +219,9 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
 
                     for (InternalPartition partition : partitions) {
                         for (int i = 0; i <= actualBackupCount; i++) {
-                            assertNotNull("Replica " + i + " is not found in " + partition, partition.getReplicaAddress(i));
+                            Address replicaAddress = partition.getReplicaAddress(i);
+                            assertNotNull("Replica " + i + " is not found in " + partition, replicaAddress);
+                            assertTrue("Not member: " + replicaAddress, node.getClusterService().getMember(replicaAddress) != null);
                         }
                     }
                 }
@@ -251,18 +272,41 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         }
     }
 
-    private void terminateNodes(int count) throws InterruptedException {
+    private void startNodes(final Config config, Collection<Address> addresses) throws InterruptedException {
+        if (addresses.size() == 1) {
+            factory.newHazelcastInstance(addresses.iterator().next(), config);
+        } else {
+            final CountDownLatch latch = new CountDownLatch(addresses.size());
+            for (final Address address : addresses) {
+                new Thread() {
+                    public void run() {
+                        factory.newHazelcastInstance(address, config);
+                        latch.countDown();
+                    }
+                }.start();
+            }
+            assertTrue(latch.await(2, TimeUnit.MINUTES));
+        }
+    }
+
+    private Collection<Address> terminateNodes(int count) throws InterruptedException {
         List<HazelcastInstance> instances = new ArrayList<HazelcastInstance>(factory.getAllHazelcastInstances());
         Collections.shuffle(instances);
 
         if (count == 1) {
-            TestUtil.terminateInstance(instances.get(0));
+            HazelcastInstance hz = instances.get(0);
+            Address address = getNode(hz).getThisAddress();
+            TestUtil.terminateInstance(hz);
+            return Collections.singleton(address);
         } else {
             int min = Math.min(count, instances.size());
             final CountDownLatch latch = new CountDownLatch(min);
+            Collection<Address> addresses = new HashSet<Address>();
 
             for (int i = 0; i < min; i++) {
                 final HazelcastInstance hz = instances.get(i);
+                addresses.add(getNode(hz).getThisAddress());
+
                 new Thread() {
                     public void run() {
                         TestUtil.terminateInstance(hz);
@@ -271,6 +315,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
                 }.start();
             }
             assertTrue(latch.await(2, TimeUnit.MINUTES));
+            return addresses;
         }
     }
 

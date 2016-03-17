@@ -35,7 +35,6 @@ import com.hazelcast.internal.partition.PartitionInfo;
 import com.hazelcast.internal.partition.PartitionListener;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.PartitionServiceProxy;
-import com.hazelcast.internal.partition.impl.MigrationManager.MigrateTaskReason;
 import com.hazelcast.internal.partition.operation.AssignPartitions;
 import com.hazelcast.internal.partition.operation.FetchPartitionStateOperation;
 import com.hazelcast.internal.partition.operation.HasOngoingMigration;
@@ -340,11 +339,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             replicaManager.cancelReplicaSyncRequestsTo(deadAddress);
 
             if (node.isMaster()) {
-                if (isThisNodeNewMaster) {
-                    migrationManager.schedule(new SearchAndRepairPartitionTableTask());
-                } else {
-                    migrationManager.schedule(new RepairPartitionTableTask(deadAddress));
-                }
+                migrationManager.schedule(new RepairPartitionTableTask());
             }
 
             migrationManager.resumeMigrationEventually();
@@ -944,10 +939,14 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return partitionEventManager;
     }
 
-    private class SearchAndRepairPartitionTableTask extends AbstractMigrationRunnable {
+    private class RepairPartitionTableTask extends AbstractMigrationRunnable {
 
         @Override
         public void run() {
+            if (!partitionStateManager.isInitialized()) {
+                return;
+            }
+
             lock.lock();
             try {
                 Collection<Address> addresses = new HashSet<Address>();
@@ -963,69 +962,23 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     }
                 }
 
+                Collection<Integer> partitionIdSet = new HashSet<Integer>();
                 for (Address address : addresses) {
-                    migrationManager.schedule(new RepairPartitionTableTask(address));
-                }
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        @Override
-        public boolean isPauseable() {
-            return false;
-        }
-    }
-
-    private class RepairPartitionTableTask extends AbstractMigrationRunnable {
-        private final Address deadAddress;
-
-        RepairPartitionTableTask(Address deadAddress) {
-            this.deadAddress = deadAddress;
-        }
-
-        @Override
-        public void run() {
-            if (!partitionStateManager.isInitialized()) {
-                return;
-            }
-
-            List<MigrationRunnable> tasks = new LinkedList<MigrationRunnable>();
-
-            lock.lock();
-            try {
-                Collection<MigrationInfo> migrations = new LinkedList<MigrationInfo>();
-                partitionStateManager.removeDeadAddress(migrations, deadAddress);
-                syncPartitionRuntimeState();
-
-                try {
-                    MigrationRunnable task;
-                    while ((task = migrationManager.migrationQueue.poll(0, TimeUnit.MILLISECONDS)) != null) {
-                        tasks.add(task);
-                    }
-                } catch (InterruptedException e) {
-                    logger.warning("RepairPartitionTableTask is interrupted!");
+                    partitionStateManager.removeDeadAddress(partitionIdSet, address);
                 }
 
-                if (!migrations.isEmpty()) {
-                    logger.info("Scheduling " + migrations.size() + " migrations to fix missing backups");
-                    for (MigrationInfo migrationInfo : migrations) {
-                        if (logger.isFinestEnabled()) {
-                            logger.finest("Scheduling repair migration: " + migrationInfo + " for removed address: " + deadAddress);
-                        }
-                        migrationManager.scheduleMigration(migrationInfo, MigrateTaskReason.REPAIR_PARTITION_TABLE);
+                if (!partitionIdSet.isEmpty()) {
+                    syncPartitionRuntimeState();
+
+                    for (Integer partitionId : partitionIdSet) {
+                        migrationManager.repairPartition(partitionId);
                     }
                 }
-            } finally {
-                lock.unlock();
-            }
 
-            if (tasks.isEmpty()) {
                 migrationManager.triggerRepartitioning();
-            } else {
-                for (MigrationRunnable task : tasks) {
-                    migrationManager.schedule(task);
-                }
+
+            } finally {
+                lock.unlock();
             }
         }
 
