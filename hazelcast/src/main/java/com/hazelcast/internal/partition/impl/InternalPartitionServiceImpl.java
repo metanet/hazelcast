@@ -968,12 +968,12 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 }
 
                 if (!partitionIdSet.isEmpty()) {
-                    syncPartitionRuntimeState();
-
                     for (Integer partitionId : partitionIdSet) {
                         migrationManager.repairPartition(partitionId);
                     }
                 }
+
+                syncPartitionRuntimeState();
 
                 migrationManager.triggerRepartitioning();
 
@@ -992,13 +992,35 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
         private final Address thisAddress = node.getThisAddress();
 
-        private final int version;
+        private int maxVersion;
+
+        private PartitionRuntimeState newState;
 
         public FetchMostRecentPartitionTableTask(int version) {
-            this.version = version;
+            maxVersion = version;
         }
 
         public void run() {
+            try {
+                Collection<Future<PartitionRuntimeState>> futures = invokeFetchPartitionStateOps();
+
+                logger.info("Fetching most recent partition table! my version: " + maxVersion);
+
+                Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
+                Collection<MigrationInfo> allActiveMigrations = new HashSet<MigrationInfo>();
+
+                processResults(futures, allCompletedMigrations, allActiveMigrations);
+
+                logger.info("Most recent partition table version: " + maxVersion);
+                processNewState(allCompletedMigrations, allActiveMigrations);
+
+                syncPartitionRuntimeState();
+            } finally {
+                migrationManager.resumeMigration();
+            }
+        }
+
+        private Collection<Future<PartitionRuntimeState>> invokeFetchPartitionStateOps() {
             Collection<MemberImpl> members = node.clusterService.getMemberImpls();
             Collection<Future<PartitionRuntimeState>> futures = new ArrayList<Future<PartitionRuntimeState>>(
                     members.size());
@@ -1013,14 +1035,11 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                         .setCallTimeout(Long.MAX_VALUE).invoke();
                 futures.add(future);
             }
+            return futures;
+        }
 
-            int version = this.version;
-            logger.info("Fetching most recent partition table! my version: " + version);
-            PartitionRuntimeState newState = null;
-
-            Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
-            Collection<MigrationInfo> allActiveMigrations = new HashSet<MigrationInfo>();
-
+        private void processResults(Collection<Future<PartitionRuntimeState>> futures,
+                Collection<MigrationInfo> allCompletedMigrations, Collection<MigrationInfo> allActiveMigrations) {
             for (Future<PartitionRuntimeState> future : futures) {
                 try {
                     PartitionRuntimeState state = future.get();
@@ -1029,9 +1048,9 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                         continue;
                     }
 
-                    if (version < state.getVersion()) {
+                    if (maxVersion < state.getVersion()) {
                         newState = state;
-                        version = state.getVersion();
+                        maxVersion = state.getVersion();
                     }
                     allCompletedMigrations.addAll(state.getCompletedMigrations());
 
@@ -1048,8 +1067,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     logger.warning("Failed to fetch partition table!", e);
                 }
             }
+        }
 
-            logger.info("Most recent partition table version: " + version);
+        private void processNewState(Collection<MigrationInfo> allCompletedMigrations,
+                Collection<MigrationInfo> allActiveMigrations) {
 
             lock.lock();
             try {
@@ -1067,8 +1088,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
                 if (newState != null) {
                     newState.setCompletedMigrations(allCompletedMigrations);
-                    version = Math.max(version, getPartitionStateVersion()) + 1;
-                    newState.setVersion(version);
+                    maxVersion = Math.max(maxVersion, getPartitionStateVersion()) + 1;
+                    newState.setVersion(maxVersion);
                     logger.info("Applying the most recent of partition state...");
                     applyNewState(newState, thisAddress);
                 } else {
@@ -1083,11 +1104,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                         }
                     }
                 }
+
             } finally {
                 lock.unlock();
             }
-
-            migrationManager.resumeMigration();
         }
 
         @Override
