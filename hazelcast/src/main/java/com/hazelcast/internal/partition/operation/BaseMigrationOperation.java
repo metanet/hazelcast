@@ -67,6 +67,11 @@ public abstract class BaseMigrationOperation extends AbstractOperation
         InternalPartitionService partitionService = getService();
         int localPartitionStateVersion = partitionService.getPartitionStateVersion();
         if (partitionStateVersion != localPartitionStateVersion) {
+
+            if (getNodeEngine().getThisAddress().equals(migrationInfo.getMaster())) {
+                return;
+            }
+
             if (partitionStateVersion < localPartitionStateVersion) {
                 throw new IllegalStateException("Local state version cannot be greater than master's version!"
                         + " Local: " + localPartitionStateVersion + ", Master: " + partitionStateVersion);

@@ -121,6 +121,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
     private volatile Address lastMaster;
 
+    private volatile Integer fetchPartitionTablesAfterVersion;
+
     public InternalPartitionServiceImpl(Node node) {
         this.partitionCount = node.groupProperties.getInteger(GroupProperty.PARTITION_COUNT);
         this.node = node;
@@ -297,7 +299,8 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                     final ClusterState clusterState = nodeEngine.getClusterService().getClusterState();
                     if (clusterState == ClusterState.ACTIVE) {
                         partitionStateManager.incrementVersion();
-                        migrationManager.triggerRepartitioning();
+                        migrationManager.migrationQueue.clear();
+                        migrationManager.triggerControlTask();
                     }
                 }
             } finally {
@@ -327,10 +330,15 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
 
             boolean isThisNodeNewMaster = node.isMaster() && !thisAddress.equals(lastMaster);
             if (isThisNodeNewMaster) {
-                // pause migration before scheduling FetchMostRecentPartitionTableTask
-                // it will resume at the end
-                migrationManager.pauseMigration();
-                migrationManager.schedule(new FetchMostRecentPartitionTableTask(partitionStateVersionBeforeMemberRemove));
+
+                if (fetchPartitionTablesAfterVersion != null) {
+                    logger.severe("SOMETHING IS WRONG " + fetchPartitionTablesAfterVersion
+                            + " currently removed member: " + member);
+                    throw new IllegalStateException("SOMETHING IS WRONG " + fetchPartitionTablesAfterVersion
+                            + " currently removed member: " + member);
+                } else {
+                    fetchPartitionTablesAfterVersion = partitionStateVersionBeforeMemberRemove;
+                }
             }
             lastMaster = node.getMasterAddress();
 
@@ -339,7 +347,7 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             replicaManager.cancelReplicaSyncRequestsTo(deadAddress);
 
             if (node.isMaster()) {
-                migrationManager.schedule(new RepairPartitionTableTask());
+                migrationManager.triggerControlTask();
             }
 
             migrationManager.resumeMigrationEventually();
@@ -804,10 +812,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         migrationManager.resumeMigration();
     }
 
-    public int getMigrationPauseCount() {
-        return migrationManager.getMigrationPauseCount();
-    }
-
     public boolean isReplicaSyncAllowed() {
         return migrationManager.isMigrationAllowed();
     }
@@ -939,56 +943,30 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return partitionEventManager;
     }
 
-    private class RepairPartitionTableTask extends AbstractMigrationRunnable {
-
-        @Override
-        public void run() {
-            if (!partitionStateManager.isInitialized()) {
-                return;
-            }
-
-            lock.lock();
-            try {
-                Collection<Address> addresses = new HashSet<Address>();
-                InternalPartition[] partitions = partitionStateManager.getPartitions();
-                ClusterServiceImpl clusterService = node.getClusterService();
-
-                for (InternalPartition partition : partitions) {
-                    for (int i = 0; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
-                        Address address = partition.getReplicaAddress(i);
-                        if (address != null && clusterService.getMember(address) == null) {
-                            addresses.add(address);
-                        }
-                    }
-                }
-
-                Collection<Integer> partitionIdSet = new HashSet<Integer>();
-                for (Address address : addresses) {
-                    partitionStateManager.removeDeadAddress(partitionIdSet, address);
-                }
-
-                if (!partitionIdSet.isEmpty()) {
-                    for (Integer partitionId : partitionIdSet) {
-                        migrationManager.repairPartition(partitionId);
-                    }
-                }
-
-                syncPartitionRuntimeState();
-
-                migrationManager.triggerRepartitioning();
-
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        @Override
-        public boolean isPauseable() {
-            return false;
+    public boolean isFetchFetchMostRecentPartitionTableTaskIfRequired() {
+        lock.lock();
+        try {
+            return fetchPartitionTablesAfterVersion != null;
+        } finally {
+            lock.unlock();
         }
     }
 
-    private class FetchMostRecentPartitionTableTask extends AbstractMigrationRunnable {
+   boolean scheduleFetchFetchMostRecentPartitionTableTaskIfRequired() {
+       lock.lock();
+       try {
+           if (fetchPartitionTablesAfterVersion != null) {
+               migrationManager.schedule(new FetchMostRecentPartitionTableTask(fetchPartitionTablesAfterVersion));
+               return true;
+           }
+
+           return false;
+       } finally {
+           lock.unlock();
+       }
+    }
+
+    private class FetchMostRecentPartitionTableTask implements MigrationRunnable {
 
         private final Address thisAddress = node.getThisAddress();
 
@@ -1001,23 +979,20 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         }
 
         public void run() {
-            try {
-                Collection<Future<PartitionRuntimeState>> futures = invokeFetchPartitionStateOps();
+            Collection<Future<PartitionRuntimeState>> futures = invokeFetchPartitionStateOps();
 
-                logger.info("Fetching most recent partition table! my version: " + maxVersion);
+            logger.info("Fetching most recent partition table! my version: " + maxVersion);
 
-                Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
-                Collection<MigrationInfo> allActiveMigrations = new HashSet<MigrationInfo>();
+            Collection<MigrationInfo> allCompletedMigrations = new HashSet<MigrationInfo>();
+            Collection<MigrationInfo> allActiveMigrations = new HashSet<MigrationInfo>();
 
-                processResults(futures, allCompletedMigrations, allActiveMigrations);
+            processResults(futures, allCompletedMigrations, allActiveMigrations);
 
-                logger.info("Most recent partition table version: " + maxVersion);
-                processNewState(allCompletedMigrations, allActiveMigrations);
+            logger.info("Most recent partition table version: " + maxVersion);
+            processNewState(allCompletedMigrations, allActiveMigrations);
 
-                syncPartitionRuntimeState();
-            } finally {
-                migrationManager.resumeMigration();
-            }
+            fetchPartitionTablesAfterVersion = null;
+            syncPartitionRuntimeState();
         }
 
         private Collection<Future<PartitionRuntimeState>> invokeFetchPartitionStateOps() {
@@ -1064,7 +1039,10 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
                 } catch (InterruptedException e) {
                     logger.fine("FetchMostRecentPartitionTableTask is interrupted.");
                 } catch (ExecutionException e) {
-                    logger.warning("Failed to fetch partition table!", e);
+                    Throwable cause = e.getCause();
+                    if (!(cause instanceof TargetNotMemberException) && !(cause instanceof MemberLeftException))  {
+                        logger.warning("Failed to fetch partition table!", e);
+                    }
                 }
             }
         }
@@ -1110,10 +1088,6 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
             }
         }
 
-        @Override
-        public boolean isPauseable() {
-            return false;
-        }
     }
 
     @Override
@@ -1121,4 +1095,5 @@ public class InternalPartitionServiceImpl implements InternalPartitionService, M
         return "PartitionManager[" + getPartitionStateVersion() + "] {\n\n"
                 + "migrationQ: " + getMigrationQueueSize() + "\n}";
     }
+
 }

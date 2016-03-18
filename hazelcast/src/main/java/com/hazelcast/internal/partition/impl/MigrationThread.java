@@ -66,10 +66,7 @@ class MigrationThread extends Thread implements Runnable {
         boolean migrating = false;
         for (; ; ) {
             if (!migrationManager.isMigrationAllowed()) {
-                MigrationRunnable runnable = queue.peek();
-                if (runnable == null || runnable.isPauseable()) {
-                    break;
-                }
+                break;
             }
             MigrationRunnable runnable = queue.poll(1, TimeUnit.SECONDS);
             if (runnable == null) {
@@ -95,7 +92,7 @@ class MigrationThread extends Thread implements Runnable {
 
     boolean processTask(MigrationRunnable runnable) {
         try {
-            if (runnable == null || isInterrupted() || !runnable.isValid()) {
+            if (runnable == null || isInterrupted()) {
                 return false;
             }
 

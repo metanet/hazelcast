@@ -21,6 +21,7 @@ import com.hazelcast.core.MigrationEvent;
 import com.hazelcast.instance.GroupProperty;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
+import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.MigrationInfo;
@@ -43,13 +44,13 @@ import com.hazelcast.util.Preconditions;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
@@ -82,7 +83,7 @@ public class MigrationManager {
 
     private final MigrationThread migrationThread;
 
-    private final AtomicInteger migrationPauseCount = new AtomicInteger(0);
+    private final AtomicBoolean migrationAllowed = new AtomicBoolean(true);
 
     @Probe(name = "lastRepartitionTime")
     private final AtomicLong lastRepartitionTime = new AtomicLong();
@@ -99,9 +100,6 @@ public class MigrationManager {
 
     @Probe
     private final AtomicLong completedMigrationCounter = new AtomicLong();
-
-    // set after a migration failed and cleared after repartitioning is scheduled
-    private final AtomicBoolean migrationFailureFlag = new AtomicBoolean(false);
 
     private volatile InternalMigrationListener internalMigrationListener
             = new InternalMigrationListener.NopInternalMigrationListener();
@@ -130,25 +128,15 @@ public class MigrationManager {
 
     @Probe(name = "migrationActive")
     private int migrationActiveProbe() {
-        return migrationPauseCount.get() == 0 ? 1 : 0;
-    }
-
-    @Probe(name = "migrationPauseCount")
-    public int getMigrationPauseCount() {
-        return migrationPauseCount.get();
+        return migrationAllowed.get() ? 1 : 0;
     }
 
     public void pauseMigration() {
-        migrationPauseCount.incrementAndGet();
+        migrationAllowed.set(false);
     }
 
     public void resumeMigration() {
-        int val = migrationPauseCount.decrementAndGet();
-
-        while (val < 0 && !migrationPauseCount.compareAndSet(val, 0)) {
-            logger.severe("migrationPauseCount=" + val + " is negative! ");
-            val = migrationPauseCount.get();
-        }
+        migrationAllowed.set(true);
     }
 
     void resumeMigrationEventually() {
@@ -164,7 +152,7 @@ public class MigrationManager {
     }
 
     boolean isMigrationAllowed() {
-        return migrationPauseCount.get() == 0;
+        return migrationAllowed.get();
     }
 
     private void finalizeMigration(MigrationInfo migrationInfo) {
@@ -381,8 +369,8 @@ public class MigrationManager {
         }
     }
 
-    void triggerRepartitioning() {
-        migrationQueue.add(new RepartitioningTask());
+    void triggerControlTask() {
+        migrationQueue.add(new ControlTask());
     }
 
     public InternalMigrationListener getInternalMigrationListener() {
@@ -399,7 +387,7 @@ public class MigrationManager {
     }
 
     void onMemberRemove(MemberImpl member) {
-        migrationQueue.invalidatePendingMigrations(member.getAddress());
+        migrationQueue.clear();
 
         Address deadAddress = member.getAddress();
         final MigrationInfo activeMigration = activeMigrationInfo;
@@ -522,8 +510,6 @@ public class MigrationManager {
 
     private class RepartitioningTask implements MigrationRunnable {
 
-        private volatile boolean valid = true;
-
         @Override
         public void run() {
             if (!node.isMaster()) {
@@ -606,27 +592,10 @@ public class MigrationManager {
             if (migrationAllowed && !hasMigrationTasks) {
                 return true;
             }
-            migrationQueue.add(this);
+            logger.severe("Scheduling ControlTask");
+            migrationQueue.clear();
+            migrationQueue.add(new ControlTask());
             return false;
-        }
-
-        @Override
-        public void invalidate(Address address) {
-            valid = false;
-        }
-
-        @Override
-        public void invalidate(int partitionId) {
-        }
-
-        @Override
-        public boolean isValid() {
-            return valid;
-        }
-
-        @Override
-        public boolean isPauseable() {
-            return true;
         }
 
         private class MigrationTaskScheduler implements MigrationDecision.MigrationCallback {
@@ -736,7 +705,7 @@ public class MigrationManager {
                 }
                 processMigrationResult(result);
             } catch (Throwable t) {
-                final Level level = isValid() ? Level.WARNING : Level.FINEST;
+                final Level level = migrationInfo.isValid() ? Level.WARNING : Level.FINEST;
                 logger.log(level, "Error [" + t.getClass() + ": " + t.getMessage() + "] during " + migrationInfo);
                 logger.finest(t);
                 migrationOperationFailed();
@@ -747,7 +716,7 @@ public class MigrationManager {
             InternalPartitionImpl partition = partitionStateManager.getPartitionImpl(migrationInfo.getPartitionId());
             Address owner = partition.getOwnerOrNull();
             if (owner == null) {
-                if (isValid()) {
+                if (migrationInfo.isValid()) {
                     logger.severe("Partition owner is not set! -> partitionId=" + migrationInfo.getPartitionId()
                             + " , " + partition + " -VS- " + migrationInfo);
                 }
@@ -766,7 +735,7 @@ public class MigrationManager {
 //                }
                 migrationOperationSucceeded();
             } else {
-                final Level level = isValid() ? Level.WARNING : Level.FINE;
+                final Level level = migrationInfo.isValid() ? Level.WARNING : Level.FINE;
                 logger.log(level, "Migration failed: " + migrationInfo);
                 migrationOperationFailed();
             }
@@ -782,7 +751,7 @@ public class MigrationManager {
                 Object response = future.get();
                 return (Boolean) nodeEngine.toObject(response);
             } catch (Throwable e) {
-                final Level level = nodeEngine.isRunning() && isValid() ? Level.WARNING : Level.FINEST;
+                final Level level = nodeEngine.isRunning() && migrationInfo.isValid() ? Level.WARNING : Level.FINEST;
                 logger.log(level, "Failed migration from " + fromMember + " for " + migrationRequestOp.getMigrationInfo(), e);
             }
             return Boolean.FALSE;
@@ -794,7 +763,7 @@ public class MigrationManager {
             partitionServiceLock.lock();
             try {
                 addCompletedMigration(migrationInfo);
-                migrationQueue.invalidatePendingMigrations(migrationInfo.getPartitionId());
+                migrationQueue.clear();
                 internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
                 scheduleActiveMigrationFinalization(migrationInfo);
                 int delta = PARTITION_STATE_VERSION_INCREMENT_DELTA_ON_MIGRATION_FAILURE;
@@ -819,19 +788,13 @@ public class MigrationManager {
             // Re-execute RepartitioningTask when all other migration tasks are done,
             // an imbalance may occur because of this failure.
 
-            if (migrationFailureFlag.compareAndSet(false, true)) {
-                schedule(new AbstractMigrationRunnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            pauseMigration();
-                            triggerRepartitioning();
-                            resumeMigrationEventually();
-                        } finally {
-                            migrationFailureFlag.set(false);
-                        }
-                    }
-                });
+            partitionServiceLock.lock();
+            try {
+                pauseMigration();
+                triggerControlTask();
+                resumeMigrationEventually();
+            } finally {
+                partitionServiceLock.unlock();
             }
         }
 
@@ -868,6 +831,7 @@ public class MigrationManager {
                 } else {
                     migrationInfo.setStatus(MigrationStatus.FAILED);
                     internalMigrationListener.onMigrationRollback(MigrationParticipant.MASTER, migrationInfo);
+                    triggerRepartitioningAfterMigrationFailure();
                 }
 
                 scheduleActiveMigrationFinalization(migrationInfo);
@@ -885,35 +849,75 @@ public class MigrationManager {
             return getClass().getSimpleName() + "{" + "migrationInfo=" + migrationInfo + '}';
         }
 
-        @Override
-        public void invalidate(Address address) {
-            if (migrationInfo.isValid()) {
-                boolean valid = !(reason == MigrateTaskReason.REPARTITIONING
-                        || address.equals(migrationInfo.getSource())
-                        || address.equals(migrationInfo.getDestination()));
+    }
 
-                if (!valid) {
-                    migrationInfo.setStatus(MigrationStatus.INVALID);
+    private class RepairPartitionTableTask implements MigrationRunnable {
+
+        @Override
+        public void run() {
+            if (!partitionStateManager.isInitialized()) {
+                return;
+            }
+
+            partitionServiceLock.lock();
+            try {
+                Collection<Address> addresses = new HashSet<Address>();
+                InternalPartition[] partitions = partitionStateManager.getPartitions();
+                ClusterServiceImpl clusterService = node.getClusterService();
+
+                for (InternalPartition partition : partitions) {
+                    for (int i = 0; i < InternalPartition.MAX_REPLICA_COUNT; i++) {
+                        Address address = partition.getReplicaAddress(i);
+                        if (address != null && clusterService.getMember(address) == null) {
+                            addresses.add(address);
+                        }
+                    }
                 }
+
+                Collection<Integer> partitionIdSet = new HashSet<Integer>();
+                for (Address address : addresses) {
+                    partitionStateManager.removeDeadAddress(partitionIdSet, address);
+                }
+
+                partitionService.syncPartitionRuntimeState();
+
+                if (!partitionIdSet.isEmpty()) {
+                    for (Integer partitionId : partitionIdSet) {
+                        repairPartition(partitionId);
+                    }
+                }
+
+                logger.severe("Scheduling RepartitioningTask");
+                migrationQueue.add(new RepartitioningTask());
+
+            } finally {
+                partitionServiceLock.unlock();
             }
-        }
-
-        @Override
-        public void invalidate(int partitionId) {
-            if (migrationInfo.isValid() && migrationInfo.getPartitionId() == partitionId) {
-                migrationInfo.setStatus(MigrationStatus.INVALID);
-            }
-        }
-
-        @Override
-        public boolean isValid() {
-            return migrationInfo.isValid();
-        }
-
-        @Override
-        public boolean isPauseable() {
-            return isValid();
         }
 
     }
+
+    private class ControlTask implements MigrationRunnable {
+
+        @Override
+        public void run() {
+            partitionServiceLock.lock();
+            try {
+                migrationQueue.clear();
+
+                if (partitionService.scheduleFetchFetchMostRecentPartitionTableTaskIfRequired()) {
+                    logger.severe("FetchTask scheduled");
+                    triggerControlTask();
+                    return;
+                }
+
+                logger.severe("RepairTask scheduled");
+                migrationQueue.add(new RepairPartitionTableTask());
+            } finally {
+                partitionServiceLock.unlock();
+            }
+        }
+
+    }
+
 }

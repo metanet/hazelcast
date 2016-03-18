@@ -16,7 +16,6 @@
 
 package com.hazelcast.internal.partition.impl;
 
-import com.hazelcast.nio.Address;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
@@ -51,10 +50,6 @@ class MigrationQueue {
         return queue.poll(timeout, unit);
     }
 
-    public MigrationRunnable peek() {
-        return queue.peek();
-    }
-
     public void clear() {
         List<MigrationRunnable> sink = new ArrayList<MigrationRunnable>();
         queue.drainTo(sink);
@@ -69,18 +64,6 @@ class MigrationQueue {
             if (migrateTaskCount.decrementAndGet() < 0) {
                 throw new IllegalStateException();
             }
-        }
-    }
-
-    public void invalidatePendingMigrations(Address removedAddress) {
-        for (MigrationRunnable runnable : queue) {
-            runnable.invalidate(removedAddress);
-        }
-    }
-
-    public void invalidatePendingMigrations(int partitionId) {
-        for (MigrationRunnable runnable : queue) {
-            runnable.invalidate(partitionId);
         }
     }
 
