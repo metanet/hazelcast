@@ -71,6 +71,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+@Repeat(2)
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(NightlyTest.class)
 public class SplitBrainHandlerTest extends HazelcastTestSupport {
@@ -429,7 +430,6 @@ public class SplitBrainHandlerTest extends HazelcastTestSupport {
         assertFalse("Latch should not be countdown!", latch.await(3, TimeUnit.SECONDS));
     }
 
-    @Repeat(1)
     @Test
     public void testMulticast_ClusterMerge_when_split_not_detected_by_master() throws InterruptedException {
         testClusterMerge_when_split_not_detected_by_master(true);
