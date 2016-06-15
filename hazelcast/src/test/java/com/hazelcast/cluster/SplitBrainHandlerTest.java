@@ -71,7 +71,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-@Repeat(2)
+@Repeat(50)
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(NightlyTest.class)
 public class SplitBrainHandlerTest extends HazelcastTestSupport {
