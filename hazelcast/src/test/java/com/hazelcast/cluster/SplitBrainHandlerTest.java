@@ -41,6 +41,7 @@ import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.NightlyTest;
+import com.hazelcast.test.annotation.Repeat;
 import com.hazelcast.util.Clock;
 import org.junit.After;
 import org.junit.Before;
@@ -428,6 +429,7 @@ public class SplitBrainHandlerTest extends HazelcastTestSupport {
         assertFalse("Latch should not be countdown!", latch.await(3, TimeUnit.SECONDS));
     }
 
+    @Repeat(1)
     @Test
     public void testMulticast_ClusterMerge_when_split_not_detected_by_master() throws InterruptedException {
         testClusterMerge_when_split_not_detected_by_master(true);
@@ -452,6 +454,7 @@ public class SplitBrainHandlerTest extends HazelcastTestSupport {
         NetworkConfig networkConfig = config.getNetworkConfig();
         networkConfig.getJoin().getMulticastConfig().setEnabled(multicastEnabled);
         networkConfig.getJoin().getTcpIpConfig().setEnabled(!multicastEnabled).addMember("127.0.0.1");
+        config.setProperty("hazelcast.logging.type", "log4j");
 
         HazelcastInstance hz1 = newHazelcastInstance(config, "test-node1", new FirewallingNodeContext());
         HazelcastInstance hz2 = newHazelcastInstance(config, "test-node2", new FirewallingNodeContext());
