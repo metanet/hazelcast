@@ -35,6 +35,7 @@ import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.NightlyTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -297,6 +298,7 @@ public class JoinStressTest extends HazelcastTestSupport {
         }
     }
 
+    @Repeat(100)
     @Test(timeout = 300000)
     public void testJoinWhenMemberClosedInBetween() throws InterruptedException {
         //Test is expecting to all can join safely.
