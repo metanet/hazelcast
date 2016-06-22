@@ -454,7 +454,7 @@ public class ClusterJoinManager {
                 PartitionRuntimeState partitionRuntimeState = node.getPartitionService().createPartitionState();
 
                 Operation operation = new FinalizeJoinOperation(createMemberInfoList(clusterService.getMemberImpls()),
-                        postJoinOp, clusterClock.getClusterTime(), clusterStateManager.getState(),
+                        postJoinOp, clusterClock.getClusterTime(), clusterService.getClusterId(), clusterClock.getClusterStartTime(), clusterStateManager.getState(),
                         partitionRuntimeState, false);
                 nodeEngine.getOperationService().send(operation, target);
             } else {
