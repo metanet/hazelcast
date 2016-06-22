@@ -10,6 +10,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -45,6 +46,7 @@ public class ClusterInfoTest extends HazelcastTestSupport {
         assertNotEquals(Long.MIN_VALUE, node1.getClusterService().getClusterClock().getClusterStartTime());
     }
 
+    @Repeat(100)
     @Test
     public void all_nodes_should_have_the_same_cluster_start_time_and_cluster_id() throws Exception {
 
@@ -79,6 +81,7 @@ public class ClusterInfoTest extends HazelcastTestSupport {
 
     }
 
+    @Repeat(100)
     @Test
     public void all_nodes_should_have_the_same_cluster_start_time_and_id_after_master_shutdown_and_new_node_join() {
 

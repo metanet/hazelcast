@@ -48,6 +48,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
 
     @Override
     public void run() throws Exception {
+        getLogger().info("member info update");
         processMemberUpdate();
     }
 
