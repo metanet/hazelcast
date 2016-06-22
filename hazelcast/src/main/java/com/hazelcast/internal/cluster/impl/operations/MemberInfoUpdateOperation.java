@@ -50,6 +50,8 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
 
     @Override
     public void run() throws Exception {
+        getLogger().info("member info update");
+
         final ClusterServiceImpl clusterService = getService();
         final NodeEngineImpl nodeEngine = clusterService.getNodeEngine();
 
@@ -58,6 +60,8 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
             if (logger.isFineEnabled()) {
                 logger.fine("Ignoring member info update since not joined yet...");
             }
+
+            logger.warning("Ignoring member info update since not joined yet...");
 
             return;
         }

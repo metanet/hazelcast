@@ -75,6 +75,7 @@ public class FinalizeJoinOperation extends MemberInfoUpdateOperation implements 
 
     @Override
     public void run() throws Exception {
+        getLogger().info("finalize join");
         if (!isValid()) {
             return;
         }
@@ -87,6 +88,8 @@ public class FinalizeJoinOperation extends MemberInfoUpdateOperation implements 
             if (logger.isFineEnabled()) {
                 logger.fine("Node is already joined... No need to finalize join...");
             }
+
+            logger.warning("Node is already joined... No need to finalize join...");
             return;
         }
 
