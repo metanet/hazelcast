@@ -1,6 +1,5 @@
 package com.hazelcast.cluster;
 
-
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.TestUtil;
@@ -10,6 +9,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -80,6 +80,7 @@ public class ClusterInfoTest extends HazelcastTestSupport {
     }
 
     @Test
+    @Repeat(100)
     public void all_nodes_should_have_the_same_cluster_start_time_and_id_after_master_shutdown_and_new_node_join() {
 
         HazelcastInstance h1 = factory.newHazelcastInstance();
