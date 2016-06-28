@@ -16,8 +16,6 @@
 
 package com.hazelcast.replicatedmap.impl.operation;
 
-import com.hazelcast.logging.ILogger;
-import com.hazelcast.logging.Logger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
@@ -37,7 +35,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class ReplicateUpdateOperation extends AbstractOperation implements PartitionAwareOperation, IdentifiedDataSerializable {
 
-    ILogger logger = Logger.getLogger(ReplicateUpdateOperation.class.getName());
     VersionResponsePair response;
     boolean isRemove;
     String name;
@@ -72,7 +69,7 @@ public class ReplicateUpdateOperation extends AbstractOperation implements Parti
         long currentVersion = store.getVersion();
         long updateVersion = response.getVersion();
         if (currentVersion >= updateVersion) {
-            logger.finest("Stale update received for replicated map -> " + name + ",  partitionId -> "
+            getLogger().severe("Stale update received for replicated map -> " + name + ",  partitionId -> "
                     + getPartitionId() + " , current version -> " + currentVersion + ", update version -> "
                     + updateVersion + ", rejecting update!");
             return;

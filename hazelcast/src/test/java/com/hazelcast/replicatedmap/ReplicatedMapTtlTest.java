@@ -1,5 +1,6 @@
 package com.hazelcast.replicatedmap;
 
+import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ReplicatedMap;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -47,7 +48,7 @@ public class ReplicatedMapTtlTest extends ReplicatedMapBaseTest {
                                 boolean causeMigration) throws InterruptedException {
         TimeUnit timeUnit = TimeUnit.MILLISECONDS;
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
-        HazelcastInstance[] instances = factory.newInstances(null, nodeCount);
+        HazelcastInstance[] instances = factory.newInstances(new Config().setProperty("hazelcast.logging.type", "log4j"), nodeCount);
         String mapName = randomMapName();
         List<ReplicatedMap> maps = createMapOnEachInstance(instances, mapName);
         ArrayList<Integer> keys = generateRandomIntegerList(keyCount);
