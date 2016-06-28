@@ -5,6 +5,7 @@ import com.hazelcast.core.ReplicatedMap;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
+import com.hazelcast.test.annotation.Repeat;
 import com.hazelcast.test.annotation.SlowTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -29,6 +30,7 @@ public class ReplicatedMapTtlTest extends ReplicatedMapBaseTest {
         testPutWithTTL(nodeCount, keyCount, operationCount, threadCount, ttl, true);
     }
 
+    @Repeat(100)
     @Test
     public void testPutWithTTL_withoutMigration() throws Exception {
         int nodeCount = 5;
