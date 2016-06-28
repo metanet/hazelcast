@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 @Category(value = {SlowTest.class, ParallelTest.class})
 public class ReplicatedMapTtlTest extends ReplicatedMapBaseTest {
 
+    @Repeat(100)
     @Test
     public void testPutWithTTL_withMigration() throws Exception {
         int nodeCount = 1;
