@@ -22,6 +22,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import static com.hazelcast.util.Preconditions.isNotNull;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
@@ -31,22 +32,24 @@ public class ReplicatedMapStressTest
 
     @Repeat(100)
     @Test
-    public void testPutWithTTL_withoutMigration()
+    public void testNonConvergingReplicatedMaps()
             throws Exception {
-        int nodeCount = 2;
-        final int keyCount = 1000000;
-        final int threadCount = 4;
-        final int partitionId = 0;
+        final int nodeCount = 4;
+        final int keyCount = 10000;
+        final int threadCount = 2;
 
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
+        final Config config = new Config();
+        config.setProperty("hazelcast.logging.type", "log4j");
         final HazelcastInstance[] instances = factory
-                .newInstances(new Config().setProperty("hazelcast.logging.type", "log4j"), nodeCount);
+                .newInstances(config, nodeCount);
 
         warmUpPartitions(instances);
 
+        final int partitionId = randomPartitionOwnedBy(instances[0]).getPartitionId();
+
         final String mapName = randomMapName();
-        final NodeEngineImpl nodeEngine1 = getNodeEngineImpl(instances[0]);
-        final NodeEngineImpl nodeEngine2 = getNodeEngineImpl(instances[1]);
+        final NodeEngineImpl nodeEngine = getNodeEngineImpl(instances[0]);
 
         final Thread[] threads = new Thread[threadCount];
         for (int i = 0; i < threadCount; i++) {
@@ -55,7 +58,7 @@ public class ReplicatedMapStressTest
                 @Override
                 public void run() {
                     for (int j = startIndex; j < keyCount; j += threadCount) {
-                        put(nodeEngine1, mapName, partitionId, j, j);
+                        put(nodeEngine, mapName, partitionId, j, j);
 //                        System.out.println("Thread " + startIndex + " is putting " + j);
                     }
                 }
@@ -74,17 +77,31 @@ public class ReplicatedMapStressTest
             @Override
             public void run()
                     throws Exception {
-                ReplicatedMapService service1 = nodeEngine1.getService(ReplicatedMapService.SERVICE_NAME);
-                ReplicatedMapService service2 = nodeEngine2.getService(ReplicatedMapService.SERVICE_NAME);
-                ReplicatedRecordStore store1 = service1.getReplicatedRecordStore(mapName, false, partitionId);
-                ReplicatedRecordStore store2 = service2.getReplicatedRecordStore(mapName, false, partitionId);
+                ReplicatedRecordStore[] stores = new ReplicatedRecordStore[nodeCount];
+                for (int i = 0; i < nodeCount; i++) {
+                    ReplicatedMapService service = getNodeEngineImpl(instances[i]).getService(ReplicatedMapService.SERVICE_NAME);
+                    stores[i] = service.getReplicatedRecordStore(mapName, false, partitionId);
+                }
 
-                for (int i = 0; i < keyCount; i++) {
-                    assertTrue(store1.containsKey(i));
-                    assertTrue(store2.containsKey(i));
+                long version = stores[0].getVersion();
+
+                for (ReplicatedRecordStore store : stores) {
+                    assertEquals(version, store.getVersion());
                 }
             }
-        });
+        }, 300);
+
+        ReplicatedRecordStore[] stores = new ReplicatedRecordStore[nodeCount];
+        for (int i = 0; i < nodeCount; i++) {
+            ReplicatedMapService service = getNodeEngineImpl(instances[i]).getService(ReplicatedMapService.SERVICE_NAME);
+            stores[i] = service.getReplicatedRecordStore(mapName, false, partitionId);
+        }
+
+        for (int i = 0; i < keyCount; i++) {
+            for (ReplicatedRecordStore store : stores) {
+                assertTrue(store.containsKey(i));
+            }
+        }
     }
 
     private <K, V> V put(final NodeEngine nodeEngine, final String mapName, final int partitionId, K key, V value) {

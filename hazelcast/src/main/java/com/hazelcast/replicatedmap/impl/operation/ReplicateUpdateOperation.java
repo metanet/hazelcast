@@ -26,14 +26,18 @@ import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
 import com.hazelcast.replicatedmap.impl.record.ReplicatedRecordStore;
 import com.hazelcast.spi.AbstractOperation;
 import com.hazelcast.spi.PartitionAwareOperation;
+import com.hazelcast.spi.exception.RetryableHazelcastException;
 
 import java.io.IOException;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Replicates the update happened on the partition owner to the other nodes.
  */
 public class ReplicateUpdateOperation extends AbstractOperation implements PartitionAwareOperation, IdentifiedDataSerializable {
+
+    private static final Random random = new Random();
 
     VersionResponsePair response;
     boolean isRemove;
@@ -64,6 +68,11 @@ public class ReplicateUpdateOperation extends AbstractOperation implements Parti
 
     @Override
     public void run() throws Exception {
+
+        if (random.nextInt(10) < 2) {
+            throw new RetryableHazelcastException();
+        }
+
         ReplicatedMapService service = getService();
         ReplicatedRecordStore store = service.getReplicatedRecordStore(name, true, getPartitionId());
         long currentVersion = store.getVersion();
