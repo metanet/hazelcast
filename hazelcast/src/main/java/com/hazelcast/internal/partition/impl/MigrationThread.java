@@ -121,6 +121,15 @@ class MigrationThread extends Thread implements Runnable {
     void stopNow() {
         queue.clear();
         interrupt();
+
+        while (true) {
+            try {
+                join();
+                return;
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
 }

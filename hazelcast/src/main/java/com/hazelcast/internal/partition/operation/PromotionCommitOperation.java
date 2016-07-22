@@ -194,7 +194,8 @@ public class PromotionCommitOperation extends AbstractOperation implements Migra
 
     @Override
     public boolean returnsResponse() {
-        return beforeStateCompleted;
+//        return beforeStateCompleted;
+        return false;
     }
 
     @Override

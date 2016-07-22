@@ -293,7 +293,7 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
             for (ExecutorService executorService : durableExecutors.values()) {
                 executorService.shutdown();
             }
-            scheduledExecutorService.shutdown();
+            scheduledExecutorService.shutdownNow();
             cachedExecutorService.shutdown();
             try {
                 scheduledExecutorService.awaitTermination(AWAIT_TIME, TimeUnit.SECONDS);

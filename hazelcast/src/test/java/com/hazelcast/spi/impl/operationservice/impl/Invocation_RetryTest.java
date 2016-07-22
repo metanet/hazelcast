@@ -118,16 +118,18 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
     @Test
     public void invocationShouldComplete_whenRetriedDuringShutdown() throws InterruptedException {
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
-        HazelcastInstance hz = factory.newHazelcastInstance();
+        HazelcastInstance hz1 = factory.newHazelcastInstance();
+        HazelcastInstance hz2 = factory.newHazelcastInstance();
 
-        final int invocations = 100;
+        final int invocations = 1000;
         Future[] futures = new Future[invocations];
 
-        HazelcastInstance hz2 = factory.newHazelcastInstance();
-        InternalOperationService operationService = getNodeEngineImpl(hz2).getOperationService();
+        HazelcastInstance hz3 = factory.newHazelcastInstance();
+        waitAllForSafeState(hz1, hz2, hz3);
 
+        InternalOperationService operationService = getNodeEngineImpl(hz1).getOperationService();
         for (int k = 0; k < invocations; k++) {
-            int partitionId = getRandomPartitionId(hz);
+            int partitionId = getRandomPartitionId(hz2);
 
             Future<Object> future =
                     operationService.createInvocationBuilder(null, new RetryingOperation(), partitionId)
@@ -135,7 +137,8 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
             futures[k] = future;
         }
 
-        hz2.getLifecycleService().terminate();
+        hz3.getLifecycleService().terminate();
+        hz1.getLifecycleService().terminate();
 
         for (int k = 0; k < invocations; k++) {
             Future future = futures[k];

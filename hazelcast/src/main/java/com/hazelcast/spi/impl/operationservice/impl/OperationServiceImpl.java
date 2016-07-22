@@ -57,7 +57,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.hazelcast.internal.metrics.ProbeLevel.MANDATORY;
@@ -99,7 +98,6 @@ public final class OperationServiceImpl implements InternalOperationService, Met
     private static final int CORE_SIZE_FACTOR = 4;
     private static final int CONCURRENCY_LEVEL = 16;
     private static final int ASYNC_QUEUE_CAPACITY = 100000;
-    private static final long TERMINATION_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(60);
 
     final InvocationRegistry invocationRegistry;
     final OperationExecutor operationExecutor;
@@ -495,7 +493,7 @@ public final class OperationServiceImpl implements InternalOperationService, Met
         slowOperationDetector.shutdown();
 
         try {
-            invocationMonitor.awaitTermination(TERMINATION_TIMEOUT_MILLIS);
+            invocationMonitor.awaitTermination(Long.MAX_VALUE);
         } catch (InterruptedException e) {
             //restore the interrupt.
             //todo: we need a better mechanism for dealing with interruption and waiting for termination
