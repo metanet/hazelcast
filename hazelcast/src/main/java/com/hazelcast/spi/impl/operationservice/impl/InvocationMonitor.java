@@ -186,6 +186,10 @@ class InvocationMonitor implements PacketHandler, MetricsProvider {
         scheduler.execute(new ProcessOperationHeartbeatsTask(packet));
     }
 
+    void schedule(Runnable command, long delayMillis) {
+        scheduler.schedule(command, delayMillis, MILLISECONDS);
+    }
+
     public void start() {
         MonitorInvocationsTask monitorInvocationsTask = new MonitorInvocationsTask(invocationScanPeriodMillis);
         scheduler.scheduleAtFixedRate(

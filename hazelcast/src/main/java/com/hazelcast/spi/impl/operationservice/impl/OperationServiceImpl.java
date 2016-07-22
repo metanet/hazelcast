@@ -99,7 +99,7 @@ public final class OperationServiceImpl implements InternalOperationService, Met
     private static final int CORE_SIZE_FACTOR = 4;
     private static final int CONCURRENCY_LEVEL = 16;
     private static final int ASYNC_QUEUE_CAPACITY = 100000;
-    private static final long TERMINATION_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(10);
+    private static final long TERMINATION_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(60);
 
     final InvocationRegistry invocationRegistry;
     final OperationExecutor operationExecutor;

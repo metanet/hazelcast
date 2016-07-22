@@ -44,14 +44,15 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.hazelcast.util.EmptyStatement.ignore;
 
@@ -62,13 +63,13 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
     private static final long INITIAL_DELAY = 1000;
     private static final long PERIOD = 100;
     private static final int BEGIN_INDEX = 3;
-    private static final long AWAIT_TIME = 3;
+    private static final long AWAIT_TIME = 60;
     private static final int POOL_MULTIPLIER = 2;
     private static final int QUEUE_MULTIPLIER = 100000;
 
     private final NodeEngineImpl nodeEngine;
     private final ExecutorService cachedExecutorService;
-    private final ScheduledExecutorService scheduledExecutorService;
+    private final ScheduledThreadPoolExecutor scheduledExecutorService;
     private final TaskScheduler globalTaskScheduler;
     private final ILogger logger;
     private final CompletableFutureTask completableFutureTask;
@@ -83,6 +84,9 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
             new ConstructorFunction<String, ManagedExecutorService>() {
                 @Override
                 public ManagedExecutorService createNew(String name) {
+                    if (!alive.get()) {
+                        throw new RejectedExecutionException("ExecutionService not alive!");
+                    }
                     final ExecutorConfig cfg = nodeEngine.getConfig().findExecutorConfig(name);
                     final int queueCapacity = cfg.getQueueCapacity() <= 0 ? Integer.MAX_VALUE : cfg.getQueueCapacity();
                     return createExecutor(name, cfg.getPoolSize(), queueCapacity, ExecutorType.CACHED);
@@ -93,12 +97,17 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
             new ConstructorFunction<String, ManagedExecutorService>() {
                 @Override
                 public ManagedExecutorService createNew(String name) {
+                    if (!alive.get()) {
+                        throw new RejectedExecutionException("ExecutionService not alive!");
+                    }
                     DurableExecutorConfig cfg = nodeEngine.getConfig().findDurableExecutorConfig(name);
                     return createExecutor(name, cfg.getPoolSize(), Integer.MAX_VALUE, ExecutorType.CACHED);
                 }
             };
 
     private final MetricsRegistry metricsRegistry;
+
+    private final AtomicBoolean alive = new AtomicBoolean(true);
 
     public ExecutionServiceImpl(NodeEngineImpl nodeEngine) {
         this.nodeEngine = nodeEngine;
@@ -149,22 +158,29 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
     @Override
     public ManagedExecutorService register(String name, int defaultPoolSize, int defaultQueueCapacity,
                                            ExecutorType type) {
-        ExecutorConfig cfg = nodeEngine.getConfig().getExecutorConfigs().get(name);
-
-        int poolSize = defaultPoolSize;
-        int queueCapacity = defaultQueueCapacity;
-        if (cfg != null) {
-            poolSize = cfg.getPoolSize();
-            if (cfg.getQueueCapacity() <= 0) {
-                queueCapacity = Integer.MAX_VALUE;
-            } else {
-                queueCapacity = cfg.getQueueCapacity();
+        final ManagedExecutorService executor;
+        synchronized (alive) {
+            if (!alive.get()) {
+                throw new RejectedExecutionException("ExecutionService not alive!");
             }
-        }
 
-        final ManagedExecutorService executor = createExecutor(name, poolSize, queueCapacity, type);
-        if (executors.putIfAbsent(name, executor) != null) {
-            throw new IllegalArgumentException("ExecutorService['" + name + "'] already exists!");
+            ExecutorConfig cfg = nodeEngine.getConfig().getExecutorConfigs().get(name);
+
+            int poolSize = defaultPoolSize;
+            int queueCapacity = defaultQueueCapacity;
+            if (cfg != null) {
+                poolSize = cfg.getPoolSize();
+                if (cfg.getQueueCapacity() <= 0) {
+                    queueCapacity = Integer.MAX_VALUE;
+                } else {
+                    queueCapacity = cfg.getQueueCapacity();
+                }
+            }
+
+            executor = createExecutor(name, poolSize, queueCapacity, type);
+            if (executors.putIfAbsent(name, executor) != null) {
+                throw new IllegalArgumentException("ExecutorService['" + name + "'] already exists!");
+            }
         }
 
         metricsRegistry.scanAndRegister(executor, "executor.[" + name + "]");
@@ -196,7 +212,7 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
 
     @Override
     public ManagedExecutorService getExecutor(String name) {
-        return ConcurrencyUtil.getOrPutIfAbsent(executors, name, constructor);
+        return ConcurrencyUtil.getOrPutSynchronized(executors, name, alive, constructor);
     }
 
     @Override
@@ -263,27 +279,35 @@ public final class ExecutionServiceImpl implements InternalExecutionService {
     }
 
     public void shutdown() {
-        logger.finest("Stopping executors...");
-        for (ExecutorService executorService : executors.values()) {
-            executorService.shutdown();
+        synchronized (alive) {
+            if (!alive.get()) {
+                 return;
+            }
+
+            alive.set(false);
+
+            logger.finest("Stopping executors...");
+            for (ExecutorService executorService : executors.values()) {
+                executorService.shutdown();
+            }
+            for (ExecutorService executorService : durableExecutors.values()) {
+                executorService.shutdown();
+            }
+            scheduledExecutorService.shutdown();
+            cachedExecutorService.shutdown();
+            try {
+                scheduledExecutorService.awaitTermination(AWAIT_TIME, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                logger.finest(e);
+            }
+            try {
+                cachedExecutorService.awaitTermination(AWAIT_TIME, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                logger.finest(e);
+            }
+            executors.clear();
+            durableExecutors.clear();
         }
-        for (ExecutorService executorService : durableExecutors.values()) {
-            executorService.shutdown();
-        }
-        scheduledExecutorService.shutdownNow();
-        cachedExecutorService.shutdown();
-        try {
-            scheduledExecutorService.awaitTermination(AWAIT_TIME, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            logger.finest(e);
-        }
-        try {
-            cachedExecutorService.awaitTermination(AWAIT_TIME, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            logger.finest(e);
-        }
-        executors.clear();
-        durableExecutors.clear();
     }
 
     @Override

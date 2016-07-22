@@ -16,8 +16,6 @@
 
 package com.hazelcast.spi.impl.executionservice.impl;
 
-import com.hazelcast.util.ExceptionUtil;
-
 import java.util.concurrent.Executor;
 
 /**
@@ -26,7 +24,7 @@ import java.util.concurrent.Executor;
  * This is convenient when you want to start a task, do not want the task to block a caller thread.
  *
  */
-class DelegatingTaskDecorator implements Runnable {
+public class DelegatingTaskDecorator implements Runnable {
 
     private final Executor executor;
     private final Runnable runnable;
@@ -42,11 +40,6 @@ class DelegatingTaskDecorator implements Runnable {
 
     @Override
     public void run() {
-        try {
-            executor.execute(runnable);
-        } catch (Throwable t) {
-            ExceptionUtil.sneakyThrow(t);
-        }
+        executor.execute(runnable);
     }
-
 }

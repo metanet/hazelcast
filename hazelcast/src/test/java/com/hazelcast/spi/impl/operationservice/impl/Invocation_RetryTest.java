@@ -3,12 +3,16 @@ package com.hazelcast.spi.impl.operationservice.impl;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.MemberLeftException;
+import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.PartitionAwareOperation;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
+import com.hazelcast.spi.impl.AllowedDuringPassiveState;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.operationservice.InternalOperationService;
+import com.hazelcast.spi.partition.IPartition;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -16,13 +20,19 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import org.junit.Assert;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
@@ -105,6 +115,56 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
         });
     }
 
+    @Test
+    public void invocationShouldComplete_whenRetriedDuringShutdown() throws InterruptedException {
+        TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
+        HazelcastInstance hz = factory.newHazelcastInstance();
+
+        final int invocations = 100;
+        Future[] futures = new Future[invocations];
+
+        HazelcastInstance hz2 = factory.newHazelcastInstance();
+        InternalOperationService operationService = getNodeEngineImpl(hz2).getOperationService();
+
+        for (int k = 0; k < invocations; k++) {
+            int partitionId = getRandomPartitionId(hz);
+
+            Future<Object> future =
+                    operationService.createInvocationBuilder(null, new RetryingOperation(), partitionId)
+                            .setTryCount(Integer.MAX_VALUE).setCallTimeout(Long.MAX_VALUE).invoke();
+            futures[k] = future;
+        }
+
+        hz2.getLifecycleService().terminate();
+
+        for (int k = 0; k < invocations; k++) {
+            Future future = futures[k];
+            futures[k] = null;
+            try {
+                future.get(2, TimeUnit.MINUTES);
+            } catch (ExecutionException ignored) {
+                System.err.println(ignored.getClass().getSimpleName() + ": " + ignored.getMessage() + " = " + k);
+            } catch (TimeoutException e) {
+                Assert.fail(e.getMessage());
+            }
+        }
+    }
+
+    private static int getRandomPartitionId(HazelcastInstance hz) {
+        warmUpPartitions(hz);
+
+        InternalPartitionService partitionService = getPartitionService(hz);
+        IPartition[] partitions = partitionService.getPartitions();
+        Collections.shuffle(Arrays.asList(partitions));
+
+        for (IPartition p : partitions) {
+            if (p.isLocal()) {
+                return p.getPartitionId();
+            }
+        }
+        throw new RuntimeException("No local partitions are found for hz: " + hz.getName());
+    }
+
     /**
      * Non-responsive operation.
      */
@@ -139,6 +199,14 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
         @Override
         public void run() throws InterruptedException {
             Thread.sleep(5000);
+        }
+    }
+
+    private static class RetryingOperation extends Operation implements AllowedDuringPassiveState {
+
+        @Override
+        public void run() throws Exception {
+            throw new RetryableHazelcastException();
         }
     }
 }

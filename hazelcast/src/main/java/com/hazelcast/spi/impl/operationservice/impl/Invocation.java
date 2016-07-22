@@ -43,6 +43,7 @@ import com.hazelcast.spi.exception.TargetNotMemberException;
 import com.hazelcast.spi.exception.WrongTargetException;
 import com.hazelcast.spi.impl.AllowedDuringPassiveState;
 import com.hazelcast.spi.impl.executionservice.InternalExecutionService;
+import com.hazelcast.spi.impl.executionservice.impl.DelegatingTaskDecorator;
 import com.hazelcast.spi.impl.operationexecutor.OperationExecutor;
 import com.hazelcast.spi.impl.operationservice.impl.responses.BackupAckResponse;
 import com.hazelcast.spi.impl.operationservice.impl.responses.CallTimeoutResponse;
@@ -52,6 +53,7 @@ import com.hazelcast.util.Clock;
 import com.hazelcast.util.executor.ManagedExecutorService;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.logging.Level;
@@ -59,7 +61,6 @@ import java.util.logging.Level;
 import static com.hazelcast.cluster.ClusterState.FROZEN;
 import static com.hazelcast.cluster.ClusterState.PASSIVE;
 import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
-import static com.hazelcast.spi.ExecutionService.ASYNC_EXECUTOR;
 import static com.hazelcast.spi.OperationAccessor.setCallTimeout;
 import static com.hazelcast.spi.OperationAccessor.setCallerAddress;
 import static com.hazelcast.spi.OperationAccessor.setInvocationTime;
@@ -79,7 +80,6 @@ import static com.hazelcast.util.ExceptionUtil.rethrow;
 import static com.hazelcast.util.StringUtil.timeToString;
 import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.logging.Level.FINEST;
 import static java.util.logging.Level.WARNING;
 
@@ -487,34 +487,48 @@ public abstract class Invocation implements OperationResponseHandler {
         } else {
             context.invocationRegistry.deregister(this);
 
-            if (invokeCount < MAX_FAST_INVOCATION_COUNT) {
-                // fast retry for the first few invocations
-                context.asyncExecutor.execute(new InvocationRetryTask());
-            } else {
-                context.executionService.schedule(ASYNC_EXECUTOR, new InvocationRetryTask(), tryPauseMillis, MILLISECONDS);
+            try {
+                if (invokeCount < MAX_FAST_INVOCATION_COUNT) {
+                    // fast retry for the first few invocations
+                    context.asyncExecutor.execute(new InvocationRetryTask());
+                } else {
+                    scheduleRetry();
+                }
+            } catch (RejectedExecutionException e) {
+                complete(e);
             }
         }
+    }
+
+    private void scheduleRetry() {
+        Runnable command = new DelegatingTaskDecorator(new InvocationRetryTask(), context.asyncExecutor);
+        context.invocationMonitor.schedule(command, tryPauseMillis);
     }
 
     private class InvocationRetryTask implements Runnable {
         @Override
         public void run() {
-            // When a cluster is being merged into another one then local node is marked as not-joined and invocations are
-            // notified with MemberLeftException.
-            // We do not want to retry them before the node is joined again because partition table is stale at this point.
-            if (!context.node.joined() && !isJoinOperation(op) && !(op instanceof AllowedDuringPassiveState)) {
-                if (!engineActive()) {
+            try {
+                // When a cluster is being merged into another one then local node is marked as not-joined and invocations are
+                // notified with MemberLeftException.
+                // We do not want to retry them before the node is joined again because partition table is stale at this point.
+                if (!context.node.joined() && !isJoinOperation(op) && !(op instanceof AllowedDuringPassiveState)) {
+                    if (!engineActive()) {
+                        return;
+                    }
+
+                    if (context.logger.isFinestEnabled()) {
+                        context.logger.finest("Node is not joined. Re-scheduling " + this
+                                + " to be executed in " + tryPauseMillis + " ms.");
+                    }
+
+                    scheduleRetry();
                     return;
                 }
-
-                if (context.logger.isFinestEnabled()) {
-                    context.logger.finest("Node is not joined. Re-scheduling " + this
-                            + " to be executed in " + tryPauseMillis + " ms.");
-                }
-                context.executionService.schedule(ASYNC_EXECUTOR, this, tryPauseMillis, MILLISECONDS);
-                return;
+                doInvoke(false);
+            } catch (Throwable e) {
+                complete(e);
             }
-            doInvoke(false);
         }
     }
 
