@@ -121,7 +121,7 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
         HazelcastInstance hz1 = factory.newHazelcastInstance();
         HazelcastInstance hz2 = factory.newHazelcastInstance();
 
-        final int invocations = 1000;
+        final int invocations = 10000;
         Future[] futures = new Future[invocations];
 
         HazelcastInstance hz3 = factory.newHazelcastInstance();
@@ -146,7 +146,7 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
             try {
                 future.get(2, TimeUnit.MINUTES);
             } catch (ExecutionException ignored) {
-                System.err.println(ignored.getClass().getSimpleName() + ": " + ignored.getMessage() + " = " + k);
+//                System.err.println(ignored.getClass().getSimpleName() + ": " + ignored.getMessage() + " = " + k);
             } catch (TimeoutException e) {
                 Assert.fail(e.getMessage());
             }
