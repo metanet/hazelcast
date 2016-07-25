@@ -20,6 +20,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -115,11 +116,14 @@ public class Invocation_RetryTest extends HazelcastTestSupport {
         });
     }
 
+    @Repeat(1000)
     @Test
     public void invocationShouldComplete_whenRetriedDuringShutdown() throws InterruptedException {
         TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
-        HazelcastInstance hz1 = factory.newHazelcastInstance();
-        HazelcastInstance hz2 = factory.newHazelcastInstance();
+        final Config config = new Config();
+//        config.setProperty("hazelcast.logging.type", "log4j");
+        HazelcastInstance hz1 = factory.newHazelcastInstance(config);
+        HazelcastInstance hz2 = factory.newHazelcastInstance(config);
 
         final int invocations = 10000;
         Future[] futures = new Future[invocations];
