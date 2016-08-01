@@ -60,7 +60,10 @@ public class PutAllOperation extends AbstractOperation implements IdentifiedData
         for (int i = 0; i < entries.size(); i++) {
             Data key = entries.getKey(i);
             Data value = entries.getValue(i);
-            if (partitionId != partitionService.getPartitionId(key)) {
+            final int keyPartitionId = partitionService.getPartitionId(key);
+            if (partitionId != keyPartitionId) {
+                getLogger().warning("Key " + key + " hits wrong partition! this partitionId: "
+                        + partitionId + " key partitionId: " + keyPartitionId);
                 continue;
             }
             Object putResult = store.put(key, value);
