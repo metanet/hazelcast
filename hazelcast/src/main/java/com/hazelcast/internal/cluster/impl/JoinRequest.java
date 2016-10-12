@@ -24,23 +24,28 @@ import com.hazelcast.nio.serialization.DataSerializable;
 import com.hazelcast.security.Credentials;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class JoinRequest extends JoinMessage implements DataSerializable {
 
     private Credentials credentials;
     private int tryCount;
     private Map<String, Object> attributes;
+    private Set<String> excludedMemberUuids;
 
     public JoinRequest() {
     }
 
     public JoinRequest(byte packetVersion, int buildNumber, Address address, String uuid, boolean liteMember, ConfigCheck config,
-                       Credentials credentials, Map<String, Object> attributes) {
+                       Credentials credentials, Map<String, Object> attributes, Set<String> excludedMemberUuids) {
         super(packetVersion, buildNumber, address, uuid, liteMember, config);
         this.credentials = credentials;
         this.attributes = attributes;
+        this.excludedMemberUuids = excludedMemberUuids != null ? excludedMemberUuids : Collections.<String>emptySet();
     }
 
     public Credentials getCredentials() {
@@ -57,6 +62,10 @@ public class JoinRequest extends JoinMessage implements DataSerializable {
 
     public Map<String, Object> getAttributes() {
         return attributes;
+    }
+
+    public Set<String> getExcludedMemberUuids() {
+        return excludedMemberUuids;
     }
 
     public MemberInfo toMemberInfo() {
@@ -78,6 +87,11 @@ public class JoinRequest extends JoinMessage implements DataSerializable {
             Object value = in.readObject();
             attributes.put(key, value);
         }
+        size = in.readInt();
+        excludedMemberUuids = new HashSet<String>();
+        for (int i = 0; i < size; i++) {
+            excludedMemberUuids.add(in.readUTF());
+        }
     }
 
     @Override
@@ -89,6 +103,10 @@ public class JoinRequest extends JoinMessage implements DataSerializable {
         for (Map.Entry<String, Object> entry : attributes.entrySet()) {
             out.writeUTF(entry.getKey());
             out.writeObject(entry.getValue());
+        }
+        out.writeInt(excludedMemberUuids.size());
+        for (String uuid : excludedMemberUuids) {
+            out.writeUTF(uuid);
         }
     }
 
@@ -103,6 +121,7 @@ public class JoinRequest extends JoinMessage implements DataSerializable {
                 + ", credentials=" + credentials
                 + ", memberCount=" + getMemberCount()
                 + ", tryCount=" + tryCount
+                + ", excludedMemberUuids=" + excludedMemberUuids
                 + '}';
     }
 

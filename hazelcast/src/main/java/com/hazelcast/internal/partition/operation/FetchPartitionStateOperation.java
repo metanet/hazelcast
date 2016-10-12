@@ -17,6 +17,7 @@
 package com.hazelcast.internal.partition.operation;
 
 import com.hazelcast.core.MemberLeftException;
+import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationCycleOperation;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
@@ -26,6 +27,7 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.spi.ExceptionAction;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.exception.TargetNotMemberException;
+import com.hazelcast.spi.impl.NodeEngineImpl;
 
 public final class FetchPartitionStateOperation extends AbstractPartitionOperation
         implements MigrationCycleOperation {
@@ -38,7 +40,10 @@ public final class FetchPartitionStateOperation extends AbstractPartitionOperati
     @Override
     public void run() {
         final Address caller = getCallerAddress();
-        final Address master = getNodeEngine().getMasterAddress();
+        final NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
+        final Node node = nodeEngine.getNode();
+
+        final Address master = nodeEngine.getMasterAddress();
         if (!caller.equals(master)) {
             final String msg =
                     caller + " requested our partition table but it's not our known master. " + "Master: " + master;

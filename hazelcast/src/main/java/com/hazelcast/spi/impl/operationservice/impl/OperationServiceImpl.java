@@ -460,9 +460,23 @@ public final class OperationServiceImpl implements InternalOperationService, Met
     public void start() {
         logger.finest("Starting OperationService");
 
-        ManagedExecutorService asyncExecutor = nodeEngine.getExecutionService().register(
-                ExecutionService.ASYNC_EXECUTOR, Runtime.getRuntime().availableProcessors(),
-                ASYNC_QUEUE_CAPACITY, ExecutorType.CONCRETE);
+        setInvocationContext();
+
+        invocationMonitor.start();
+        operationExecutor.start();
+        asyncResponseHandler.start();
+        slowOperationDetector.start();
+    }
+
+    public void setInvocationContext() {
+        ManagedExecutorService asyncExecutor;
+        if (this.invocationContext != null) {
+            asyncExecutor = this.invocationContext.asyncExecutor;
+        } else {
+            asyncExecutor = nodeEngine.getExecutionService().register(
+                    ExecutionService.ASYNC_EXECUTOR, Runtime.getRuntime().availableProcessors(),
+                    ASYNC_QUEUE_CAPACITY, ExecutorType.CONCRETE);
+        }
 
         this.invocationContext = new Invocation.Context(
                 asyncExecutor,
@@ -473,7 +487,7 @@ public final class OperationServiceImpl implements InternalOperationService, Met
                 nodeEngine.getProperties().getMillis(OPERATION_CALL_TIMEOUT_MILLIS),
                 invocationRegistry,
                 invocationMonitor,
-                nodeEngine.getLocalMember().getUuid(),
+                node.getThisUuid(),
                 nodeEngine.getLogger(Invocation.class),
                 node,
                 nodeEngine,
@@ -483,11 +497,6 @@ public final class OperationServiceImpl implements InternalOperationService, Met
                 retryCount,
                 serializationService,
                 nodeEngine.getThisAddress());
-
-        invocationMonitor.start();
-        operationExecutor.start();
-        asyncResponseHandler.start();
-        slowOperationDetector.start();
     }
 
     /**

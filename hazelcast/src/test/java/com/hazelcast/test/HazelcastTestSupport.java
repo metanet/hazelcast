@@ -503,7 +503,7 @@ public abstract class HazelcastTestSupport {
         }
     }
 
-    protected static String generateKeyForPartition(HazelcastInstance instance, int partitionId) {
+    public static String generateKeyForPartition(HazelcastInstance instance, int partitionId) {
         Cluster cluster = instance.getCluster();
         checkPartitionCountGreaterOrEqualMemberCount(instance);
 

@@ -214,8 +214,22 @@ public class ClusterJoinManager {
                 return;
             }
 
+            if (joinRequest.getExcludedMemberUuids().contains(node.getThisUuid())) {
+                logger.warning("cannot join " + target + " since this node is excluded in its list...");
+                node.getNodeExtension().handleExcludedMemberUuids(target, joinRequest.getExcludedMemberUuids());
+                return;
+            }
+
+            if (node.getNodeExtension().getExcludedMemberUuids().contains(joinRequest.getUuid())) {
+                String msg =  target + " with uuid: " + joinRequest.getUuid() +" is excluded in partial start.";
+                OperationService operationService = nodeEngine.getOperationService();
+                BeforeJoinCheckFailureOperation op = new BeforeJoinCheckFailureOperation(msg);
+                operationService.send(op, target);
+                return;
+            }
+
             if (!node.getPartitionService().isMemberAllowedToJoin(target)) {
-                logger.warning(format("%s not allowed to join right now, it seems restarted.", target));
+                logger.warning(target + " not allowed to join right now, it seems restarted.");
                 return;
             }
 
@@ -243,11 +257,21 @@ public class ClusterJoinManager {
 
         if (state != ClusterState.ACTIVE) {
             if (!clusterService.isMemberRemovedWhileClusterIsNotActive(target)) {
-                String message = "Cluster state either is locked or doesn't allow new members to join -> "
-                        + clusterStateManager.stateToString();
-                logger.warning(message);
-                OperationService operationService = nodeEngine.getOperationService();
-                operationService.send(new BeforeJoinCheckFailureOperation(message), target);
+                if (node.getNodeExtension().isStartCompleted()) {
+                    String message = "Cluster state either is locked or doesn't allow new members to join -> "
+                            + clusterStateManager.stateToString();
+                    logger.warning(message);
+
+                    OperationService operationService = nodeEngine.getOperationService();
+                    BeforeJoinCheckFailureOperation op = new BeforeJoinCheckFailureOperation(message);
+                    operationService.send(op, target);
+                } else {
+                    String message = "Cluster state either is locked or doesn't allow new members to join -> "
+                            + clusterStateManager.stateToString() + ". Silently ignored join request of " + target
+                            + " because start not completed.";
+                    logger.warning(message);
+                }
+
                 return true;
             }
         }
@@ -430,6 +454,14 @@ public class ClusterJoinManager {
             logger.info(format("Cannot send master answer to %s since master node is not known yet", target));
             return;
         }
+
+        if (masterAddress.equals(node.getThisAddress())
+                && node.getNodeExtension().isMemberExcludedOnClusterStart(masterAddress, node.getThisUuid())) {
+            // I already now that I will do a force-start so I will not allow target to join me
+            logger.info("Cannot send master answer because " + target + " should not join to this master node.");
+            return;
+        }
+
         SetMasterOperation op = new SetMasterOperation(masterAddress);
         nodeEngine.getOperationService().send(op, target);
     }
@@ -442,6 +474,8 @@ public class ClusterJoinManager {
 
         Address target = member.getAddress();
         if (joinMessage.getUuid().equals(member.getUuid())) {
+            sendMasterAnswer(target);
+
             if (node.isMaster()) {
                 if (logger.isFineEnabled()) {
                     logger.fine(format("Ignoring join request, member already exists: %s", joinMessage));
@@ -457,8 +491,6 @@ public class ClusterJoinManager {
                         postJoinOp, clusterClock.getClusterTime(), clusterService.getClusterId(),
                         clusterClock.getClusterStartTime(), clusterStateManager.getState(), partitionRuntimeState, false);
                 nodeEngine.getOperationService().send(operation, target);
-            } else {
-                sendMasterAnswer(target);
             }
             return true;
         }

@@ -19,6 +19,7 @@ package com.hazelcast.instance;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.internal.serialization.InternalSerializationService;
 import com.hazelcast.memory.MemoryStats;
+import com.hazelcast.nio.Address;
 import com.hazelcast.nio.IOService;
 import com.hazelcast.nio.MemberSocketInterceptor;
 import com.hazelcast.nio.tcp.ReadHandler;
@@ -29,6 +30,7 @@ import com.hazelcast.security.SecurityContext;
 import com.hazelcast.spi.annotation.PrivateApi;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * NodeExtension is a <tt>Node</tt> extension mechanism to be able to plug different implementations of
@@ -194,4 +196,12 @@ public interface NodeExtension {
      * @return true if hot restart is enabled and this node knows the master
      */
     boolean triggerForceStart();
+
+    String createMemberUuid(Address address);
+
+    boolean isMemberExcludedOnClusterStart(Address memberAddress, String memberUuid);
+
+    Set<String> getExcludedMemberUuids();
+
+    void handleExcludedMemberUuids(Address sender, Set<String> excludedMemberUuids);
 }
