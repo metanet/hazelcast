@@ -630,6 +630,14 @@ public abstract class HazelcastTestSupport {
         }, timeoutInSeconds);
     }
 
+    public static void waitAllForSafeState(final HazelcastInstance[] nodes, int timeoutInSeconds) {
+        assertTrueEventually(new AssertTask() {
+            public void run() {
+                assertAllInSafeState(asList(nodes));
+            }
+        }, timeoutInSeconds);
+    }
+
     public static void waitAllForSafeState(HazelcastInstance... nodes) {
         waitAllForSafeState(asList(nodes));
     }
