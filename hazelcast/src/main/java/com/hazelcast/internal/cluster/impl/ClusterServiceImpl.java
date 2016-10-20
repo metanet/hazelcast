@@ -322,7 +322,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     public void reset() {
         lock.lock();
         try {
-            setMembers(node.localMember);
+            setMembers(node.getLocalMember());
             clusterHeartbeatManager.reset();
             clusterStateManager.reset();
             clusterJoinManager.reset();
@@ -643,7 +643,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public void sendShutdownMessage() {
-        sendMemberRemoveOperation(node.localMember);
+        sendMemberRemoveOperation(node.getLocalMember());
     }
 
     private void sendMembershipEventNotifications(MemberImpl member, Set<Member> members, final boolean added) {

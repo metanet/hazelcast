@@ -112,9 +112,10 @@ public class Node {
     public final ConnectionManager connectionManager;
 
     public final Address address;
-    public volatile MemberImpl localMember;
 
     public final SecurityContext securityContext;
+
+    private volatile MemberImpl localMember;
 
     private final ILogger logger;
 
