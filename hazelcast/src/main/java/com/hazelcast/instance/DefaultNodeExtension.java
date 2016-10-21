@@ -249,12 +249,12 @@ public class DefaultNodeExtension implements NodeExtension {
     }
 
     @Override
-    public boolean isMemberExcludedOnClusterStart(Address memberAddress, String memberUuid) {
+    public boolean isMemberExcluded(Address memberAddress, String memberUuid) {
         return false;
     }
 
     @Override
-    public Set<String> getExcludedMemberUuids(){
+    public Set<String> getExcludedMemberUuids() {
         return Collections.emptySet();
     }
 

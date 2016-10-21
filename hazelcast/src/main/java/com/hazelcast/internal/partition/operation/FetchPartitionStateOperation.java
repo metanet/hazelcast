@@ -17,7 +17,6 @@
 package com.hazelcast.internal.partition.operation;
 
 import com.hazelcast.core.MemberLeftException;
-import com.hazelcast.instance.Node;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.partition.MigrationCycleOperation;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
@@ -41,7 +40,6 @@ public final class FetchPartitionStateOperation extends AbstractPartitionOperati
     public void run() {
         final Address caller = getCallerAddress();
         final NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
-        final Node node = nodeEngine.getNode();
 
         final Address master = nodeEngine.getMasterAddress();
         if (!caller.equals(master)) {

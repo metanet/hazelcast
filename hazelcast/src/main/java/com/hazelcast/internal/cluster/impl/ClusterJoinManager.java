@@ -202,6 +202,7 @@ public class ClusterJoinManager {
         }
     }
 
+    @SuppressWarnings("checkstyle:npathcomplexity")
     private void executeJoinRequest(JoinRequest joinRequest, Connection connection) {
         clusterServiceLock.lock();
         try {
@@ -214,17 +215,7 @@ public class ClusterJoinManager {
                 return;
             }
 
-            if (joinRequest.getExcludedMemberUuids().contains(node.getThisUuid())) {
-                logger.warning("cannot join " + target + " since this node is excluded in its list...");
-                node.getNodeExtension().handleExcludedMemberUuids(target, joinRequest.getExcludedMemberUuids());
-                return;
-            }
-
-            if (node.getNodeExtension().getExcludedMemberUuids().contains(joinRequest.getUuid())) {
-                String msg =  target + " with uuid: " + joinRequest.getUuid() +" is excluded in partial start.";
-                OperationService operationService = nodeEngine.getOperationService();
-                BeforeJoinCheckFailureOperation op = new BeforeJoinCheckFailureOperation(msg);
-                operationService.send(op, target);
+            if (checkExcludedMemberUuids(joinRequest, target)) {
                 return;
             }
 
@@ -275,6 +266,24 @@ public class ClusterJoinManager {
                 return true;
             }
         }
+        return false;
+    }
+
+    private boolean checkExcludedMemberUuids(JoinRequest joinRequest, Address target) {
+        if (joinRequest.getExcludedMemberUuids().contains(node.getThisUuid())) {
+            logger.warning("cannot join " + target + " since this node is excluded in its list...");
+            node.getNodeExtension().handleExcludedMemberUuids(target, joinRequest.getExcludedMemberUuids());
+            return true;
+        }
+
+        if (node.getNodeExtension().getExcludedMemberUuids().contains(joinRequest.getUuid())) {
+            String msg =  target + " with uuid: " + joinRequest.getUuid() + " is excluded in partial start.";
+            OperationService operationService = nodeEngine.getOperationService();
+            BeforeJoinCheckFailureOperation op = new BeforeJoinCheckFailureOperation(msg);
+            operationService.send(op, target);
+            return true;
+        }
+
         return false;
     }
 
@@ -456,7 +465,7 @@ public class ClusterJoinManager {
         }
 
         if (masterAddress.equals(node.getThisAddress())
-                && node.getNodeExtension().isMemberExcludedOnClusterStart(masterAddress, node.getThisUuid())) {
+                && node.getNodeExtension().isMemberExcluded(masterAddress, node.getThisUuid())) {
             // I already now that I will do a force-start so I will not allow target to join me
             logger.info("Cannot send master answer because " + target + " should not join to this master node.");
             return;

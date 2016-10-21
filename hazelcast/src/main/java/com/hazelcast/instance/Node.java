@@ -712,7 +712,7 @@ public class Node {
         } else if (nodeExtension.isStartCompleted()) {
             logger.severe("Cannot set new local member since start completed.");
             return;
-        } else if (!nodeExtension.isMemberExcludedOnClusterStart(getThisAddress(), getThisUuid())) {
+        } else if (!nodeExtension.isMemberExcluded(getThisAddress(), getThisUuid())) {
             logger.severe("Cannot set new local member since this member is not excluded.");
             return;
         }

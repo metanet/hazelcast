@@ -199,9 +199,28 @@ public interface NodeExtension {
 
     String createMemberUuid(Address address);
 
-    boolean isMemberExcludedOnClusterStart(Address memberAddress, String memberUuid);
+    /**
+     * Checks if the given member has been excluded during the cluster start or not.
+     * If returns true, it means that the given member is not allowed to join to the cluster.
+     *
+     * @param memberAddress address of the member to check
+     * @param memberUuid uuid of the member to check
+     * @return true if the member has been excluded on cluster start.
+     */
+    boolean isMemberExcluded(Address memberAddress, String memberUuid);
 
+    /**
+     * Returns uuids of the members that have been excluded during the cluster start.
+     *
+     * @return uuids of the members that have been excluded during the cluster start
+     */
     Set<String> getExcludedMemberUuids();
 
+    /**
+     * Handles the uuid set of excluded members only if this member is also excluded, and triggers the member force start process.
+     *
+     * @param sender the member that has sent the excluded members set
+     * @param excludedMemberUuids uuids of the members that have been excluded during the cluster start
+     */
     void handleExcludedMemberUuids(Address sender, Set<String> excludedMemberUuids);
 }

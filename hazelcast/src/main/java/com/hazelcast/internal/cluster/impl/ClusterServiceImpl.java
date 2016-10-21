@@ -539,7 +539,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     Map<Address, MemberImpl> membersRemovedInNotActiveState
                             = new LinkedHashMap<Address, MemberImpl>(membersRemovedInNotActiveStateRef.get());
 
-                    if (!node.getNodeExtension().isMemberExcludedOnClusterStart(deadAddress, deadMember.getUuid())) {
+                    if (!node.getNodeExtension().isMemberExcluded(deadAddress, deadMember.getUuid())) {
                         membersRemovedInNotActiveState.put(deadAddress, deadMember);
                         membersRemovedInNotActiveStateRef.set(Collections.unmodifiableMap(membersRemovedInNotActiveState));
                     }
@@ -905,7 +905,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 if (thisAddress.equals(member.getAddress())) {
                     continue;
                 }
-                membersRemovedInNotActiveState.put(member.getAddress(), new MemberImpl(member.getAddress(), false, member.getUuid(), null));
+                MemberImpl m = new MemberImpl(member.getAddress(), false, member.getUuid(), null);
+                membersRemovedInNotActiveState.put(member.getAddress(), m);
             }
 
             membersRemovedInNotActiveStateRef.set(Collections.unmodifiableMap(membersRemovedInNotActiveState));
