@@ -73,6 +73,10 @@ public class CacheReplicationOperation extends Operation implements IdentifiedDa
         nearCacheStateHolder.prepare(segment);
     }
 
+    public Map<String, Map<Data, CacheRecord>> getData() {
+        return data;
+    }
+
     @Override
     public void beforeRun() throws Exception {
         // Migrate CacheConfigs first
@@ -83,7 +87,9 @@ public class CacheReplicationOperation extends Operation implements IdentifiedDa
     }
 
     @Override
-    public void run() throws Exception {
+    public void run()
+            throws Exception {
+        getLogger().warning("Cache replication op is running... partitionId=" +getPartitionId());
         ICacheService service = getService();
         for (Map.Entry<String, Map<Data, CacheRecord>> entry : data.entrySet()) {
             ICacheRecordStore cache = service.getOrCreateRecordStore(entry.getKey(), getPartitionId());
@@ -98,6 +104,8 @@ public class CacheReplicationOperation extends Operation implements IdentifiedDa
                 iterator.remove();
                 cache.putRecord(key, record);
             }
+
+            getLogger().warning("Cache replication data is put. partitionId="+getPartitionId() + " cache: " + entry.getKey() + " count: " + cache.size());
         }
         data.clear();
 

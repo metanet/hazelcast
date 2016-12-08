@@ -22,6 +22,7 @@ import com.hazelcast.util.ConstructorFunction;
 
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -83,6 +84,7 @@ public class CachePartitionSegment implements ConstructorFunction<String, ICache
         } else {
             store = recordStores.get(name);
             if (store != null) {
+                cacheService.logger.severe("Delete record store of cache=" + name + " destroy: " + destroy + " size: " + store.size() + " partitionId=" + partitionId);
                 store.close(false);
             }
         }
@@ -97,9 +99,11 @@ public class CachePartitionSegment implements ConstructorFunction<String, ICache
     }
 
     public void init() {
+        cacheService.logger.severe("Init cache partition segment partitionId=" + partitionId);
         synchronized (mutex) {
-            for (ICacheRecordStore store : recordStores.values()) {
-                store.init();
+            for (Map.Entry<String, ICacheRecordStore> e : recordStores.entrySet()) {
+                e.getValue().init();
+                cacheService.logger.severe("partitionId=" + partitionId + " cache=" + e.getKey() + " size=" + e.getValue().size() + " init done.");
             }
         }
     }
@@ -113,8 +117,10 @@ public class CachePartitionSegment implements ConstructorFunction<String, ICache
     }
 
     public void shutdown() {
+        cacheService.logger.severe("Shutdown cache partition segment partitionId=" + partitionId);
         synchronized (mutex) {
             for (ICacheRecordStore store : recordStores.values()) {
+                cacheService.logger.severe("shutdown partitionId="+partitionId + " cache: " + store.getName() + " size: " + store.size());
                 store.close(true);
             }
         }

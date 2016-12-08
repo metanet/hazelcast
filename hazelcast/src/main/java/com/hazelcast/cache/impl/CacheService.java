@@ -18,11 +18,15 @@ package com.hazelcast.cache.impl;
 
 import com.hazelcast.cache.impl.event.CacheWanEventPublisher;
 import com.hazelcast.cache.impl.operation.CacheReplicationOperation;
+import com.hazelcast.cache.impl.record.CacheRecord;
 import com.hazelcast.config.InMemoryFormat;
 import com.hazelcast.internal.nearcache.impl.invalidation.MetaDataGenerator;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.PartitionMigrationEvent;
 import com.hazelcast.spi.PartitionReplicationEvent;
+
+import java.util.Map;
 
 import static com.hazelcast.spi.partition.MigrationEndpoint.DESTINATION;
 import static com.hazelcast.spi.partition.MigrationEndpoint.SOURCE;
@@ -75,6 +79,11 @@ public class CacheService extends AbstractCacheService {
     public Operation prepareReplicationOperation(PartitionReplicationEvent event) {
         CachePartitionSegment segment = segments[event.getPartitionId()];
         CacheReplicationOperation op = new CacheReplicationOperation(segment, event.getReplicaIndex());
+
+        for (Map.Entry<String, Map<Data, CacheRecord>> e : op.getData().entrySet()) {
+            logger.warning("Prepare cache replication partitionId=" + event.getPartitionId() + " cache: "
+                    + e.getKey() + " entry count: " + e.getValue());
+        }
         return op.isEmpty() ? null : op;
     }
 

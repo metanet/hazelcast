@@ -150,6 +150,7 @@ public abstract class AbstractCacheService
     @Override
     public void shutdown(boolean terminate) {
         if (!terminate) {
+            logger.severe("Shutting down cache service...");
             cacheEventHandler.shutdown();
             reset(true);
         }
@@ -301,6 +302,7 @@ public abstract class AbstractCacheService
             destroySegments(name);
             sendInvalidationEvent(name, null, SOURCE_NOT_AVAILABLE);
         } else {
+            logger.severe("Close segments of cache=" + name);
             closeSegments(name);
         }
         cacheContexts.remove(name);
