@@ -122,7 +122,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     private final ClusterHeartbeatManager clusterHeartbeatManager;
 
-    private String clusterId;
+    private volatile String clusterId;
 
     public ClusterServiceImpl(Node node) {
 
@@ -148,7 +148,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     private void registerThisMember() {
         MemberImpl thisMember = node.getLocalMember();
-        setMembers(thisMember);
+        setMembers(0, thisMember);
     }
 
     private void registerMetrics() {
@@ -156,27 +156,6 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         metricsRegistry.scanAndRegister(clusterClock, "cluster.clock");
         metricsRegistry.scanAndRegister(clusterHeartbeatManager, "cluster.heartbeat");
         metricsRegistry.scanAndRegister(this, "cluster");
-    }
-
-    @Override
-    public ClusterClockImpl getClusterClock() {
-        return clusterClock;
-    }
-
-    @Override
-    public long getClusterTime() {
-        return clusterClock.getClusterTime();
-    }
-
-    @Override
-    public String getClusterId() {
-        return clusterId;
-    }
-
-    public void setClusterId(String clusterId) {
-        if (this.clusterId == null) {
-            this.clusterId = clusterId;
-        }
     }
 
     @Override
@@ -328,6 +307,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             clusterStateManager.reset();
             clusterJoinManager.reset();
             membersRemovedInNotActiveStateRef.set(MemberMap.empty());
+            resetClusterId();
         } finally {
             lock.unlock();
         }
@@ -438,7 +418,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             updatedMembers[memberIndex++] = member;
         }
 
-        setMembers(updatedMembers);
+        setMembers(currentMemberMap.getVersion() + 1, updatedMembers);
         sendMembershipEvents(currentMemberMap.getMembers(), newMembers);
 
         MemberMap membersRemovedInNotActiveState = membersRemovedInNotActiveStateRef.get();
@@ -577,7 +557,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return nodeEngine;
     }
 
-    private void setMembers(MemberImpl... members) {
+    private void setMembers(int version, MemberImpl... members) {
         if (members == null || members.length == 0) {
             return;
         }
@@ -586,7 +566,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
         lock.lock();
         try {
-            memberMapRef.set(MemberMap.createNew(members));
+            memberMapRef.set(MemberMap.createNew(version, members));
         } finally {
             lock.unlock();
         }
@@ -876,6 +856,32 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
 
         return size;
+    }
+
+    @Override
+    public ClusterClockImpl getClusterClock() {
+        return clusterClock;
+    }
+
+    @Override
+    public long getClusterTime() {
+        return clusterClock.getClusterTime();
+    }
+
+    @Override
+    public String getClusterId() {
+        return clusterId;
+    }
+
+    // called under cluster service lock
+    void setClusterId(String newClusterId) {
+        assert clusterId == null : "Cluster id should be null: " + clusterId;
+        clusterId = newClusterId;
+    }
+
+    // called under cluster service lock
+    private void resetClusterId() {
+        clusterId = null;
     }
 
     public String addMembershipListener(MembershipListener listener) {
