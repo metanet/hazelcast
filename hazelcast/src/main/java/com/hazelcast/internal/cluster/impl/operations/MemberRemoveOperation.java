@@ -89,6 +89,7 @@ public class MemberRemoveOperation extends AbstractClusterOperation implements A
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
+        super.readInternal(in);
         address = new Address();
         address.readData(in);
         memberUuid = in.readUTF();
@@ -96,6 +97,7 @@ public class MemberRemoveOperation extends AbstractClusterOperation implements A
 
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
+        super.writeInternal(out);
         address.writeData(out);
         out.writeUTF(memberUuid);
     }

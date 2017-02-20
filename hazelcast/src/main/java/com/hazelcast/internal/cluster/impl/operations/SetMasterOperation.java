@@ -48,12 +48,14 @@ public class SetMasterOperation extends AbstractClusterOperation {
 
     @Override
     protected void readInternal(final ObjectDataInput in) throws IOException {
+        super.readInternal(in);
         masterAddress = new Address();
         masterAddress.readData(in);
     }
 
     @Override
     protected void writeInternal(final ObjectDataOutput out) throws IOException {
+        super.writeInternal(out);
         masterAddress.writeData(out);
     }
 

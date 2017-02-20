@@ -47,12 +47,14 @@ public class JoinRequestOperation extends AbstractClusterOperation implements Jo
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
+        super.readInternal(in);
         request = new JoinRequest();
         request.readData(in);
     }
 
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
+        super.writeInternal(out);
         request.writeData(out);
     }
 

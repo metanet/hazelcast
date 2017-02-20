@@ -18,9 +18,24 @@ package com.hazelcast.internal.cluster.impl.operations;
 
 import com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.impl.Versioned;
 import com.hazelcast.spi.Operation;
+import com.hazelcast.version.Version;
 
-abstract class AbstractClusterOperation extends Operation implements JoinOperation {
+import java.io.IOException;
+
+abstract class AbstractClusterOperation extends Operation implements JoinOperation, Versioned {
+
+    /**
+     * @since 3.9
+     */
+    private int version;
+
+    int getVersion() {
+        return version;
+    }
 
     @Override
     public boolean returnsResponse() {
@@ -35,5 +50,23 @@ abstract class AbstractClusterOperation extends Operation implements JoinOperati
     @Override
     public int getFactoryId() {
         return ClusterDataSerializerHook.F_ID;
+    }
+
+    @Override
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
+        super.writeInternal(out);
+
+        if (out.getVersion().isGreaterOrEqual(Version.of(3, 9))) {
+            out.writeInt(version);
+        }
+    }
+
+    @Override
+    protected void readInternal(ObjectDataInput in) throws IOException {
+        super.readInternal(in);
+
+        if (in.getVersion().isGreaterOrEqual(Version.of(3, 9))) {
+            version = in.readInt();
+        }
     }
 }

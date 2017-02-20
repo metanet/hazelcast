@@ -43,12 +43,14 @@ public class MasterDiscoveryOperation extends AbstractClusterOperation {
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
+        super.readInternal(in);
         joinMessage = new JoinMessage();
         joinMessage.readData(in);
     }
 
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
+        super.writeInternal(out);
         joinMessage.writeData(out);
     }
 
