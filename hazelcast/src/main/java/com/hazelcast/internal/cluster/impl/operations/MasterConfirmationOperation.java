@@ -64,14 +64,12 @@ public class MasterConfirmationOperation extends AbstractClusterOperation implem
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
         out.writeLong(timestamp);
     }
 
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected void readInternalImpl(ObjectDataInput in) throws IOException {
         timestamp = in.readLong();
     }
 

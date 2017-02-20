@@ -57,14 +57,12 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
         out.writeLong(timestamp);
     }
 
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected void readInternalImpl(ObjectDataInput in) throws IOException {
         timestamp = in.readLong();
     }
 }

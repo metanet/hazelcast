@@ -47,15 +47,13 @@ public class SetMasterOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void readInternal(final ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected void readInternalImpl(final ObjectDataInput in) throws IOException {
         masterAddress = new Address();
         masterAddress.readData(in);
     }
 
     @Override
-    protected void writeInternal(final ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected void writeInternalImpl(final ObjectDataOutput out) throws IOException {
         masterAddress.writeData(out);
     }
 

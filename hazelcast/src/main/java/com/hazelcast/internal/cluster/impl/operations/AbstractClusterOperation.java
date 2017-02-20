@@ -53,20 +53,26 @@ abstract class AbstractClusterOperation extends Operation implements JoinOperati
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected final void writeInternal(ObjectDataOutput out) throws IOException {
+        writeInternalImpl(out);
 
         if (out.getVersion().isGreaterOrEqual(Version.of(3, 9))) {
             out.writeInt(version);
         }
     }
 
+    void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    }
+
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected final void readInternal(ObjectDataInput in) throws IOException {
+        readInternalImpl(in);
 
         if (in.getVersion().isGreaterOrEqual(Version.of(3, 9))) {
             version = in.readInt();
         }
+    }
+
+    void readInternalImpl(ObjectDataInput in) throws IOException {
     }
 }

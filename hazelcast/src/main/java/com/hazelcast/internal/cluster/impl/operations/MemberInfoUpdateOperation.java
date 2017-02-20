@@ -100,8 +100,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
     }
 
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected void readInternalImpl(ObjectDataInput in) throws IOException {
         targetUuid = in.readUTF();
         masterTime = in.readLong();
         int size = in.readInt();
@@ -117,8 +116,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
         out.writeUTF(targetUuid);
         out.writeLong(masterTime);
         out.writeInt(memberInfos.size());

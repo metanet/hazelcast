@@ -134,8 +134,9 @@ public class FinalizeJoinOperation extends MemberInfoUpdateOperation implements 
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+        super.writeInternalImpl(out);
+
         boolean hasPJOp = postJoinOp != null;
         out.writeBoolean(hasPJOp);
         if (hasPJOp) {
@@ -148,8 +149,9 @@ public class FinalizeJoinOperation extends MemberInfoUpdateOperation implements 
     }
 
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+        super.readInternalImpl(in);
+        
         boolean hasPJOp = in.readBoolean();
         if (hasPJOp) {
             postJoinOp = new PostJoinOperation();

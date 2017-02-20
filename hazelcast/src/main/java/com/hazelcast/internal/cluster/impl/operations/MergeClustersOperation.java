@@ -68,15 +68,13 @@ public class MergeClustersOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
-        super.readInternal(in);
+    protected void readInternalImpl(ObjectDataInput in) throws IOException {
         newTargetAddress = new Address();
         newTargetAddress.readData(in);
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
-        super.writeInternal(out);
+    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
         newTargetAddress.writeData(out);
     }
 
