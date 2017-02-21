@@ -210,6 +210,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
+    // TODO [basri] implement this
+    public void suspectAddress(Address suspectedAddress, String reason) {
+        removeAddress(suspectedAddress, reason);
+    }
+
+    // TODO [basri] If this node is a slave, deadAddress can be only the master address. Is that so ????
     public void removeAddress(Address deadAddress, String reason) {
         doRemoveAddress(deadAddress, reason, true);
     }
