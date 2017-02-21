@@ -53,6 +53,8 @@ public class MasterConfirmationOperation extends AbstractClusterOperation implem
             logger.warning("MasterConfirmation has been received from " + endpoint
                     + ", but it is not a member of this cluster!");
             OperationService operationService = getNodeEngine().getOperationService();
+            // TODO [basri] This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
+            // TODO [basri] So, it should remove me from its cluster and update its master address
             operationService.send(new MemberRemoveOperation(clusterService.getThisAddress()), endpoint);
         } else {
             if (clusterService.isMaster()) {

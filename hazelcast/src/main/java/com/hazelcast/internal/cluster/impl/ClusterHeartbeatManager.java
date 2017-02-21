@@ -329,6 +329,7 @@ public class ClusterHeartbeatManager {
                             + " Now: %s, last heartbeat time was %s", member, maxNoHeartbeatMillis,
                     timeToString(now), timeToString(heartbeatTime));
             logger.warning(reason);
+            // TODO [basri] If I am the master, I can remove the member. Otherwise, I can only suspect it because I rely on my local information
             clusterService.removeAddress(member.getAddress(), reason);
             return true;
         }
@@ -361,6 +362,7 @@ public class ClusterHeartbeatManager {
                     timeToString(now),
                     timeToString(lastConfirmation));
             logger.warning(reason);
+            // TODO [basri] I am the master so I can remove the member
             clusterService.removeAddress(member.getAddress(), reason);
             return true;
         }
@@ -441,6 +443,7 @@ public class ClusterHeartbeatManager {
                     // host not reachable
                     String reason = format("%s could not ping %s", node.getThisAddress(), address);
                     logger.warning(reason);
+                    // TODO [basri] If I am the master, I can remove the member. Otherwise, I should only suspect it
                     clusterService.removeAddress(address, reason);
                 } catch (Throwable ignored) {
                     EmptyStatement.ignore(ignored);

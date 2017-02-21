@@ -53,6 +53,9 @@ public class TcpIpConnectionMonitor {
             if (faults++ >= maxFaults) {
                 String removeEndpointMessage = "Removing connection to endpoint " + endPoint + getCauseDescription(t);
                 logger.warning(removeEndpointMessage);
+
+                // TODO [basri] If I am the master, I can remove the endpoint from the cluster
+                // TODO [basri] Otherwise, I should just suspect it because I rely on my local information
                 ioService.removeEndpoint(endPoint);
             }
             lastFaultTime = now;

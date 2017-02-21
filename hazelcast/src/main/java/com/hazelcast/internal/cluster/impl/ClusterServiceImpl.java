@@ -588,6 +588,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     if (logger.isFineEnabled()) {
                         logger.fine(deadMember + " is dead, sending remove to all other members...");
                     }
+                    // TODO [basri] I will publish a new member list
                     sendMemberRemoveOperation(deadMember);
                 }
 
@@ -718,6 +719,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
+    // TODO [basri] think about this part. I am explicitly saying that I am leaving the cluster.
     public void sendShutdownMessage() {
         sendMemberRemoveOperation(getLocalMember());
     }
