@@ -193,4 +193,8 @@ final class MemberMap {
     int getVersion() {
         return version;
     }
+
+    MembersView toMembersView() {
+        return MembersView.createNew(version, members);
+    }
 }

@@ -30,9 +30,11 @@ public class BeforeJoinCheckFailureOperation extends AbstractClusterOperation {
     private String failReasonMsg;
 
     public BeforeJoinCheckFailureOperation() {
+        super(0);
     }
 
     public BeforeJoinCheckFailureOperation(String failReasonMsg) {
+        super(0);
         this.failReasonMsg = failReasonMsg;
     }
 

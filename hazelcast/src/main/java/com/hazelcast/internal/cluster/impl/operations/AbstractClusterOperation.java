@@ -33,6 +33,10 @@ abstract class AbstractClusterOperation extends Operation implements JoinOperati
      */
     private int version;
 
+    AbstractClusterOperation(int version) {
+        this.version = version;
+    }
+
     int getVersion() {
         return version;
     }

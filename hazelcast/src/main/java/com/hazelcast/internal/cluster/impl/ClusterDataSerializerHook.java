@@ -32,7 +32,7 @@ import com.hazelcast.internal.cluster.impl.operations.MasterClaimOperation;
 import com.hazelcast.internal.cluster.impl.operations.MasterConfirmationOperation;
 import com.hazelcast.internal.cluster.impl.operations.MasterDiscoveryOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberAttributeChangedOperation;
-import com.hazelcast.internal.cluster.impl.operations.MemberInfoUpdateOperation;
+import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.MergeClustersOperation;
 import com.hazelcast.internal.cluster.impl.operations.PostJoinOperation;
@@ -136,7 +136,7 @@ public final class ClusterDataSerializerHook implements DataSerializerHook {
         };
         constructors[MEMBER_INFO_UPDATE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new MemberInfoUpdateOperation();
+                return new MembersUpdateOperation();
             }
         };
         constructors[FINALIZE_JOIN] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {

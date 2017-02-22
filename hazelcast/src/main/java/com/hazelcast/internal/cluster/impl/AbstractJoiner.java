@@ -330,7 +330,7 @@ public abstract class AbstractJoiner implements Joiner {
             // TODO [basri] join request is coming from master of the split and it thinks that I am its member.
             // TODO [basri] So it should remove me first from its cluster.
             node.nodeEngine.getOperationService()
-                    .send(new MemberRemoveOperation(node.getThisAddress()), joinMessage.getAddress());
+                    .send(new MemberRemoveOperation(0, node.getThisAddress()), joinMessage.getAddress());
             logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessage.getAddress()
                     + ", because it thinks this-node as its member.");
             return false;
@@ -425,7 +425,7 @@ public abstract class AbstractJoiner implements Joiner {
         Collection<Future> futures = new ArrayList<Future>(memberList.size());
         for (Member member : memberList) {
             if (!member.localMember()) {
-                Operation op = new MergeClustersOperation(targetAddress);
+                Operation op = new MergeClustersOperation(0, targetAddress);
                 Future<Object> future =
                         operationService.invokeOnTarget(ClusterServiceImpl.SERVICE_NAME, op, member.getAddress());
                 futures.add(future);
@@ -434,7 +434,7 @@ public abstract class AbstractJoiner implements Joiner {
 
         waitWithDeadline(futures, SPLIT_BRAIN_MERGE_TIMEOUT_SECONDS, TimeUnit.SECONDS, splitBrainMergeExceptionHandler);
 
-        Operation mergeClustersOperation = new MergeClustersOperation(targetAddress);
+        Operation mergeClustersOperation = new MergeClustersOperation(0, targetAddress);
         mergeClustersOperation.setNodeEngine(node.nodeEngine).setService(clusterService)
                 .setOperationResponseHandler(createEmptyResponseHandler());
         operationService.run(mergeClustersOperation);

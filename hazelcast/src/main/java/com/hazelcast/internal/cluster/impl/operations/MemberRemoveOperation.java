@@ -32,13 +32,16 @@ public class MemberRemoveOperation extends AbstractClusterOperation implements A
     private String memberUuid;
 
     public MemberRemoveOperation() {
+        super(0);
     }
 
-    public MemberRemoveOperation(Address address) {
+    public MemberRemoveOperation(int version, Address address) {
+        super(version);
         this.address = address;
     }
 
-    public MemberRemoveOperation(Address address, String uuid) {
+    public MemberRemoveOperation(int version, Address address, String uuid) {
+        super(version);
         this.address = address;
         this.memberUuid = uuid;
     }

@@ -27,6 +27,7 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 public class ShutdownNodeOperation extends AbstractClusterOperation implements AllowedDuringPassiveState {
 
     public ShutdownNodeOperation() {
+        super(0);
     }
 
     @Override

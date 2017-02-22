@@ -31,9 +31,11 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
     private long timestamp;
 
     public HeartbeatOperation() {
+        super(0);
     }
 
-    public HeartbeatOperation(long timestamp) {
+    public HeartbeatOperation(int version, long timestamp) {
+        super(version);
         this.timestamp = timestamp;
     }
 

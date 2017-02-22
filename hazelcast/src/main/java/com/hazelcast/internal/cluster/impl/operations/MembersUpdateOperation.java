@@ -20,6 +20,7 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.internal.cluster.impl.MembersView;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
@@ -33,24 +34,26 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 
-public class MemberInfoUpdateOperation extends AbstractClusterOperation implements JoinOperation, IdentifiedDataSerializable {
+public class MembersUpdateOperation extends AbstractClusterOperation implements JoinOperation, IdentifiedDataSerializable {
 
-    protected String targetUuid;
-    protected Collection<MemberInfo> memberInfos;
-    protected long masterTime = Clock.currentTimeMillis();
-    protected PartitionRuntimeState partitionRuntimeState;
-    protected boolean sendResponse;
+    Collection<MemberInfo> memberInfos;
+    long masterTime = Clock.currentTimeMillis();
+    private String targetUuid;
+    private boolean returnResponse;
+    private PartitionRuntimeState partitionRuntimeState;
 
-    public MemberInfoUpdateOperation() {
+    public MembersUpdateOperation() {
+        super(0);
         memberInfos = new ArrayList<MemberInfo>();
     }
 
-    public MemberInfoUpdateOperation(String targetUuid, Collection<MemberInfo> memberInfos, long masterTime,
-                                     PartitionRuntimeState partitionRuntimeState, boolean sendResponse) {
+    public MembersUpdateOperation(String targetUuid, MembersView membersView, long masterTime,
+                                     PartitionRuntimeState partitionRuntimeState, boolean returnResponse) {
+        super(membersView.getVersion());
         this.targetUuid = targetUuid;
         this.masterTime = masterTime;
-        this.memberInfos = memberInfos;
-        this.sendResponse = sendResponse;
+        this.memberInfos = membersView.getMembers();
+        this.returnResponse = returnResponse;
         this.partitionRuntimeState = partitionRuntimeState;
     }
 
@@ -60,7 +63,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
 
         ClusterServiceImpl clusterService = getService();
         Address callerAddress = getConnectionEndpointOrThisAddress();
-        if (clusterService.updateMembers(memberInfos, callerAddress)) {
+        if (clusterService.updateMembers(MembersView.createNewX(getVersion(), memberInfos), callerAddress)) {
             processPartitionState();
         }
     }
@@ -96,7 +99,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
 
     @Override
     public final boolean returnsResponse() {
-        return sendResponse;
+        return returnResponse;
     }
 
     @Override
@@ -112,7 +115,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
         }
 
         partitionRuntimeState = in.readObject();
-        sendResponse = in.readBoolean();
+        returnResponse = in.readBoolean();
     }
 
     @Override
@@ -124,7 +127,7 @@ public class MemberInfoUpdateOperation extends AbstractClusterOperation implemen
             memberInfo.writeData(out);
         }
         out.writeObject(partitionRuntimeState);
-        out.writeBoolean(sendResponse);
+        out.writeBoolean(returnResponse);
     }
 
     @Override

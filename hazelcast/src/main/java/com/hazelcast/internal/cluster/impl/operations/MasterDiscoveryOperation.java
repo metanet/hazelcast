@@ -29,9 +29,11 @@ public class MasterDiscoveryOperation extends AbstractClusterOperation {
     private JoinMessage joinMessage;
 
     public MasterDiscoveryOperation() {
+        super(0);
     }
 
     public MasterDiscoveryOperation(JoinMessage joinMessage) {
+        super(0);
         this.joinMessage = joinMessage;
     }
 

@@ -37,9 +37,11 @@ public class ConfigMismatchOperation extends AbstractClusterOperation {
     private String msg;
 
     public ConfigMismatchOperation() {
+        super(0);
     }
 
     public ConfigMismatchOperation(String msg) {
+        super(0);
         this.msg = msg;
     }
 

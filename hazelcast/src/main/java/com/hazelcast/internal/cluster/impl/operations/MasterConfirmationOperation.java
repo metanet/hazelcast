@@ -33,9 +33,11 @@ public class MasterConfirmationOperation extends AbstractClusterOperation implem
     private long timestamp;
 
     public MasterConfirmationOperation() {
+        super(0);
     }
 
     public MasterConfirmationOperation(long timestamp) {
+        super(0);
         this.timestamp = timestamp;
     }
 
@@ -55,7 +57,8 @@ public class MasterConfirmationOperation extends AbstractClusterOperation implem
             OperationService operationService = getNodeEngine().getOperationService();
             // TODO [basri] This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
             // TODO [basri] So, it should remove me from its cluster and update its master address
-            operationService.send(new MemberRemoveOperation(clusterService.getThisAddress()), endpoint);
+            int memberListVersion = clusterService.getMemberListVersion();
+            operationService.send(new MemberRemoveOperation(memberListVersion, clusterService.getThisAddress()), endpoint);
         } else {
             if (clusterService.isMaster()) {
                 clusterService.getClusterHeartbeatManager().acceptMasterConfirmation(member, timestamp);

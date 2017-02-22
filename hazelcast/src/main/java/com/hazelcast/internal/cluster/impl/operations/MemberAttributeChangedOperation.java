@@ -33,9 +33,11 @@ public class MemberAttributeChangedOperation extends AbstractClusterOperation {
     private Object value;
 
     public MemberAttributeChangedOperation() {
+        super(0);
     }
 
     public MemberAttributeChangedOperation(MemberAttributeOperationType operationType, String key, Object value) {
+        super(0);
         this.operationType = operationType;
         this.key = key;
         this.value = value;

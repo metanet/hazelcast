@@ -32,9 +32,11 @@ public class MergeClustersOperation extends AbstractClusterOperation {
     private Address newTargetAddress;
 
     public MergeClustersOperation() {
+        super(0);
     }
 
-    public MergeClustersOperation(Address newTargetAddress) {
+    public MergeClustersOperation(int version, Address newTargetAddress) {
+        super(version);
         this.newTargetAddress = newTargetAddress;
     }
 

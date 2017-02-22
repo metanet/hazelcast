@@ -25,6 +25,7 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 public class GroupMismatchOperation extends AbstractClusterOperation {
 
     public GroupMismatchOperation() {
+        super(0);
     }
 
     @Override

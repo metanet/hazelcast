@@ -30,9 +30,11 @@ public class SetMasterOperation extends AbstractClusterOperation {
     protected Address masterAddress;
 
     public SetMasterOperation() {
+        super(0);
     }
 
-    public SetMasterOperation(final Address originAddress) {
+    public SetMasterOperation(int version, Address originAddress) {
+        super(version);
         this.masterAddress = originAddress;
     }
 
