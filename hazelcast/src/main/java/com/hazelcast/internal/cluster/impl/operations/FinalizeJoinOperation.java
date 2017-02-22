@@ -37,7 +37,7 @@ import java.util.Collection;
 
 import static com.hazelcast.spi.impl.OperationResponseHandlerFactory.createEmptyResponseHandler;
 
-public class FinalizeJoinOperation extends MembersUpdateOperation implements JoinOperation {
+public class FinalizeJoinOperation extends MembersUpdateOperation {
 
     public static final int FINALIZE_JOIN_TIMEOUT_FACTOR = 5;
     public static final int FINALIZE_JOIN_MAX_TIMEOUT = 60;

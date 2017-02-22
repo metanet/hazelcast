@@ -402,6 +402,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return  (callerAddress != null && callerAddress.equals(getMasterAddress()));
     }
 
+    // handles both new and left members
     private void doUpdateMembers(MembersView membersView) {
         MemberMap currentMemberMap = memberMapRef.get();
 
@@ -409,7 +410,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         Collection<MemberImpl> addedMembers = new LinkedList<MemberImpl>();
         Collection<MemberImpl> removedMembers = new LinkedList<MemberImpl>();
 
-        MemberImpl[] updatedMembers = new MemberImpl[membersView.size()];
+        MemberImpl[] members = new MemberImpl[membersView.size()];
         int memberIndex = 0;
         for (MemberInfo memberInfo : membersView.getMembers()) {
             Address address = memberInfo.getAddress();
@@ -430,7 +431,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             clusterHeartbeatManager.acceptMasterConfirmation(member, now);
 
             repairPartitionTableIfReturningMember(member);
-            updatedMembers[memberIndex++] = member;
+            members[memberIndex++] = member;
         }
 
         MemberMap newMemberMap = membersView.toMemberMap();
@@ -440,7 +441,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             }
         }
 
-        setMembers(membersView.getVersion(), updatedMembers);
+        setMembers(membersView.getVersion(), members);
 
         // TODO: handle removed members
         for (MemberImpl member : removedMembers) {
@@ -450,7 +451,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         sendMembershipEvents(currentMemberMap.getMembers(), addedMembers);
 
         MemberMap membersRemovedInNotActiveState = membersRemovedInNotActiveStateRef.get();
-        membersRemovedInNotActiveStateRef.set(MemberMap.cloneExcluding(membersRemovedInNotActiveState, updatedMembers));
+        membersRemovedInNotActiveStateRef.set(MemberMap.cloneExcluding(membersRemovedInNotActiveState, members));
 
         clusterHeartbeatManager.heartbeat();
         logger.info(membersString());

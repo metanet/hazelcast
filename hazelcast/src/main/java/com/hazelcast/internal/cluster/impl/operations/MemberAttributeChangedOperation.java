@@ -33,11 +33,9 @@ public class MemberAttributeChangedOperation extends AbstractClusterOperation {
     private Object value;
 
     public MemberAttributeChangedOperation() {
-        super(0);
     }
 
     public MemberAttributeChangedOperation(MemberAttributeOperationType operationType, String key, Object value) {
-        super(0);
         this.operationType = operationType;
         this.key = key;
         this.value = value;
@@ -50,7 +48,7 @@ public class MemberAttributeChangedOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         out.writeUTF(key);
         out.writeByte(operationType.getId());
         if (operationType == PUT) {
@@ -59,7 +57,7 @@ public class MemberAttributeChangedOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         key = in.readUTF();
         operationType = MemberAttributeOperationType.getValue(in.readByte());
         if (operationType == PUT) {

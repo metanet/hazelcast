@@ -37,21 +37,19 @@ public class ConfigMismatchOperation extends AbstractClusterOperation {
     private String msg;
 
     public ConfigMismatchOperation() {
-        super(0);
     }
 
     public ConfigMismatchOperation(String msg) {
-        super(0);
         this.msg = msg;
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         out.writeUTF(msg);
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         msg = in.readUTF();
     }
 

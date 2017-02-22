@@ -22,11 +22,10 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.spi.impl.AllowedDuringPassiveState;
 
 import java.io.IOException;
 
-public class MemberRemoveOperation extends AbstractClusterOperation implements AllowedDuringPassiveState {
+public class MemberRemoveOperation extends VersionedClusterOperation {
 
     private Address address;
     private String memberUuid;

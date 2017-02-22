@@ -25,7 +25,6 @@ import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 public class TriggerMemberListPublishOperation extends AbstractClusterOperation {
 
     public TriggerMemberListPublishOperation() {
-        super(0);
     }
 
     @Override

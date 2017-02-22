@@ -24,7 +24,6 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 public class AuthenticationFailureOperation extends AbstractClusterOperation {
 
     public AuthenticationFailureOperation() {
-        super(0);
     }
 
     @Override

@@ -616,7 +616,7 @@ public class ClusterJoinManager {
             return;
         }
 
-        SetMasterOperation op = new SetMasterOperation(0, masterAddress);
+        SetMasterOperation op = new SetMasterOperation(masterAddress);
         nodeEngine.getOperationService().send(op, target);
     }
 

@@ -30,21 +30,19 @@ public class BeforeJoinCheckFailureOperation extends AbstractClusterOperation {
     private String failReasonMsg;
 
     public BeforeJoinCheckFailureOperation() {
-        super(0);
     }
 
     public BeforeJoinCheckFailureOperation(String failReasonMsg) {
-        super(0);
         this.failReasonMsg = failReasonMsg;
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         out.writeUTF(failReasonMsg);
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         failReasonMsg = in.readUTF();
     }
 

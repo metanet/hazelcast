@@ -24,20 +24,17 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.spi.OperationService;
-import com.hazelcast.spi.impl.AllowedDuringPassiveState;
 
 import java.io.IOException;
 
-public class MasterConfirmationOperation extends AbstractClusterOperation implements AllowedDuringPassiveState {
+public class MasterConfirmationOperation extends AbstractClusterOperation {
 
     private long timestamp;
 
     public MasterConfirmationOperation() {
-        super(0);
     }
 
     public MasterConfirmationOperation(long timestamp) {
-        super(0);
         this.timestamp = timestamp;
     }
 
@@ -69,12 +66,12 @@ public class MasterConfirmationOperation extends AbstractClusterOperation implem
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         out.writeLong(timestamp);
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         timestamp = in.readLong();
     }
 

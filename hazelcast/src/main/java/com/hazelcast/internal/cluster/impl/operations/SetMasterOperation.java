@@ -30,11 +30,9 @@ public class SetMasterOperation extends AbstractClusterOperation {
     protected Address masterAddress;
 
     public SetMasterOperation() {
-        super(0);
     }
 
-    public SetMasterOperation(int version, Address originAddress) {
-        super(version);
+    public SetMasterOperation(Address originAddress) {
         this.masterAddress = originAddress;
     }
 
@@ -49,13 +47,13 @@ public class SetMasterOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void readInternalImpl(final ObjectDataInput in) throws IOException {
+    protected void readInternal(final ObjectDataInput in) throws IOException {
         masterAddress = new Address();
         masterAddress.readData(in);
     }
 
     @Override
-    protected void writeInternalImpl(final ObjectDataOutput out) throws IOException {
+    protected void writeInternal(final ObjectDataOutput out) throws IOException {
         masterAddress.writeData(out);
     }
 

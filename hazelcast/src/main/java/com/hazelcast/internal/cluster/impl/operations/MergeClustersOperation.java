@@ -32,11 +32,9 @@ public class MergeClustersOperation extends AbstractClusterOperation {
     private Address newTargetAddress;
 
     public MergeClustersOperation() {
-        super(0);
     }
 
-    public MergeClustersOperation(int version, Address newTargetAddress) {
-        super(version);
+    public MergeClustersOperation(Address newTargetAddress) {
         this.newTargetAddress = newTargetAddress;
     }
 
@@ -70,13 +68,13 @@ public class MergeClustersOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         newTargetAddress = new Address();
         newTargetAddress.readData(in);
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         newTargetAddress.writeData(out);
     }
 

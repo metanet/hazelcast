@@ -31,11 +31,9 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
     private long timestamp;
 
     public HeartbeatOperation() {
-        super(0);
     }
 
-    public HeartbeatOperation(int version, long timestamp) {
-        super(version);
+    public HeartbeatOperation(long timestamp) {
         this.timestamp = timestamp;
     }
 
@@ -59,12 +57,12 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         out.writeLong(timestamp);
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         timestamp = in.readLong();
     }
 }

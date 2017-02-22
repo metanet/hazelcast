@@ -26,7 +26,6 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.Clock;
 
@@ -34,7 +33,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 
-public class MembersUpdateOperation extends AbstractClusterOperation implements JoinOperation, IdentifiedDataSerializable {
+public class MembersUpdateOperation extends VersionedClusterOperation {
 
     Collection<MemberInfo> memberInfos;
     long masterTime = Clock.currentTimeMillis();

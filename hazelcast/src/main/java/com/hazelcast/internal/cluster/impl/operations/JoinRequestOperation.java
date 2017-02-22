@@ -24,16 +24,14 @@ import com.hazelcast.nio.ObjectDataOutput;
 
 import java.io.IOException;
 
-public class JoinRequestOperation extends AbstractClusterOperation implements JoinOperation {
+public class JoinRequestOperation extends AbstractClusterOperation {
 
     private JoinRequest request;
 
     public JoinRequestOperation() {
-        super(0);
     }
 
     public JoinRequestOperation(JoinRequest request) {
-        super(0);
         this.request = request;
     }
 
@@ -48,13 +46,13 @@ public class JoinRequestOperation extends AbstractClusterOperation implements Jo
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         request = new JoinRequest();
         request.readData(in);
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         request.writeData(out);
     }
 

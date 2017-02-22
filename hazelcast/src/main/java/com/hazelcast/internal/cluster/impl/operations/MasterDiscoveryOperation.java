@@ -29,11 +29,9 @@ public class MasterDiscoveryOperation extends AbstractClusterOperation {
     private JoinMessage joinMessage;
 
     public MasterDiscoveryOperation() {
-        super(0);
     }
 
     public MasterDiscoveryOperation(JoinMessage joinMessage) {
-        super(0);
         this.joinMessage = joinMessage;
     }
 
@@ -44,13 +42,13 @@ public class MasterDiscoveryOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void readInternalImpl(ObjectDataInput in) throws IOException {
+    protected void readInternal(ObjectDataInput in) throws IOException {
         joinMessage = new JoinMessage();
         joinMessage.readData(in);
     }
 
     @Override
-    protected void writeInternalImpl(ObjectDataOutput out) throws IOException {
+    protected void writeInternal(ObjectDataOutput out) throws IOException {
         joinMessage.writeData(out);
     }
 
