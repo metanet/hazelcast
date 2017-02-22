@@ -71,7 +71,7 @@ public class FinalizeJoinOperation extends MembersUpdateOperation {
         ClusterServiceImpl clusterService = getService();
         Address callerAddress = getConnectionEndpointOrThisAddress();
 
-        boolean finalized = clusterService.finalizeJoin(MembersView.createNewX(getVersion(), memberInfos), callerAddress,
+        boolean finalized = clusterService.finalizeJoin(getMembersView(), callerAddress,
                 clusterId, clusterState, clusterVersion, clusterStartTime, masterTime);
         
         if (!finalized) {

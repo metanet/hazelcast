@@ -35,7 +35,7 @@ public final class MembersView {
     private final int version;
     private final List<MemberInfo> members;
 
-    MembersView(int version, List<MemberInfo> members) {
+    public MembersView(int version, List<MemberInfo> members) {
         this.version = version;
         this.members = members;
     }
@@ -115,11 +115,6 @@ public final class MembersView {
             list.add(new MemberInfo(member));
         }
 
-        return new MembersView(version, unmodifiableList(list));
-    }
-
-    public static MembersView createNewX(int version, Collection<MemberInfo> members) {
-        List<MemberInfo> list = new ArrayList<MemberInfo>(members);
         return new MembersView(version, unmodifiableList(list));
     }
 

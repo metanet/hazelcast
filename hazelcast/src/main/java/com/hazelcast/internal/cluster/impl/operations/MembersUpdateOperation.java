@@ -31,19 +31,22 @@ import com.hazelcast.util.Clock;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.List;
+
+import static java.util.Collections.emptyList;
+import static java.util.Collections.unmodifiableList;
 
 public class MembersUpdateOperation extends VersionedClusterOperation {
 
-    Collection<MemberInfo> memberInfos;
     long masterTime = Clock.currentTimeMillis();
+    private List<MemberInfo> memberInfos;
     private String targetUuid;
     private boolean returnResponse;
     private PartitionRuntimeState partitionRuntimeState;
 
     public MembersUpdateOperation() {
         super(0);
-        memberInfos = new ArrayList<MemberInfo>();
+        memberInfos = emptyList();
     }
 
     public MembersUpdateOperation(String targetUuid, MembersView membersView, long masterTime,
@@ -62,9 +65,13 @@ public class MembersUpdateOperation extends VersionedClusterOperation {
 
         ClusterServiceImpl clusterService = getService();
         Address callerAddress = getConnectionEndpointOrThisAddress();
-        if (clusterService.updateMembers(MembersView.createNewX(getVersion(), memberInfos), callerAddress)) {
+        if (clusterService.updateMembers(getMembersView(), callerAddress)) {
             processPartitionState();
         }
+    }
+
+    final MembersView getMembersView() {
+        return new MembersView(getVersion(), unmodifiableList(memberInfos));
     }
 
     final Address getConnectionEndpointOrThisAddress() {
