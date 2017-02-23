@@ -699,7 +699,7 @@ public class ClusterJoinManager {
     void setMastershipClaimInProgress() {
         clusterServiceLock.lock();
         try {
-            this.joinInProgress = true;
+            joinInProgress = true;
             joiningMembers.clear();
         } finally {
             clusterServiceLock.unlock();

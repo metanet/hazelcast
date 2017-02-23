@@ -249,7 +249,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     logger.warning(suspectedAddress + " is suspected to be dead");
                 }
 
-                if (clusterJoinManager.isJoinInProgress()) {
+                if (clusterJoinManager.isMastershipClaimInProgress()) {
                     return;
                 }
 
