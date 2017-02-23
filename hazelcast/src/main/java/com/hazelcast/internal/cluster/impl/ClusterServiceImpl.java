@@ -347,6 +347,10 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                                           Set<Address> addresses,
                                           Map<Address, Future<MembersView>> futures) {
         MembersView mostRecentMembersView = localMembersView;
+
+        // once an address is put into the futures map,
+        // we wait until either we suspect of that address or find its result in the futures.
+
         for (Address address : addresses) {
             futures.put(address, invokeFetchMemberListStateOperation(address));
         }
@@ -358,9 +362,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 Address address = e.getKey();
                 Future<MembersView> future = e.getValue();
 
-               if (!suspectedMembers.containsKey(address)) {
-                    // If we started to suspect a member after asking its member list, we don't need to wait for its result.
-                    // If there is no suspicion yet, we just keep waiting.
+                // If we started to suspect a member after asking its member list, we don't need to wait for its result.
+                if (!suspectedMembers.containsKey(address)) {
+                    // If there is no suspicion yet, we just keep waiting till we have a successful or failed result.
                    if (future.isDone()) {
                        try {
                            MembersView membersView = future.get();
@@ -368,13 +372,15 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                                mostRecentMembersView = membersView;
 
                                // If we discover a new member via a fetched member list, we should also ask for its members view.
-                               if (!checkFetchedMembersView(membersView, futures)) {
+                               if (checkFetchedMembersView(membersView, futures)) {
+                                   // there are some new addresses added to the futures map. lets wait for their results.
                                    done = false;
                                }
                            }
                        } catch (InterruptedException ignored) {
                            Thread.currentThread().interrupt();
                        } catch (ExecutionException ignored) {
+                           // we couldn't fetch the members view of this member. It will be removed from the cluster.
                        }
                    } else {
                        done = false;
@@ -397,13 +403,14 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     private boolean checkFetchedMembersView(MembersView membersView, Map<Address, Future<MembersView>> futures) {
-        boolean done = true;
+        boolean done = false;
 
         for (MemberInfo memberInfo : membersView.getMembers()) {
             Address memberAddress = memberInfo.getAddress();
-            if (!suspectedMembers.containsKey(memberAddress) && !futures.containsKey(memberAddress)) {
+            if (!(suspectedMembers.containsKey(memberAddress) || futures.containsKey(memberAddress))) {
+                // this is a new member for us. lets ask its members view
                 futures.put(memberAddress, invokeFetchMemberListStateOperation(memberAddress));
-                done = false;
+                done = true;
             }
         }
 
