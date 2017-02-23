@@ -361,24 +361,25 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                if (!suspectedMembers.containsKey(address)) {
                     // If we started to suspect a member after asking its member list, we don't need to wait for its result.
                     // If there is no suspicion yet, we just keep waiting.
+                   if (future.isDone()) {
+                       try {
+                           MembersView membersView = future.get();
+                           if (membersView.getVersion() > mostRecentMembersView.getVersion()) {
+                               mostRecentMembersView = membersView;
 
-                    done = false;
-                } else if (future.isDone()) {
-                   try {
-                       MembersView membersView = future.get();
-                       if (membersView.getVersion() > mostRecentMembersView.getVersion()) {
-                           mostRecentMembersView = membersView;
-
-                           // If we discover a new member via a fetched member list, we should also ask for its members view.
-                           if (!checkFetchedMembersView(membersView, futures)) {
-                               done = false;
+                               // If we discover a new member via a fetched member list, we should also ask for its members view.
+                               if (!checkFetchedMembersView(membersView, futures)) {
+                                   done = false;
+                               }
                            }
+                       } catch (InterruptedException ignored) {
+                           Thread.currentThread().interrupt();
+                       } catch (ExecutionException ignored) {
                        }
-                   } catch (InterruptedException ignored) {
-                       Thread.currentThread().interrupt();
-                   } catch (ExecutionException ignored) {
+                   } else {
+                       done = false;
                    }
-               }
+                }
             }
 
             if (done) {
