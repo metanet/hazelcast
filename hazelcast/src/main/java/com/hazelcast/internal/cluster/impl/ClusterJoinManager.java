@@ -115,13 +115,18 @@ public class ClusterJoinManager {
     }
 
     public boolean isJoinInProgress() {
-        if (joinInProgress) {
-            return true;
-        }
-
         clusterServiceLock.lock();
         try {
             return joinInProgress || !joiningMembers.isEmpty();
+        } finally {
+            clusterServiceLock.unlock();
+        }
+    }
+
+    public boolean isMastershipClaimInProgress() {
+        clusterServiceLock.lock();
+        try {
+            return joinInProgress && joiningMembers.isEmpty();
         } finally {
             clusterServiceLock.unlock();
         }
@@ -689,6 +694,25 @@ public class ClusterJoinManager {
             return true;
         }
         return false;
+    }
+
+    void setMastershipClaimInProgress() {
+        clusterServiceLock.lock();
+        try {
+            this.joinInProgress = true;
+            joiningMembers.clear();
+        } finally {
+            clusterServiceLock.unlock();
+        }
+    }
+
+    void setMastershipClaimCompleted() {
+        clusterServiceLock.lock();
+        try {
+            joinInProgress = false;
+        } finally {
+            clusterServiceLock.unlock();
+        }
     }
 
     private void startJoin() {

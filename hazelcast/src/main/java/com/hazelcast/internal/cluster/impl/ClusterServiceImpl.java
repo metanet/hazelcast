@@ -33,8 +33,9 @@ import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.MemberInfo;
-import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
+import com.hazelcast.internal.cluster.impl.operations.FetchMemberListStateOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
+import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
 import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOperation;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.Probe;
@@ -67,11 +68,20 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -104,6 +114,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     private final AtomicReference<MemberMap> membersRemovedInNotActiveStateRef
             = new AtomicReference<MemberMap>(MemberMap.empty());
+
+    private final ConcurrentMap<Address, Long> suspectedMembers = new ConcurrentHashMap<Address, Long>();
 
     private final Node node;
 
@@ -192,6 +204,10 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         nodeEngine.getOperationService().send(op, target);
     }
 
+    public boolean isMemberSuspected(Address address) {
+        return suspectedMembers.containsKey(address);
+    }
+
     public void removeAddress(Address deadAddress, String uuid, String reason) {
         lock.lock();
         try {
@@ -211,7 +227,190 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     // TODO [basri] implement this
     public void suspectAddress(Address suspectedAddress, String reason) {
-        removeAddress(suspectedAddress, reason);
+        if (!ensureMemberIsRemovable(suspectedAddress)) {
+            return;
+        }
+
+        MembersView localMemberView = null;
+        Set<Address> membersToAsk = new HashSet<Address>();
+        lock.lock();
+        try {
+            if (node.isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
+                removeAddress(suspectedAddress, reason);
+            } else {
+                if (suspectedMembers.containsKey(suspectedAddress)) {
+                    return;
+                }
+
+                suspectedMembers.put(suspectedAddress, 0l);
+                if (reason != null) {
+                    logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
+                } else {
+                    logger.warning(suspectedAddress + " is suspected to be dead");
+                }
+
+                if (clusterJoinManager.isJoinInProgress()) {
+                    return;
+                }
+
+                // TODO [basri] Check if I can claim mastership. If I suspect all members before me, I can claim it.
+
+                MemberMap memberMap = memberMapRef.get();
+                Collection<Address> members = memberMap.getAddresses();
+                Iterator<Address> it = members.iterator();
+                Address member = null;
+                while (it.hasNext()) {
+                    member = it.next();
+                    if (node.getThisAddress().equals(member)) {
+                        break;
+                    } else if (!isMemberSuspected(member)) {
+                        return;
+                    }
+                }
+
+                if (!node.getThisAddress().equals(member)) {
+                    logger.severe("I should have been the master but it seems I am not! Member list: " + members + " suspected: "
+                            + suspectedMembers.keySet());
+                    return;
+                }
+
+                // TODO [basri] should be here or after the master address is updated?
+                // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
+                clusterJoinManager.setMastershipClaimInProgress();
+
+                // TODO [basri] update master address
+                node.setMasterAddress(node.getThisAddress());
+
+                // TODO [basri] fix this
+                localMemberView = memberMap.toMembersView();
+                membersToAsk.add(member);
+                while (it.hasNext()) {
+                    member = it.next();
+                    if (!suspectedMembers.containsKey(member)) {
+                        membersToAsk.add(member);
+                    }
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
+        lock.lock();
+        try {
+            memberMapRef.set(newMembersView.toMemberMap());
+            // TODO [basri] what about membersRemovedWhileClusterNotActive ???
+            clusterJoinManager.setMastershipClaimCompleted();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private MembersView decideNewMembersView(MembersView localMembersView, Set<Address> addresses) {
+
+        Map<Address, Future<MembersView>> futures = new HashMap<Address, Future<MembersView>>();
+
+        MembersView mostRecentMembersView = fetchMembersViews(localMembersView, addresses, futures);
+
+        // within the most recent members view, select the members that have reported their members view successfully
+        int finalVersion = mostRecentMembersView.getVersion() + 1;
+        List<MemberInfo> finalMembers = new ArrayList<MemberInfo>();
+        for (MemberInfo memberInfo : mostRecentMembersView.getMembers()) {
+            Address address = memberInfo.getAddress();
+            Future<MembersView> membersViewFuture = futures.get(address);
+            // if a member is suspected during the mastership claim process, ignore its result
+            if (suspectedMembers.containsKey(address) || membersViewFuture == null || !membersViewFuture.isDone()) {
+                continue;
+            }
+
+            try {
+                membersViewFuture.get();
+                finalMembers.add(memberInfo);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException ignored) {
+            }
+        }
+
+        return new MembersView(finalVersion, finalMembers);
+    }
+
+    private MembersView fetchMembersViews(MembersView localMembersView,
+                                          Set<Address> addresses,
+                                          Map<Address, Future<MembersView>> futures) {
+        MembersView mostRecentMembersView = localMembersView;
+        for (Address address : addresses) {
+            futures.put(address, invokeFetchMemberListStateOperation(address));
+        }
+
+        while (true) {
+            boolean done = true;
+
+            for (Entry<Address, Future<MembersView>> e : new ArrayList<Entry<Address, Future<MembersView>>>(futures.entrySet())) {
+                Address address = e.getKey();
+                Future<MembersView> future = e.getValue();
+
+               if (!suspectedMembers.containsKey(address)) {
+                    // If we started to suspect a member after asking its member list, we don't need to wait for its result.
+                    // If there is no suspicion yet, we just keep waiting.
+
+                    done = false;
+                } else if (future.isDone()) {
+                   try {
+                       MembersView membersView = future.get();
+                       if (membersView.getVersion() > mostRecentMembersView.getVersion()) {
+                           mostRecentMembersView = membersView;
+
+                           // If we discover a new member via a fetched member list, we should also ask for its members view.
+                           if (!checkFetchedMembersView(membersView, futures)) {
+                               done = false;
+                           }
+                       }
+                   } catch (InterruptedException ignored) {
+                       Thread.currentThread().interrupt();
+                   } catch (ExecutionException ignored) {
+                   }
+               }
+            }
+
+            if (done) {
+                break;
+            } else {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        return mostRecentMembersView;
+    }
+
+    private boolean checkFetchedMembersView(MembersView membersView, Map<Address, Future<MembersView>> futures) {
+        boolean done = true;
+
+        for (MemberInfo memberInfo : membersView.getMembers()) {
+            Address memberAddress = memberInfo.getAddress();
+            if (!suspectedMembers.containsKey(memberAddress) && !futures.containsKey(memberAddress)) {
+                futures.put(memberAddress, invokeFetchMemberListStateOperation(memberAddress));
+                done = false;
+            }
+        }
+
+        return done;
+    }
+
+    private Future<MembersView> invokeFetchMemberListStateOperation(Address target) {
+        // TODO [basri] define config param
+        long fetchMemberListStateTimeoutMs = TimeUnit.SECONDS.toMillis(30);
+        FetchMemberListStateOperation op = new FetchMemberListStateOperation();
+        Future<MembersView> future = nodeEngine.getOperationService()
+                                               .createInvocationBuilder(SERVICE_NAME, op, target)
+                                               .setTryCount(Integer.MAX_VALUE)
+                                               .setCallTimeout(fetchMemberListStateTimeoutMs).invoke();
+
+        return future;
     }
 
     // TODO [basri] If this node is a slave, deadAddress can be only the master address. Is that so ????
