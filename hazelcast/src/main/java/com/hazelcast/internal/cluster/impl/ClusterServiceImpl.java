@@ -256,21 +256,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 // TODO [basri] Check if I can claim mastership. If I suspect all members before me, I can claim it.
 
                 MemberMap memberMap = memberMapRef.get();
-                Collection<Address> members = memberMap.getAddresses();
-                Iterator<Address> it = members.iterator();
-                Address member = null;
-                while (it.hasNext()) {
-                    member = it.next();
-                    if (node.getThisAddress().equals(member)) {
-                        break;
-                    } else if (!isMemberSuspected(member)) {
-                        return;
-                    }
-                }
-
-                if (!node.getThisAddress().equals(member)) {
-                    logger.severe("I should have been the master but it seems I am not! Member list: " + members + " suspected: "
-                            + suspectedMembers.keySet());
+                if (!shouldClaimMastership(memberMap)) {
                     return;
                 }
 
@@ -283,12 +269,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
                 // TODO [basri] fix this
                 localMemberView = memberMap.toMembersView();
-                membersToAsk.add(member);
-                while (it.hasNext()) {
-                    member = it.next();
-                    if (!suspectedMembers.containsKey(member)) {
-                        membersToAsk.add(member);
+                for (MemberImpl member : memberMap.getMembers()) {
+                    if (member.localMember() || suspectedMembers.containsKey(member.getAddress())) {
+                        continue;
                     }
+
+                    membersToAsk.add(member.getAddress());
                 }
             }
         } finally {
@@ -306,8 +292,29 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    private MembersView decideNewMembersView(MembersView localMembersView, Set<Address> addresses) {
+    private boolean shouldClaimMastership(MemberMap memberMap) {
+        Collection<Address> members = memberMap.getAddresses();
+        Iterator<Address> it = members.iterator();
+        Address member = null;
+        while (it.hasNext()) {
+            member = it.next();
+            if (node.getThisAddress().equals(member)) {
+                break;
+            } else if (!isMemberSuspected(member)) {
+                return false;
+            }
+        }
 
+        if (!node.getThisAddress().equals(member)) {
+            logger.severe("I should have been the master but it seems I am not! Member list: " + members + " suspected: "
+                    + suspectedMembers.keySet());
+            return false;
+        }
+
+        return true;
+    }
+
+    private MembersView decideNewMembersView(MembersView localMembersView, Set<Address> addresses) {
         Map<Address, Future<MembersView>> futures = new HashMap<Address, Future<MembersView>>();
 
         MembersView mostRecentMembersView = fetchMembersViews(localMembersView, addresses, futures);
@@ -319,6 +326,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             Address address = memberInfo.getAddress();
             Future<MembersView> membersViewFuture = futures.get(address);
             // if a member is suspected during the mastership claim process, ignore its result
+            // TODO [basri] could it be that `membersViewFuture == null` ?
             if (suspectedMembers.containsKey(address) || membersViewFuture == null || !membersViewFuture.isDone()) {
                 continue;
             }
