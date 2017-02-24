@@ -327,7 +327,7 @@ public class ClusterHeartbeatManager {
                     timeToString(now), timeToString(heartbeatTime));
             logger.warning(reason);
             // TODO [basri] If I am the master, I can remove the member. Otherwise, I can only suspect it because I rely on my local information
-            clusterService.suspectAddress(member.getAddress(), reason);
+            clusterService.suspectAddress(member.getAddress(), reason, true);
             return true;
         }
         if (logger.isFineEnabled() && (now - heartbeatTime) > heartbeatIntervalMillis * HEART_BEAT_INTERVAL_FACTOR) {
@@ -441,7 +441,7 @@ public class ClusterHeartbeatManager {
                     String reason = format("%s could not ping %s", node.getThisAddress(), address);
                     logger.warning(reason);
                     // TODO [basri] If I am the master, I can remove the member. Otherwise, I should only suspect it
-                    clusterService.suspectAddress(address, reason);
+                    clusterService.suspectAddress(address, reason, true);
                 } catch (Throwable ignored) {
                     EmptyStatement.ignore(ignored);
                 }

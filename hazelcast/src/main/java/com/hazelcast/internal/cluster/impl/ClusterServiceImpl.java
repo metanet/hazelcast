@@ -233,12 +233,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public void suspectAddress(Address suspectedAddress, String reason) {
+    public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(suspectedAddress)) {
             return;
         }
 
-        boolean claimMastership = doSuspectAddress(suspectedAddress, reason);
+        boolean claimMastership = doSuspectAddress(suspectedAddress, reason, destroyConnection);
         if (!claimMastership) {
             return;
         }
@@ -266,11 +266,11 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    private boolean doSuspectAddress(Address suspectedAddress, String reason) {
+    private boolean doSuspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
         lock.lock();
         try {
             if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
-                removeAddress(suspectedAddress, reason);
+                doRemoveAddress(suspectedAddress, reason, destroyConnection);
                 return false;
             } else {
                 if (getMember(suspectedAddress) == null || suspectedMembers.containsKey(suspectedAddress)) {
@@ -282,6 +282,11 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
                 } else {
                     logger.warning(suspectedAddress + " is suspected to be dead");
+                }
+
+                Connection conn = node.connectionManager.getConnection(suspectedAddress);
+                if (destroyConnection && conn != null) {
+                    conn.close(reason, null);
                 }
 
                 if (clusterJoinManager.isMastershipClaimInProgress()) {
