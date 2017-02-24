@@ -55,6 +55,7 @@ import com.hazelcast.spi.MembershipServiceEvent;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.TransactionalService;
+import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.transaction.TransactionOptions;
@@ -88,7 +89,9 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static com.hazelcast.cluster.memberselector.MemberSelectors.NON_LOCAL_MEMBER_SELECTOR;
+import static com.hazelcast.util.Preconditions.checkFalse;
 import static com.hazelcast.util.Preconditions.checkNotNull;
+import static com.hazelcast.util.Preconditions.checkTrue;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
 
@@ -253,12 +256,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     return;
                 }
 
-                // TODO [basri] Check if I can claim mastership. If I suspect all members before me, I can claim it.
-
                 MemberMap memberMap = memberMapRef.get();
                 if (!shouldClaimMastership(memberMap)) {
                     return;
                 }
+
+                logger.info("Claiming mastership...");
 
                 // TODO [basri] should be here or after the master address is updated?
                 // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
@@ -285,30 +288,26 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         lock.lock();
         try {
             memberMapRef.set(newMembersView.toMemberMap());
+            // TODO [basri] publish the new member list
             // TODO [basri] what about membersRemovedWhileClusterNotActive ???
-            clusterJoinManager.setMastershipClaimCompleted();
+            clusterJoinManager.reset();
+            logger.info("Mastership is declared upon: " + newMembersView);
         } finally {
             lock.unlock();
         }
     }
 
     private boolean shouldClaimMastership(MemberMap memberMap) {
-        Collection<Address> members = memberMap.getAddresses();
-        Iterator<Address> it = members.iterator();
-        Address member = null;
-        while (it.hasNext()) {
-            member = it.next();
-            if (node.getThisAddress().equals(member)) {
-                break;
-            } else if (!isMemberSuspected(member)) {
-                return false;
-            }
+        if (node.isMaster()) {
+            return false;
         }
 
-        if (!node.getThisAddress().equals(member)) {
-            logger.severe("I should have been the master but it seems I am not! Member list: " + members + " suspected: "
-                    + suspectedMembers.keySet());
-            return false;
+        // TODO [basri] what if I am shutting down?
+
+        for (MemberImpl m : memberMap.toMembersViewBeforeMember(node.getThisAddress())) {
+            if (!isMemberSuspected(m.getAddress())) {
+                return false;
+            }
         }
 
         return true;
@@ -420,13 +419,63 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     private Future<MembersView> invokeFetchMemberListStateOperation(Address target) {
         // TODO [basri] define config param
         long fetchMemberListStateTimeoutMs = TimeUnit.SECONDS.toMillis(30);
-        FetchMemberListStateOperation op = new FetchMemberListStateOperation();
+        FetchMemberListStateOperation op = new FetchMemberListStateOperation(node.getThisUuid());
         Future<MembersView> future = nodeEngine.getOperationService()
                                                .createInvocationBuilder(SERVICE_NAME, op, target)
                                                .setTryCount(Integer.MAX_VALUE)
                                                .setCallTimeout(fetchMemberListStateTimeoutMs).invoke();
 
         return future;
+    }
+
+    public MembersView acceptMastershipClaim(Address targetAddress, String targetUuid) {
+        // TODO [basri] check targetAddress is not me DONE
+        // TODO [basri] check I am not master DONE
+        // TODO [basri] check target address is not current master DONE
+        // TODO [basri] target address is a valid member with its uuid DONE
+        // TODO [basri] check that I suspect everyone before the target address DONE
+        // TODO [basri] check that target address is not suspected DONE
+
+        checkNotNull(targetAddress);
+        checkNotNull(targetUuid);
+
+        lock.lock();
+        try {
+            checkFalse(node.getThisAddress().equals(targetAddress), "cannot accept my own mastership claim!");
+            checkFalse(node.isMaster(),
+                    targetAddress + " claims mastership but this node is master!");
+            checkFalse(targetAddress.equals(node.getMasterAddress()),
+                    targetAddress + " claims mastership but it is already the known master!");
+            MemberImpl newMaster = getMember(targetAddress);
+            checkTrue(newMaster != null ,
+                    targetAddress + " claims mastership but it is not a member!");
+            checkTrue(newMaster.getUuid().equals(targetUuid),
+                    targetAddress + " claims mastership but it has a different uuid: " + targetUuid
+                            + " than its known uuid: " + newMaster.getUuid() );
+
+            MemberMap memberMap = memberMapRef.get();
+            if (!shouldAcceptMastership(memberMap, targetAddress)) {
+                throw new RetryableHazelcastException();
+            }
+
+            logger.info("Mastership of " + targetAddress + " is accepted.");
+            node.setMasterAddress(newMaster.getAddress());
+
+            return memberMap.toMembersViewWithFirstMember(newMaster);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // mastership is accepted when all members before the target is suspected, and target is not suspected
+    private boolean shouldAcceptMastership(MemberMap memberMap, Address target) {
+        for (MemberImpl member : memberMap.toMembersViewBeforeMember(target)) {
+            if (!isMemberSuspected(member.getAddress())) {
+                return false;
+            }
+        }
+
+        return !suspectedMembers.containsKey(target);
     }
 
     // TODO [basri] If this node is a slave, deadAddress can be only the master address. Is that so ????

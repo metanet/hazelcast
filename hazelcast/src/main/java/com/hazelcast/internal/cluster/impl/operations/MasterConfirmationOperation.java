@@ -54,6 +54,7 @@ public class MasterConfirmationOperation extends AbstractClusterOperation {
             OperationService operationService = getNodeEngine().getOperationService();
             // TODO [basri] This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
             // TODO [basri] So, it should remove me from its cluster and update its master address
+            // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership
             int memberListVersion = clusterService.getMemberListVersion();
             operationService.send(new MemberRemoveOperation(memberListVersion, clusterService.getThisAddress()), endpoint);
         } else {

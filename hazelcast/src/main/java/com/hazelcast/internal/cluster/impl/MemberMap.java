@@ -19,14 +19,18 @@ package com.hazelcast.internal.cluster.impl;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.nio.Address;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.hazelcast.util.Preconditions.checkNotNull;
 import static java.util.Collections.singletonMap;
 import static java.util.Collections.unmodifiableCollection;
 
@@ -197,4 +201,44 @@ final class MemberMap {
     MembersView toMembersView() {
         return MembersView.createNew(version, members);
     }
+
+    MembersView toMembersViewWithFirstMember(MemberImpl first) {
+        final List<MemberImpl> filtered = new ArrayList<MemberImpl>();
+        Iterator<MemberImpl> it = this.members.iterator();
+        MemberImpl member = null;
+        while (it.hasNext()) {
+            MemberImpl m = it.next();
+            if (m.equals(first)) {
+                member = m;
+                break;
+            }
+        }
+
+        checkNotNull(member, "Member: " + first + " not found in member list!");
+
+        filtered.add(member);
+        while (it.hasNext()) {
+            filtered.add(it.next());
+        }
+
+        return MembersView.createNew(version, filtered);
+    }
+
+    Set<MemberImpl> toMembersViewBeforeMember(Address member) {
+        if (!addressToMemberMap.containsKey(member)) {
+            throw new IllegalArgumentException(member + " is not in the member list!");
+        }
+
+        final Set<MemberImpl> before = new LinkedHashSet<MemberImpl>();
+        for (MemberImpl m : this.members) {
+            if (m.getAddress().equals(member)) {
+                break;
+            } else {
+                before.add(m);
+            }
+        }
+
+        return before;
+    }
+
 }

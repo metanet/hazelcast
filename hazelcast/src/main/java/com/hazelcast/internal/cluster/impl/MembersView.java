@@ -138,4 +138,10 @@ public final class MembersView {
         }
         return MemberMap.createNew(version, m);
     }
+
+    @Override
+    public String toString() {
+        return "MembersView{" + "version=" + version + ", members=" + members + '}';
+    }
+
 }

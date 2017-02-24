@@ -706,15 +706,6 @@ public class ClusterJoinManager {
         }
     }
 
-    void setMastershipClaimCompleted() {
-        clusterServiceLock.lock();
-        try {
-            joinInProgress = false;
-        } finally {
-            clusterServiceLock.unlock();
-        }
-    }
-
     private void startJoin() {
         logger.fine("Starting join...");
         clusterServiceLock.lock();
