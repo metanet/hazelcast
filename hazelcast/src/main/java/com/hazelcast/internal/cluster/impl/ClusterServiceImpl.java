@@ -273,7 +273,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 removeAddress(suspectedAddress, reason);
                 return false;
             } else {
-                if (suspectedMembers.containsKey(suspectedAddress)) {
+                if (getMember(suspectedAddress) == null || suspectedMembers.containsKey(suspectedAddress)) {
                     return false;
                 }
 
