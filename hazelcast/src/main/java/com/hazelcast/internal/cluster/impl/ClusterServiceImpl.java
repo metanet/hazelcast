@@ -676,6 +676,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             Address address = memberInfo.getAddress();
             MemberImpl member = currentMemberMap.getMember(address);
             if (member != null && member.getUuid().equals(memberInfo.getUuid())) {
+                members[memberIndex++] = member;
                 continue;
             }
 
