@@ -19,6 +19,7 @@ package com.hazelcast.internal.cluster.impl.operations;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.impl.Versioned;
+import com.hazelcast.version.Version;
 
 import java.io.IOException;
 
@@ -46,8 +47,10 @@ abstract class VersionedClusterOperation extends AbstractClusterOperation implem
     protected final void writeInternal(ObjectDataOutput out) throws IOException {
         writeInternalImpl(out);
 
-        if (out.getVersion().isGreaterOrEqual(V3_9)) {
-            out.writeInt(version);
+        Version version = out.getVersion();
+        // in OSS, version is unknown
+        if (version.isUnknown() || version.isGreaterOrEqual(V3_9)) {
+            out.writeInt(this.version);
         }
     }
 
@@ -57,8 +60,10 @@ abstract class VersionedClusterOperation extends AbstractClusterOperation implem
     protected final void readInternal(ObjectDataInput in) throws IOException {
         readInternalImpl(in);
 
-        if (in.getVersion().isGreaterOrEqual(V3_9)) {
-            version = in.readInt();
+        Version version = in.getVersion();
+        // in OSS, version is unknown
+        if (version.isUnknown() || version.isGreaterOrEqual(V3_9)) {
+            this.version = in.readInt();
         }
     }
 
