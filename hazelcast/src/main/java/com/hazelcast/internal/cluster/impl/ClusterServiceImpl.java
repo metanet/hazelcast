@@ -233,60 +233,25 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    // TODO [basri] implement this
     public void suspectAddress(Address suspectedAddress, String reason) {
         if (!ensureMemberIsRemovable(suspectedAddress)) {
             return;
         }
 
-        MembersView localMemberView = null;
+        boolean claimMastership = doSuspectAddress(suspectedAddress, reason);
+        if (!claimMastership) {
+            return;
+        }
+
+        MemberMap memberMap = getMemberMap();
+        MembersView localMemberView = memberMap.toMembersView();
         Set<Address> membersToAsk = new HashSet<Address>();
-        lock.lock();
-        try {
-            if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
-                removeAddress(suspectedAddress, reason);
-            } else {
-                if (suspectedMembers.containsKey(suspectedAddress)) {
-                    return;
-                }
-
-                suspectedMembers.put(suspectedAddress, 0L);
-                if (reason != null) {
-                    logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
-                } else {
-                    logger.warning(suspectedAddress + " is suspected to be dead");
-                }
-
-                if (clusterJoinManager.isMastershipClaimInProgress()) {
-                    return;
-                }
-
-                MemberMap memberMap = memberMapRef.get();
-                if (!shouldClaimMastership(memberMap)) {
-                    return;
-                }
-
-                logger.info("Claiming mastership...");
-
-                // TODO [basri] should be here or after the master address is updated?
-                // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
-                clusterJoinManager.setMastershipClaimInProgress();
-
-                // TODO [basri] update master address
-                node.setMasterAddress(getThisAddress());
-
-                // TODO [basri] fix this
-                localMemberView = memberMap.toMembersView();
-                for (MemberImpl member : memberMap.getMembers()) {
-                    if (member.localMember() || suspectedMembers.containsKey(member.getAddress())) {
-                        continue;
-                    }
-
-                    membersToAsk.add(member.getAddress());
-                }
+        for (MemberImpl member : memberMap.getMembers()) {
+            if (member.localMember() || suspectedMembers.containsKey(member.getAddress())) {
+                continue;
             }
-        } finally {
-            lock.unlock();
+
+            membersToAsk.add(member.getAddress());
         }
 
         MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
@@ -301,6 +266,49 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
+    private boolean doSuspectAddress(Address suspectedAddress, String reason) {
+        lock.lock();
+        try {
+            if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
+                removeAddress(suspectedAddress, reason);
+                return false;
+            } else {
+                if (suspectedMembers.containsKey(suspectedAddress)) {
+                    return false;
+                }
+
+                suspectedMembers.put(suspectedAddress, 0L);
+                if (reason != null) {
+                    logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
+                } else {
+                    logger.warning(suspectedAddress + " is suspected to be dead");
+                }
+
+                if (clusterJoinManager.isMastershipClaimInProgress()) {
+                    return false;
+                }
+
+                MemberMap memberMap = memberMapRef.get();
+                if (!shouldClaimMastership(memberMap)) {
+                    return false;
+                }
+
+                logger.info("Claiming mastership...");
+
+                // TODO [basri] should be here or after the master address is updated?
+                // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
+                clusterJoinManager.setMastershipClaimInProgress();
+
+                // TODO [basri] update master address
+                node.setMasterAddress(getThisAddress());
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        return true;
+    }
+
     private boolean shouldClaimMastership(MemberMap memberMap) {
         if (node.isMaster()) {
             return false;
@@ -308,7 +316,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
         // TODO [basri] what if I am shutting down?
 
-        for (MemberImpl m : memberMap.toMembersViewBeforeMember(node.getThisAddress())) {
+        for (MemberImpl m : memberMap.getMembersBeforeMember(node.getThisAddress())) {
             if (!isMemberSuspected(m.getAddress())) {
                 return false;
             }
@@ -491,7 +499,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             logger.info("Mastership of " + targetAddress + " is accepted.");
             node.setMasterAddress(newMaster.getAddress());
 
-            return memberMap.toMembersViewWithFirstMember(newMaster);
+            Set<MemberImpl> members = memberMap.getMembersAfterFirstMember(newMaster);
+            return MembersView.createNew(memberMap.getVersion(), members);
         } finally {
             lock.unlock();
         }
@@ -499,7 +508,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     // mastership is accepted when all members before the target is suspected, and target is not suspected
     private boolean shouldAcceptMastership(MemberMap memberMap, Address target) {
-        for (MemberImpl member : memberMap.toMembersViewBeforeMember(target)) {
+        for (MemberImpl member : memberMap.getMembersBeforeMember(target)) {
             if (!isMemberSuspected(member.getAddress())) {
                 return false;
             }
