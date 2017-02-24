@@ -18,11 +18,14 @@ package com.hazelcast.internal.cluster.impl;
 
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.internal.cluster.MemberInfo;
+import com.hazelcast.nio.Address;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static java.util.Collections.singletonList;
 import static java.util.Collections.unmodifiableList;
@@ -139,9 +142,16 @@ public final class MembersView {
         return MemberMap.createNew(version, m);
     }
 
+    public Set<Address> getAddresses() {
+        Set<Address> addresses = new HashSet<Address>(members.size());
+        for (MemberInfo member : members) {
+            addresses.add(member.getAddress());
+        }
+        return addresses;
+    }
+
     @Override
     public String toString() {
         return "MembersView{" + "version=" + version + ", members=" + members + '}';
     }
-
 }

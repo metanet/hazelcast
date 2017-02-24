@@ -33,10 +33,12 @@ import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.MemberInfo;
+import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.FetchMemberListStateOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
 import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOperation;
+import com.hazelcast.internal.cluster.impl.operations.TriggerMemberListPublishOperation;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
@@ -106,6 +108,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     private static final int DEFAULT_MERGE_RUN_DELAY_MILLIS = 100;
     private static final int CLUSTER_EXECUTOR_QUEUE_CAPACITY = 1000;
     private static final long CLUSTER_SHUTDOWN_SLEEP_DURATION_IN_MILLIS = 1000;
+    private static final boolean ASSERTION_ENABLED = ClusterServiceImpl.class.desiredAssertionStatus();
 
     private static final String MEMBERSHIP_EVENT_EXECUTOR_NAME = "hz:cluster:event";
 
@@ -245,7 +248,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     return;
                 }
 
-                suspectedMembers.put(suspectedAddress, 0l);
+                suspectedMembers.put(suspectedAddress, 0L);
                 if (reason != null) {
                     logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
                 } else {
@@ -592,13 +595,6 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 //        return memberInfos;
 //    }
 //
-//    static Set<MemberInfo> createMemberInfoSet(Collection<MemberImpl> members) {
-//        Set<MemberInfo> memberInfos = new HashSet<MemberInfo>();
-//        for (MemberImpl member : members) {
-//            memberInfos.add(new MemberInfo(member));
-//        }
-//        return memberInfos;
-//    }
 
     public boolean finalizeJoin(MembersView membersView, Address callerAddress, String clusterId,
                                 ClusterState clusterState, Version clusterVersion,
@@ -750,47 +746,88 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     private boolean shouldProcessMemberUpdate(MembersView membersView) {
-        // TODO: log
-        return membersView.getVersion() > getMemberListVersion();
+        if (getClusterVersion().isLessThan(Versions.V3_9)) {
+            return shouldProcessMemberUpdate(getMemberMap(), membersView.getMembers());
+        }
+
+        int memberListVersion = getMemberListVersion();
+
+        if (memberListVersion > membersView.getVersion()) {
+            logger.fine("Received an older member update, ignoring... Current version: "
+                    + memberListVersion + ", Received version: " + membersView.getVersion());
+            return false;
+            
+        }
+
+        if (memberListVersion == membersView.getVersion()) {
+            if (ASSERTION_ENABLED) {
+                MemberMap memberMap = getMemberMap();
+                Collection<Address> currentAddresses = memberMap.getAddresses();
+                Collection<Address> newAddresses = membersView.getAddresses();
+
+                assert currentAddresses.size() == newAddresses.size()
+                        && newAddresses.containsAll(currentAddresses)
+                        : "Member view versions are same but new member view doesn't match the current!"
+                        + " Current: " + memberMap.toMembersView() + ", New: " + membersView;
+            }
+
+            logger.fine("Received a periodic member update, ignoring... Version: " + memberListVersion);
+            return false;
+        }
+
+        return true;
     }
 
-//    private boolean shouldProcessMemberUpdate(MemberMap currentMembers,
-//                                              Collection<MemberInfo> newMemberInfos) {
-//        int currentMembersSize = currentMembers.size();
-//        int newMembersSize = newMemberInfos.size();
-//
-//        if (currentMembersSize > newMembersSize) {
-//            logger.warning("Received an older member update, no need to process...");
-//            nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
-//            return false;
-//        }
-//
-//        // member-update process only accepts new member updates
-//        if (currentMembersSize == newMembersSize) {
-//            Set<MemberInfo> currentMemberInfos = createMemberInfoSet(currentMembers.getMembers());
-//            if (currentMemberInfos.containsAll(newMemberInfos)) {
-//                logger.fine("Received a periodic member update, no need to process...");
-//            } else {
-//                logger.warning("Received an inconsistent member update "
-//                        + "which contains new members and removes some of the current members! "
-//                        + "Ignoring and requesting a new member update...");
-//                nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
-//            }
-//            return false;
-//        }
-//
-//        Set<MemberInfo> currentMemberInfos = createMemberInfoSet(currentMembers.getMembers());
-//        currentMemberInfos.removeAll(newMemberInfos);
-//        if (currentMemberInfos.isEmpty()) {
-//            return true;
-//        } else {
-//            logger.warning("Received an inconsistent member update."
-//                    + " It has more members but also removes some of the current members!"
-//                    + " Ignoring and requesting a new member update...");
-//            nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
-//            return false;
-//        }
-//    }
+    /**
+     * @deprecated in 3.9
+     */
+    @Deprecated
+    private boolean shouldProcessMemberUpdate(MemberMap currentMembers,
+                                              Collection<MemberInfo> newMemberInfos) {
+        int currentMembersSize = currentMembers.size();
+        int newMembersSize = newMemberInfos.size();
+
+        if (currentMembersSize > newMembersSize) {
+            logger.warning("Received an older member update, no need to process...");
+            nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
+            return false;
+        }
+
+        // member-update process only accepts new member updates
+        if (currentMembersSize == newMembersSize) {
+            Set<MemberInfo> currentMemberInfos = createMemberInfoSet(currentMembers.getMembers());
+            if (currentMemberInfos.containsAll(newMemberInfos)) {
+                logger.fine("Received a periodic member update, no need to process...");
+            } else {
+                logger.warning("Received an inconsistent member update "
+                        + "which contains new members and removes some of the current members! "
+                        + "Ignoring and requesting a new member update...");
+                nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
+            }
+            return false;
+        }
+
+        Set<MemberInfo> currentMemberInfos = createMemberInfoSet(currentMembers.getMembers());
+        currentMemberInfos.removeAll(newMemberInfos);
+        if (currentMemberInfos.isEmpty()) {
+            return true;
+        } else {
+            logger.warning("Received an inconsistent member update."
+                    + " It has more members but also removes some of the current members!"
+                    + " Ignoring and requesting a new member update...");
+            nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
+            return false;
+        }
+    }
+
+    private static Set<MemberInfo> createMemberInfoSet(Collection<MemberImpl> members) {
+        Set<MemberInfo> memberInfos = new HashSet<MemberInfo>();
+        for (MemberImpl member : members) {
+            memberInfos.add(new MemberInfo(member));
+        }
+        return memberInfos;
+    }
+
 
     private void sendMembershipEvents(Collection<MemberImpl> currentMembers, Collection<MemberImpl> newMembers) {
         Set<Member> eventMembers = new LinkedHashSet<Member>(currentMembers);
@@ -841,7 +878,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     @Override
     public void connectionRemoved(Connection connection) {
         if (logger.isFineEnabled()) {
-            logger.fine("Removed connection " + connection.getEndPoint());
+            logger.fine("Removed connection to " + connection.getEndPoint());
         }
         if (!node.joined()) {
             Address masterAddress = node.getMasterAddress();
@@ -860,7 +897,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             return;
         }
         if (logger.isFineEnabled()) {
-            logger.fine("Updating members " + Arrays.toString(members));
+            logger.fine("Setting members " + Arrays.toString(members) + ", version: " + version);
         }
         lock.lock();
         try {
@@ -886,7 +923,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                         logger.fine(deadMember + " is dead, sending remove to all other members...");
                     }
                     // TODO [basri] I will publish a new member list
-                    sendMemberRemoveOperation(deadMember);
+                    sendMemberRemoveOperation(getMemberListVersion(), deadMember);
                 }
 
                 handleMemberRemove(newMembers, deadMember);
@@ -1009,11 +1046,11 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    private void sendMemberRemoveOperation(Member deadMember) {
+    private void sendMemberRemoveOperation(int memberListVersion, Member deadMember) {
         for (Member member : getMembers()) {
             Address address = member.getAddress();
             if (!thisAddress.equals(address) && !address.equals(deadMember.getAddress())) {
-                MemberRemoveOperation op = new MemberRemoveOperation(0, deadMember.getAddress(), deadMember.getUuid());
+                MemberRemoveOperation op = new MemberRemoveOperation(memberListVersion, deadMember.getAddress(), deadMember.getUuid());
                 nodeEngine.getOperationService().send(op, address);
             }
         }
@@ -1021,7 +1058,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     // TODO [basri] think about this part. I am explicitly saying that I am leaving the cluster.
     public void sendShutdownMessage() {
-        sendMemberRemoveOperation(getLocalMember());
+        sendMemberRemoveOperation(getMemberListVersion(), getLocalMember());
     }
 
     private void sendMembershipEventNotifications(MemberImpl member, Set<Member> members, final boolean added) {

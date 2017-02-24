@@ -96,7 +96,7 @@ public class ClusterJoinManager {
 
     private long firstJoinRequest;
     private long timeToStartJoin;
-    private boolean joinInProgress;
+    private volatile boolean joinInProgress;
 
     public ClusterJoinManager(Node node, ClusterServiceImpl clusterService, Lock clusterServiceLock) {
         this.node = node;
@@ -114,7 +114,11 @@ public class ClusterJoinManager {
                 Level.WARNING);
     }
 
-    public boolean isJoinInProgress() {
+    boolean isJoinInProgress() {
+        if (joinInProgress) {
+            return true;
+        }
+        
         clusterServiceLock.lock();
         try {
             return joinInProgress || !joiningMembers.isEmpty();
@@ -123,7 +127,7 @@ public class ClusterJoinManager {
         }
     }
 
-    public boolean isMastershipClaimInProgress() {
+    boolean isMastershipClaimInProgress() {
         clusterServiceLock.lock();
         try {
             return joinInProgress && joiningMembers.isEmpty();
