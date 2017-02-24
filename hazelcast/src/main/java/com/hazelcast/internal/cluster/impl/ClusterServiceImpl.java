@@ -939,8 +939,19 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         lock.lock();
         try {
             memberMapRef.set(MemberMap.createNew(version, members));
+            retainSuspectedMembers();
         } finally {
             lock.unlock();
+        }
+    }
+
+    private void retainSuspectedMembers() {
+        Iterator<Entry<Address, Long>> it = suspectedMembers.entrySet().iterator();
+        while (it.hasNext()) {
+            Address suspectedAddress = it.next().getKey();
+            if (getMember(suspectedAddress) == null) {
+                it.remove();
+            }
         }
     }
 
