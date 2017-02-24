@@ -291,7 +291,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
         lock.lock();
         try {
-            memberMapRef.set(newMembersView.toMemberMap());
+            updateMembers(newMembersView, thisAddress);
             // TODO [basri] publish the new member list
             // TODO [basri] what about membersRemovedWhileClusterNotActive ???
             clusterJoinManager.reset();
