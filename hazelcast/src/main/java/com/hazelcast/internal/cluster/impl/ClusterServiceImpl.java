@@ -291,8 +291,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
         lock.lock();
         try {
-            updateMembers(newMembersView, thisAddress);
-            // TODO [basri] publish the new member list
+            doUpdateMembers(newMembersView);
             // TODO [basri] what about membersRemovedWhileClusterNotActive ???
             clusterJoinManager.reset();
             logger.info("Mastership is declared upon: " + newMembersView);
