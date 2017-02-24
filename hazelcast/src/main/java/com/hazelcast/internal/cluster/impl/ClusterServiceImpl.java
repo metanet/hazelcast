@@ -56,6 +56,7 @@ import com.hazelcast.spi.MembershipAwareService;
 import com.hazelcast.spi.MembershipServiceEvent;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
+import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.TransactionalService;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
@@ -241,7 +242,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         Set<Address> membersToAsk = new HashSet<Address>();
         lock.lock();
         try {
-            if (node.isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
+            if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
                 removeAddress(suspectedAddress, reason);
             } else {
                 if (suspectedMembers.containsKey(suspectedAddress)) {
@@ -271,7 +272,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 clusterJoinManager.setMastershipClaimInProgress();
 
                 // TODO [basri] update master address
-                node.setMasterAddress(node.getThisAddress());
+                node.setMasterAddress(getThisAddress());
 
                 // TODO [basri] fix this
                 localMemberView = memberMap.toMembersView();
@@ -431,7 +432,33 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return future;
     }
 
-    public MembersView acceptMastershipClaim(Address targetAddress, String targetUuid) {
+    public void handleMasterConfirmation(Address endpoint, long timestamp) {
+        lock.lock();
+        try {
+            final MemberImpl member = getMember(endpoint);
+            if (member == null) {
+                if (!(isMaster() || clusterJoinManager.isMastershipClaimInProgress())) {
+                    logger.warning("MasterConfirmation has been received from " + endpoint
+                            + ", but it is not a member of this cluster!");
+                    OperationService operationService = getNodeEngine().getOperationService();
+                    // TODO [basri] This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
+                    // TODO [basri] So, it should remove me from its cluster and update its master address
+                    // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership
+                    int memberListVersion = getMemberListVersion();
+                    operationService.send(new MemberRemoveOperation(memberListVersion, getThisAddress()), endpoint);
+                }
+            } else if (isMaster()) {
+                clusterHeartbeatManager.acceptMasterConfirmation(member, timestamp);
+            } else {
+                logger.warning(endpoint + " has sent MasterConfirmation, but this node is not master!");
+                // it will be kicked from the cluster by the correct master because of master confirmation timeout
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public MembersView handleMastershipClaim(Address targetAddress, String targetUuid) {
         // TODO [basri] check targetAddress is not me DONE
         // TODO [basri] check I am not master DONE
         // TODO [basri] check target address is not current master DONE
@@ -444,10 +471,10 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
         lock.lock();
         try {
-            checkFalse(node.getThisAddress().equals(targetAddress), "cannot accept my own mastership claim!");
-            checkFalse(node.isMaster(),
+            checkFalse(getThisAddress().equals(targetAddress), "cannot accept my own mastership claim!");
+            checkFalse(isMaster(),
                     targetAddress + " claims mastership but this node is master!");
-            checkFalse(targetAddress.equals(node.getMasterAddress()),
+            checkFalse(targetAddress.equals(getMasterAddress()),
                     targetAddress + " claims mastership but it is already the known master!");
             MemberImpl newMaster = getMember(targetAddress);
             checkTrue(newMaster != null ,

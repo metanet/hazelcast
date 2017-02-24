@@ -25,7 +25,7 @@ public class FetchMemberListStateOperation extends AbstractClusterOperation impl
     @Override
     public void run() throws Exception {
         ClusterServiceImpl service = getService();
-        membersView = service.acceptMastershipClaim(getCallerAddress(), masterUuid);
+        membersView = service.handleMastershipClaim(getCallerAddress(), masterUuid);
     }
 
     @Override
