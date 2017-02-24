@@ -71,7 +71,7 @@ final class MemberMap {
      * @return singleton {@code MemberMap}
      */
     static MemberMap singleton(MemberImpl member) {
-        return new MemberMap(0, singletonMap(member.getAddress(), member), singletonMap(member.getUuid(), member));
+        return new MemberMap(1, singletonMap(member.getAddress(), member), singletonMap(member.getUuid(), member));
     }
 
     /**

@@ -164,7 +164,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     private void registerThisMember() {
         MemberImpl thisMember = node.getLocalMember();
-        setMembers(0, thisMember);
+//        setMembers(1, thisMember);
+        memberMapRef.set(MemberMap.singleton(thisMember));
     }
 
     private void registerMetrics() {

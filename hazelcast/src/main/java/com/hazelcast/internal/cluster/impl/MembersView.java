@@ -59,7 +59,7 @@ public final class MembersView {
      * @return singleton {@code MemberMap}
      */
     static MembersView singleton(MemberImpl member) {
-        return new MembersView(0, singletonList(new MemberInfo(member)));
+        return new MembersView(1, singletonList(new MemberInfo(member)));
     }
 
 //    /**

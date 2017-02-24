@@ -16,22 +16,35 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.instance.MemberImpl;
+import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
+import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
 public class MembershipUpdateTest extends HazelcastTestSupport {
 
+    private TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
+
     // TODO: add membership update tests
-    // - sequential member join
-    // - concurrent member join
-    // - sequential member join and removal
-    // - concurrent member join and removal
+    // ✔ sequential member join
+    // ✔ concurrent member join
+    // ✔ sequential member join and removal
+    // ✔ concurrent member join and removal
     // - existing members missing member updates (join), convergence
     // - existing member missing member removal, then receives periodic member publish
     // - existing member missing member removal, then receives new member join update
@@ -41,5 +54,215 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
     // - new member receiving a finalize join that's not containing itself
     // - byzantine member updates published
     // - so on...
-    
+
+    @Test
+    public void sequential_member_join() {
+        HazelcastInstance[] instances = new HazelcastInstance[4];
+        for (int i = 0; i < instances.length; i++) {
+            instances[i] = factory.newHazelcastInstance();
+        }
+
+        for (HazelcastInstance instance : instances) {
+            assertClusterSizeEventually(instances.length, instance);
+        }
+
+        MemberMap referenceMemberMap = getMemberMap(instances[0]);
+        // version = number of started members
+        assertEquals(instances.length, referenceMemberMap.getVersion());
+
+        for (HazelcastInstance instance : instances) {
+            MemberMap memberMap = getMemberMap(instance);
+            assertMemberViewsAreSame(referenceMemberMap, memberMap);
+        }
+    }
+
+    @Test
+    public void parallel_member_join() {
+        final AtomicReferenceArray<HazelcastInstance> instances = new AtomicReferenceArray<HazelcastInstance>(4);
+        for (int i = 0; i < instances.length(); i++) {
+            final int ix = i;
+            spawn(new Runnable() {
+                @Override
+                public void run() {
+                    instances.set(ix, factory.newHazelcastInstance());
+                }
+            });
+        }
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                for (int i = 0; i < instances.length(); i++) {
+                    HazelcastInstance instance = instances.get(i);
+                    assertNotNull(instance);
+                    assertClusterSize(instances.length(), instance);
+                }
+            }
+        });
+
+        MemberMap referenceMemberMap = getMemberMap(instances.get(0));
+        // version = number of started members
+        assertEquals(instances.length(), referenceMemberMap.getVersion());
+
+        for (int i = 0; i < instances.length(); i++) {
+            HazelcastInstance instance = instances.get(i);
+            MemberMap memberMap = getMemberMap(instance);
+            assertMemberViewsAreSame(referenceMemberMap, memberMap);
+        }
+    }
+
+    @Test
+    public void sequential_member_join_and_removal() {
+        HazelcastInstance[] instances = new HazelcastInstance[4];
+        for (int i = 0; i < instances.length; i++) {
+            instances[i] = factory.newHazelcastInstance();
+        }
+
+        for (HazelcastInstance instance : instances) {
+            assertClusterSizeEventually(instances.length, instance);
+        }
+
+        instances[instances.length - 1].shutdown();
+
+        for (int i = 0; i < instances.length - 1; i++) {
+            HazelcastInstance instance = instances[i];
+            assertClusterSizeEventually(instances.length - 1, instance);
+        }
+
+        MemberMap referenceMemberMap = getMemberMap(instances[0]);
+        // version = number of started members + 1 removal
+        assertEquals(instances.length + 1, referenceMemberMap.getVersion());
+
+        for (int i = 0; i < instances.length - 1; i++) {
+            HazelcastInstance instance = instances[i];
+            MemberMap memberMap = getMemberMap(instance);
+            assertMemberViewsAreSame(referenceMemberMap, memberMap);
+        }
+    }
+
+    @Test
+    public void sequential_member_join_and_restart() {
+        HazelcastInstance[] instances = new HazelcastInstance[3];
+        for (int i = 0; i < instances.length; i++) {
+            instances[i] = factory.newHazelcastInstance();
+        }
+
+        for (HazelcastInstance instance : instances) {
+            assertClusterSizeEventually(instances.length, instance);
+        }
+
+        instances[instances.length - 1].shutdown();
+        instances[instances.length - 1] = factory.newHazelcastInstance();
+
+        for (HazelcastInstance instance : instances) {
+            assertClusterSizeEventually(instances.length, instance);
+        }
+
+        MemberMap referenceMemberMap = getMemberMap(instances[0]);
+        // version = number of started members + 1 removal + 1 start
+        assertEquals(instances.length + 2, referenceMemberMap.getVersion());
+
+        for (HazelcastInstance instance : instances) {
+            MemberMap memberMap = getMemberMap(instance);
+            assertMemberViewsAreSame(referenceMemberMap, memberMap);
+        }
+    }
+
+    @Test
+    public void parallel_member_join_and_removal() {
+        final AtomicReferenceArray<HazelcastInstance> instances = new AtomicReferenceArray<HazelcastInstance>(4);
+        for (int i = 0; i < instances.length(); i++) {
+            final int ix = i;
+            spawn(new Runnable() {
+                @Override
+                public void run() {
+                    instances.set(ix, factory.newHazelcastInstance());
+                }
+            });
+        }
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                for (int i = 0; i < instances.length(); i++) {
+                    HazelcastInstance instance = instances.get(i);
+                    assertNotNull(instance);
+                    assertClusterSize(instances.length(), instance);
+                }
+            }
+        });
+
+        instances.get(instances.length() - 1).shutdown();
+        for (int i = 0; i < instances.length() - 1; i++) {
+            HazelcastInstance instance = instances.get(i);
+            assertClusterSizeEventually(instances.length() - 1, instance);
+        }
+
+        MemberMap referenceMemberMap = getMemberMap(instances.get(0));
+        // version = number of started members + 1 removal
+        assertEquals(instances.length() + 1, referenceMemberMap.getVersion());
+
+        for (int i = 0; i < instances.length() - 1; i++) {
+            HazelcastInstance instance = instances.get(i);
+            MemberMap memberMap = getMemberMap(instance);
+            assertMemberViewsAreSame(referenceMemberMap, memberMap);
+        }
+    }
+
+    @Test
+    public void parallel_member_join_and_restart() {
+        final AtomicReferenceArray<HazelcastInstance> instances = new AtomicReferenceArray<HazelcastInstance>(3);
+        for (int i = 0; i < instances.length(); i++) {
+            final int ix = i;
+            spawn(new Runnable() {
+                @Override
+                public void run() {
+                    instances.set(ix, factory.newHazelcastInstance());
+                }
+            });
+        }
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                for (int i = 0; i < instances.length(); i++) {
+                    HazelcastInstance instance = instances.get(i);
+                    assertNotNull(instance);
+                    assertClusterSize(instances.length(), instance);
+                }
+            }
+        });
+
+        instances.get(instances.length() - 1).shutdown();
+        instances.set(instances.length() - 1, factory.newHazelcastInstance());
+
+        for (int i = 0; i < instances.length(); i++) {
+            HazelcastInstance instance = instances.get(i);
+            assertClusterSizeEventually(instances.length(), instance);
+        }
+
+        MemberMap referenceMemberMap = getMemberMap(instances.get(0));
+        // version = number of started members + 1 removal + 1 start
+        assertEquals(instances.length() + 2, referenceMemberMap.getVersion());
+
+        for (int i = 0; i < instances.length(); i++) {
+            HazelcastInstance instance = instances.get(i);
+            MemberMap memberMap = getMemberMap(instance);
+            assertMemberViewsAreSame(referenceMemberMap, memberMap);
+        }
+    }
+
+    private static void assertMemberViewsAreSame(MemberMap expectedMemberMap, MemberMap actualMemberMap) {
+        assertEquals(expectedMemberMap.getVersion(), actualMemberMap.getVersion());
+        assertEquals(expectedMemberMap.size(), actualMemberMap.size());
+
+        Set<MemberImpl> expectedMembers = expectedMemberMap.getMembers();
+        Set<MemberImpl> actualMembers = actualMemberMap.getMembers();
+        assertEquals(expectedMembers, actualMembers);
+    }
+
+    private MemberMap getMemberMap(HazelcastInstance instance) {
+        ClusterServiceImpl clusterService = getNode(instance).getClusterService();
+        return clusterService.getMemberMap();
+    }
 }
