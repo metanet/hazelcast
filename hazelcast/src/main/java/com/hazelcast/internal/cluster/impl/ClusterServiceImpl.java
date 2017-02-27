@@ -83,8 +83,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -123,7 +121,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     private final AtomicReference<MemberMap> membersRemovedInNotActiveStateRef
             = new AtomicReference<MemberMap>(MemberMap.empty());
 
-    private final ConcurrentMap<Address, Long> suspectedMembers = new ConcurrentHashMap<Address, Long>();
+    private final Map<Address, Long> suspectedMembers = new HashMap<Address, Long>();
 
     private final Node node;
 
@@ -214,7 +212,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public boolean isMemberSuspected(Address address) {
-        return suspectedMembers.containsKey(address);
+        lock.lock();
+        try {
+            return suspectedMembers.containsKey(address);
+        } finally {
+            lock.unlock();
+        }
     }
 
     // TODO [basri] Can be called only within master node
@@ -244,21 +247,30 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             return;
         }
 
-        boolean claimMastership = doSuspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
-        if (!claimMastership) {
-            return;
-        }
-
-        MemberMap memberMap = getMemberMap();
-        MembersView localMemberView = memberMap.toMembersView();
-        Set<Address> membersToAsk = new HashSet<Address>();
-        for (MemberImpl member : memberMap.getMembers()) {
-            if (member.localMember() || suspectedMembers.containsKey(member.getAddress())) {
-                continue;
+        MembersView localMemberView;
+        Set<Address> membersToAsk;
+        lock.lock();
+        try {
+            boolean claimMastership = doSuspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
+            if (!claimMastership) {
+                return;
             }
 
-            membersToAsk.add(member.getAddress());
+            MemberMap memberMap = getMemberMap();
+            localMemberView = memberMap.toMembersView();
+            membersToAsk = new HashSet<Address>();
+            for (MemberImpl member : memberMap.getMembers()) {
+                if (member.localMember() || suspectedMembers.containsKey(member.getAddress())) {
+                    continue;
+                }
+
+                membersToAsk.add(member.getAddress());
+            }
+        } finally {
+            lock.unlock();
         }
+
+        logger.info("Local " + localMemberView + " with suspected members: "  + suspectedMembers.keySet() + " and initial addresses to ask: " + membersToAsk);
 
         MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
         lock.lock();
@@ -266,68 +278,62 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             doUpdateMembers(newMembersView);
             // TODO [basri] what about membersRemovedWhileClusterNotActive ???
             clusterJoinManager.reset();
-            logger.info("Mastership is declared upon: " + newMembersView);
+            logger.info("Mastership is declared with: " + newMembersView);
         } finally {
             lock.unlock();
         }
     }
 
+    // called under cluster service lock
     private boolean doSuspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
-        lock.lock();
-        try {
-
-            MemberImpl suspectedMember = getMember(suspectedAddress);
-            if (suspectedUuid != null && (suspectedMember == null || !suspectedUuid.equals(suspectedMember.getUuid()))) {
-                if (logger.isFineEnabled()) {
-                    logger.fine("Cannot suspect " + suspectedAddress + ", either member is not present "
-                            + "or uuid is not matching. Uuid: " + suspectedUuid + ", member: " + suspectedMember);
-                }
-                return false;
+        MemberImpl suspectedMember = getMember(suspectedAddress);
+        if (suspectedUuid != null && (suspectedMember == null || !suspectedUuid.equals(suspectedMember.getUuid()))) {
+            if (logger.isFineEnabled()) {
+                logger.fine("Cannot suspect " + suspectedAddress + ", either member is not present "
+                        + "or uuid is not matching. Uuid: " + suspectedUuid + ", member: " + suspectedMember);
             }
-
-            if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
-                doRemoveAddress(suspectedAddress, reason, destroyConnection);
-                return false;
-            } else {
-                if (suspectedMember == null || suspectedMembers.containsKey(suspectedAddress)) {
-                    return false;
-                }
-
-                suspectedMembers.put(suspectedAddress, 0L);
-                if (reason != null) {
-                    logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
-                } else {
-                    logger.warning(suspectedAddress + " is suspected to be dead");
-                }
-
-                Connection conn = node.connectionManager.getConnection(suspectedAddress);
-                if (destroyConnection && conn != null) {
-                    conn.close(reason, null);
-                }
-
-                if (clusterJoinManager.isMastershipClaimInProgress()) {
-                    return false;
-                }
-
-                MemberMap memberMap = memberMapRef.get();
-                if (!shouldClaimMastership(memberMap)) {
-                    return false;
-                }
-
-                logger.info("Claiming mastership...");
-
-                // TODO [basri] should be here or after the master address is updated?
-                // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
-                clusterJoinManager.setMastershipClaimInProgress();
-
-                // TODO [basri] update master address
-                node.setMasterAddress(getThisAddress());
-            }
-        } finally {
-            lock.unlock();
+            return false;
         }
 
-        return true;
+        if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
+            doRemoveAddress(suspectedAddress, reason, destroyConnection);
+            return false;
+        } else {
+            if (suspectedMember == null || suspectedMembers.containsKey(suspectedAddress)) {
+                return false;
+            }
+
+            suspectedMembers.put(suspectedAddress, 0L);
+            if (reason != null) {
+                logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
+            } else {
+                logger.warning(suspectedAddress + " is suspected to be dead");
+            }
+
+            Connection conn = node.connectionManager.getConnection(suspectedAddress);
+            if (destroyConnection && conn != null) {
+                conn.close(reason, null);
+            }
+
+            if (clusterJoinManager.isMastershipClaimInProgress()) {
+                return false;
+            }
+
+            MemberMap memberMap = memberMapRef.get();
+            if (!shouldClaimMastership(memberMap)) {
+                return false;
+            }
+
+            logger.info("Starting mastership claim process...");
+
+            // TODO [basri] should be here or after the master address is updated?
+            // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
+            clusterJoinManager.setMastershipClaimInProgress();
+
+            // TODO [basri] update master address
+            node.setMasterAddress(getThisAddress());
+            return true;
+        }
     }
 
     private boolean shouldClaimMastership(MemberMap memberMap) {
@@ -351,15 +357,30 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
         MembersView mostRecentMembersView = fetchMembersViews(localMembersView, addresses, futures);
 
+        logger.fine("Most recent " + mostRecentMembersView + " before final decision...");
+
         // within the most recent members view, select the members that have reported their members view successfully
         int finalVersion = mostRecentMembersView.getVersion() + 1;
         List<MemberInfo> finalMembers = new ArrayList<MemberInfo>();
         for (MemberInfo memberInfo : mostRecentMembersView.getMembers()) {
             Address address = memberInfo.getAddress();
+            if (node.getThisAddress().equals(address)) {
+                finalMembers.add(memberInfo);
+                continue;
+            }
+
+            // if we are not sure that a member has accepted my mastership claim, ignore its result
+
             Future<MembersView> membersViewFuture = futures.get(address);
-            // if a member is suspected during the mastership claim process, ignore its result
             // TODO [basri] could it be that `membersViewFuture == null` ?
-            if (suspectedMembers.containsKey(address) || membersViewFuture == null || !membersViewFuture.isDone()) {
+            if (isMemberSuspected(address)) {
+                logger.fine(memberInfo + " is excluded because suspected");
+                continue;
+            } else if (membersViewFuture == null) {
+                logger.fine(memberInfo + " is excluded because I haven't asked to it");
+                continue;
+            } else if (!membersViewFuture.isDone()) {
+                logger.fine(memberInfo + " is excluded because I don't know its response");
                 continue;
             }
 
@@ -368,7 +389,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 finalMembers.add(memberInfo);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
-            } catch (ExecutionException ignored) {
+            } catch (ExecutionException e) {
+                logger.fine(memberInfo + " is excluded because I couldn't get its response", e);
             }
         }
 
@@ -395,12 +417,13 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 Future<MembersView> future = e.getValue();
 
                 // If we started to suspect a member after asking its member list, we don't need to wait for its result.
-                if (!suspectedMembers.containsKey(address)) {
+                if (!isMemberSuspected(address)) {
                     // If there is no suspicion yet, we just keep waiting till we have a successful or failed result.
                    if (future.isDone()) {
                        try {
                            MembersView membersView = future.get();
                            if (membersView.getVersion() > mostRecentMembersView.getVersion()) {
+                               logger.fine("A more recent " + membersView + " is received from " + address);
                                mostRecentMembersView = membersView;
 
                                // If we discover a new member via a fetched member list, we should also ask for its members view.
@@ -412,9 +435,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                        } catch (InterruptedException ignored) {
                            Thread.currentThread().interrupt();
                        } catch (ExecutionException ignored) {
-                           // we couldn't fetch the members view of this member. It will be removed from the cluster.
+                           // we couldn't fetch MembersView of 'address'. It will be removed from the cluster.
                        }
-                   } else {
+                   } else if (!mostRecentMembersView.containsAddress(address)) { // TODO [basri] I am not sure about this
                        done = false;
                    }
                 }
@@ -424,7 +447,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 break;
             } else {
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(50);
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
                 }
@@ -439,8 +462,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
         for (MemberInfo memberInfo : membersView.getMembers()) {
             Address memberAddress = memberInfo.getAddress();
-            if (!(suspectedMembers.containsKey(memberAddress) || futures.containsKey(memberAddress))) {
+            if (!(isMemberSuspected(memberAddress) || futures.containsKey(memberAddress))) {
                 // this is a new member for us. lets ask its members view
+                logger.fine("Asking MembersView of " + memberAddress);
                 futures.put(memberAddress, invokeFetchMemberListStateOperation(memberAddress));
                 done = true;
             }
@@ -517,16 +541,19 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 throw new RetryableHazelcastException();
             }
 
-            logger.info("Mastership of " + targetAddress + " is accepted.");
             node.setMasterAddress(newMaster.getAddress());
-
             Set<MemberImpl> members = memberMap.getMembersAfterFirstMember(newMaster);
-            return MembersView.createNew(memberMap.getVersion(), members);
+            MembersView response = MembersView.createNew(memberMap.getVersion(), members);
+
+            logger.info("Mastership of " + targetAddress + " is accepted. Response: " + response);
+
+            return response;
         } finally {
             lock.unlock();
         }
     }
 
+    // called under cluster service lock
     // mastership is accepted when all members before the target is suspected, and target is not suspected
     private boolean shouldAcceptMastership(MemberMap memberMap, Address target) {
         for (MemberImpl member : memberMap.getMembersBeforeMember(target)) {
@@ -966,6 +993,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
+    // called under cluster service lock
     private void retainSuspectedMembers() {
         Iterator<Entry<Address, Long>> it = suspectedMembers.entrySet().iterator();
         while (it.hasNext()) {
