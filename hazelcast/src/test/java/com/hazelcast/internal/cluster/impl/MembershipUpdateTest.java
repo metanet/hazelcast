@@ -16,8 +16,14 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.MemberImpl;
+import com.hazelcast.instance.Node;
+import com.hazelcast.internal.serialization.InternalSerializationService;
+import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
+import com.hazelcast.nio.tcp.OperationPacketFilter;
+import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -31,6 +37,8 @@ import org.junit.runner.RunWith;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.F_ID;
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MEMBER_INFO_UPDATE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
@@ -45,7 +53,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
     // ✔ concurrent member join
     // ✔ sequential member join and removal
     // ✔ concurrent member join and removal
-    // - existing members missing member updates (join), convergence
+    // ✔ existing members missing member updates (join), convergence
     // - existing member missing member removal, then receives periodic member publish
     // - existing member missing member removal, then receives new member join update
     // - existing member receiving out-of-order member updates
@@ -252,6 +260,64 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         }
     }
 
+    @Test
+    public void memberListsConverge_whenMemberUpdateMissed() {
+        Config config = new Config();
+
+        HazelcastInstance hz1 = factory.newHazelcastInstance(config);
+        HazelcastInstance hz2 = factory.newHazelcastInstance(config);
+
+        assertClusterSizeEventually(2, hz1);
+
+        dropMembershipUpdatesFrom(hz1);
+
+        HazelcastInstance hz3 = factory.newHazelcastInstance(config);
+
+        assertClusterSizeEventually(3, hz1);
+        assertClusterSizeEventually(3, hz3);
+        assertClusterSize(2, hz2);
+
+        allowMembershipUpdatesFrom(hz1);
+        ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(hz1);
+        clusterService.sendMemberListToMember(getAddress(hz2));
+
+        assertClusterSizeEventually(3, hz2);
+    }
+
+    @Test
+    public void memberListsConverge_whenMemberUpdateMissed_withPeriodicUpdates() {
+        Config config = new Config();
+        config.setProperty(GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
+
+        HazelcastInstance hz1 = factory.newHazelcastInstance(config);
+        HazelcastInstance hz2 = factory.newHazelcastInstance(config);
+
+        assertClusterSizeEventually(2, hz1);
+
+        dropMembershipUpdatesFrom(hz1);
+
+        HazelcastInstance hz3 = factory.newHazelcastInstance(config);
+
+        assertClusterSizeEventually(3, hz1);
+        assertClusterSizeEventually(3, hz3);
+        assertClusterSize(2, hz2);
+
+        allowMembershipUpdatesFrom(hz1);
+        assertClusterSizeEventually(3, hz2);
+    }
+
+    private static void dropMembershipUpdatesFrom(HazelcastInstance instance) {
+        Node node = getNode(instance);
+        FirewallingMockConnectionManager cm = (FirewallingMockConnectionManager) node.getConnectionManager();
+        cm.setDroppingPacketFilter(new MembershipUpdatePacketDropFilter(node.getSerializationService()));
+    }
+
+    private static void allowMembershipUpdatesFrom(HazelcastInstance instance) {
+        Node node = getNode(instance);
+        FirewallingMockConnectionManager cm = (FirewallingMockConnectionManager) node.getConnectionManager();
+        cm.setDroppingPacketFilter(null);
+    }
+
     private static void assertMemberViewsAreSame(MemberMap expectedMemberMap, MemberMap actualMemberMap) {
         assertEquals(expectedMemberMap.getVersion(), actualMemberMap.getVersion());
         assertEquals(expectedMemberMap.size(), actualMemberMap.size());
@@ -264,5 +330,18 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
     private MemberMap getMemberMap(HazelcastInstance instance) {
         ClusterServiceImpl clusterService = getNode(instance).getClusterService();
         return clusterService.getMemberMap();
+    }
+
+    private static class MembershipUpdatePacketDropFilter extends OperationPacketFilter {
+
+        MembershipUpdatePacketDropFilter(InternalSerializationService serializationService) {
+            super(serializationService);
+        }
+
+        @Override
+        protected boolean allowOperation(int factory, int type) {
+            boolean drop = factory == F_ID && type == MEMBER_INFO_UPDATE;
+            return !drop;
+        }
     }
 }
