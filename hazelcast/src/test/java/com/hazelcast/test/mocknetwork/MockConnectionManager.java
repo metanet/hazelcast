@@ -117,9 +117,8 @@ public class MockConnectionManager implements ConnectionManager {
                         + "because it has requested to leave.");
                 try {
                     ClusterServiceImpl clusterService = otherNode.getClusterService();
-                    // TODO [basri] it is better to make this work like 3.8.
-                    clusterService.removeAddress(localMember.getAddress(), localMember.getUuid(),
-                            "Connection manager is stopped on " + localMember);
+                    clusterService.suspectAddress(localMember.getAddress(), localMember.getUuid(),
+                            "Connection manager is stopped on " + localMember, true);
                 } catch (Throwable e) {
                     otherLogger.warning("While removing " + thisAddress, e);
                 }

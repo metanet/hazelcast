@@ -668,8 +668,8 @@ public class ClusterJoinManager {
             logger.warning(msg);
 
             // TODO [basri] If I am the master, I will remove the "target" from the cluster.
-            // TODO [basri] If I am a slave, I will update my master address accordingly because current master shows that it is done
-            clusterService.doRemoveAddress(target, msg, false);
+            // TODO [basri] If I am a slave, I will suspect the current master.
+            clusterService.suspectAddress(target, msg, false);
             Connection existing = node.connectionManager.getConnection(target);
             if (existing != connection) {
                 if (existing != null) {

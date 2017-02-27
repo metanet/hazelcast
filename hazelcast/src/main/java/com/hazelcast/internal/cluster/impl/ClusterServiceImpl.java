@@ -34,6 +34,7 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.Versions;
+import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOperation;
 import com.hazelcast.internal.cluster.impl.operations.FetchMemberListStateOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
@@ -216,6 +217,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return suspectedMembers.containsKey(address);
     }
 
+    // TODO [basri] Can be called only within master node
     public void removeAddress(Address deadAddress, String uuid, String reason) {
         lock.lock();
         try {
@@ -234,11 +236,15 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
+        suspectAddress(suspectedAddress, null, reason, destroyConnection);
+    }
+
+    public void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(suspectedAddress)) {
             return;
         }
 
-        boolean claimMastership = doSuspectAddress(suspectedAddress, reason, destroyConnection);
+        boolean claimMastership = doSuspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
         if (!claimMastership) {
             return;
         }
@@ -266,14 +272,24 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    private boolean doSuspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
+    private boolean doSuspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
         lock.lock();
         try {
+
+            MemberImpl suspectedMember = getMember(suspectedAddress);
+            if (suspectedUuid != null && (suspectedMember == null || !suspectedUuid.equals(suspectedMember.getUuid()))) {
+                if (logger.isFineEnabled()) {
+                    logger.fine("Cannot suspect " + suspectedAddress + ", either member is not present "
+                            + "or uuid is not matching. Uuid: " + suspectedUuid + ", member: " + suspectedMember);
+                }
+                return false;
+            }
+
             if (isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
                 doRemoveAddress(suspectedAddress, reason, destroyConnection);
                 return false;
             } else {
-                if (getMember(suspectedAddress) == null || suspectedMembers.containsKey(suspectedAddress)) {
+                if (suspectedMember == null || suspectedMembers.containsKey(suspectedAddress)) {
                     return false;
                 }
 
@@ -458,8 +474,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     // TODO [basri] So, it should suspect from me permanently.
                     // TODO [basri] Maybe I should notify my members so that they will make 'endpoint' permanently suspect from them either.
                     // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership.
-                    int memberListVersion = getMemberListVersion();
-                    operationService.send(new MemberRemoveOperation(memberListVersion, getThisAddress()), endpoint);
+                    operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), endpoint);
                 }
             } else if (isMaster()) {
                 clusterHeartbeatManager.acceptMasterConfirmation(member, timestamp);
@@ -523,7 +538,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return !suspectedMembers.containsKey(target);
     }
 
-    // TODO [basri] If this node is a slave, deadAddress can be only the master address. Is that so ????
+    // TODO [basri] Can be called only within master node
     public void removeAddress(Address deadAddress, String reason) {
         doRemoveAddress(deadAddress, reason, true);
     }
