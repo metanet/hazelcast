@@ -455,7 +455,9 @@ public class ClusterHeartbeatManager {
             return;
         }
         try {
-            node.nodeEngine.getOperationService().send(new HeartbeatOperation(clusterClock.getClusterTime()), target);
+            HeartbeatOperation heartbeat = new HeartbeatOperation(clusterClock.getClusterTime());
+            heartbeat.setCallerUuid(node.getThisUuid());
+            node.nodeEngine.getOperationService().send(heartbeat, target);
         } catch (Exception e) {
             if (logger.isFineEnabled()) {
                 logger.fine(format("Error while sending heartbeat -> %s[%s]", e.getClass().getName(), e.getMessage()));

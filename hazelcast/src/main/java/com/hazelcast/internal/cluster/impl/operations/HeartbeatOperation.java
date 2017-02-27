@@ -40,15 +40,30 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
     @Override
     public void run() {
         ClusterServiceImpl service = getService();
+        MemberImpl member = getHeartBeatingMember(service);
+        if (member != null) {
+            service.getClusterHeartbeatManager().onHeartbeat(member, timestamp);
+        }
+    }
+
+    private MemberImpl getHeartBeatingMember(ClusterServiceImpl service) {
         MemberImpl member = service.getMember(getCallerAddress());
+        ILogger logger = getLogger();
         if (member == null) {
-            ILogger logger = getLogger();
             if (logger.isFineEnabled()) {
                 logger.fine("Heartbeat received from an unknown endpoint: " + getCallerAddress());
             }
-            return;
+            return null;
         }
-        service.getClusterHeartbeatManager().onHeartbeat(member, timestamp);
+
+        if (!member.getUuid().equals(getCallerUuid())) {
+            if (logger.isFineEnabled()) {
+                logger.fine("Heartbeat received from an unknown endpoint. Address: "
+                        + getCallerAddress() + ", Uuid: " + getCallerUuid());
+            }
+            return null;
+        }
+        return member;
     }
 
     @Override
