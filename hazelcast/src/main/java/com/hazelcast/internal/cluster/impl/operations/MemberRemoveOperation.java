@@ -62,6 +62,7 @@ public class MemberRemoveOperation extends VersionedClusterOperation {
         }
 
         if (memberUuid != null) {
+            // TODO [basri] called only from ClusterServiceImpl.sendMemberRemoveOperation(memberListVersion, deadMember)
             clusterService.removeAddress(address, memberUuid, msg);
         } else {
             clusterService.removeAddress(address, msg);

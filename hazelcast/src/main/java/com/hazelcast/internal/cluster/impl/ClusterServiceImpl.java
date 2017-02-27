@@ -455,8 +455,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                             + ", but it is not a member of this cluster!");
                     OperationService operationService = getNodeEngine().getOperationService();
                     // TODO [basri] This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
-                    // TODO [basri] So, it should remove me from its cluster and update its master address
-                    // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership
+                    // TODO [basri] So, it should suspect from me permanently.
+                    // TODO [basri] Maybe I should notify my members so that they will make 'endpoint' permanently suspect from them either.
+                    // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership.
                     int memberListVersion = getMemberListVersion();
                     operationService.send(new MemberRemoveOperation(memberListVersion, getThisAddress()), endpoint);
                 }

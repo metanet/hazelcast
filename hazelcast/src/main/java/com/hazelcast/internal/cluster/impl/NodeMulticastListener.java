@@ -75,6 +75,8 @@ public class NodeMulticastListener implements MulticastListener {
                     + "Removing " + node.getMasterAddress();
             logger.warning(message);
             // TODO [basri] I am a slave and the master I follow says that it is gone. So, I can remove it instead of suspecting it.
+            // TODO [basri] I should tell everyone to permanently suspect from master so that we can continue with the next master quickly.
+            // TODO [basri] This way, it will work similar to 3.8. in 3.8, removeAddress() sends member remove op to everyone.
             node.getClusterService().removeAddress(node.getMasterAddress(), message);
         }
     }
