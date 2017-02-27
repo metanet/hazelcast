@@ -455,7 +455,7 @@ public class ClusterHeartbeatManager {
             return;
         }
         try {
-            HeartbeatOperation heartbeat = new HeartbeatOperation(clusterClock.getClusterTime());
+            HeartbeatOperation heartbeat = new HeartbeatOperation(clusterService.getMemberListVersion(), clusterClock.getClusterTime());
             heartbeat.setCallerUuid(node.getThisUuid());
             node.nodeEngine.getOperationService().send(heartbeat, target);
         } catch (Exception e) {

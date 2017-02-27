@@ -17,23 +17,27 @@
 package com.hazelcast.internal.cluster.impl.operations;
 
 import com.hazelcast.instance.MemberImpl;
+import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook;
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.version.Version;
 
 import java.io.IOException;
 
 /** A heartbeat sent from one cluster member to another. The sent timestamp is the cluster clock time of the sending member */
-public final class HeartbeatOperation extends AbstractClusterOperation {
+public final class HeartbeatOperation extends VersionedClusterOperation {
 
     private long timestamp;
 
     public HeartbeatOperation() {
+        super(0);
     }
 
-    public HeartbeatOperation(long timestamp) {
+    public HeartbeatOperation(int version, long timestamp) {
+        super(version);
         this.timestamp = timestamp;
     }
 
@@ -42,7 +46,42 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
         ClusterServiceImpl service = getService();
         MemberImpl member = getHeartBeatingMember(service);
         if (member != null) {
+            checkMemberListVersion();
             service.getClusterHeartbeatManager().onHeartbeat(member, timestamp);
+        }
+    }
+
+    private void checkMemberListVersion() {
+        ClusterServiceImpl service = getService();
+        Version clusterVersion = service.getClusterVersion();
+        if (clusterVersion.isUnknown() || clusterVersion.isLessThan(Versions.V3_9)) {
+            return;
+        }
+
+        int localMemberListVersion = service.getMemberListVersion();
+
+        ILogger logger = getLogger();
+        if (service.isMaster()) {
+            if (localMemberListVersion < getMemberListVersion()) {
+                logger.severe("Master member list version must not be smaller than sender's version! Master: "
+                        + localMemberListVersion + ", Sender: " + getMemberListVersion());
+            }
+
+            if (localMemberListVersion - getMemberListVersion() > 1) {
+                logger.warning("Sender member list version is lagging behind master's version! "
+                        + "Master: " + localMemberListVersion + ", Sender: " + getMemberListVersion());
+            }
+
+        } else if (getCallerAddress().equals(service.getMasterAddress())) {
+            if (localMemberListVersion > getMemberListVersion()) {
+                logger.severe("Local member list version must not be greater than master's version! Master: "
+                        + getMemberListVersion() + ", Local: " + localMemberListVersion);
+            }
+
+            if (getMemberListVersion() - localMemberListVersion > 1) {
+                logger.warning("Local member list version is lagging behind master's version! "
+                        + "Master: " + getMemberListVersion() + ", Local: " + localMemberListVersion);
+            }
         }
     }
 
@@ -72,12 +111,12 @@ public final class HeartbeatOperation extends AbstractClusterOperation {
     }
 
     @Override
-    protected void writeInternal(ObjectDataOutput out) throws IOException {
+    void writeInternalImpl(ObjectDataOutput out) throws IOException {
         out.writeLong(timestamp);
     }
 
     @Override
-    protected void readInternal(ObjectDataInput in) throws IOException {
+    void readInternalImpl(ObjectDataInput in) throws IOException {
         timestamp = in.readLong();
     }
 }
