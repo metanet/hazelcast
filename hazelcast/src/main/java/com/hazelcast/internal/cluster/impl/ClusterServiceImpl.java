@@ -1111,6 +1111,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     // TODO [basri] think about this part. I am explicitly saying that I am leaving the cluster.
+    // TODO [basri] we will remove this call completely.
     public void sendShutdownMessage() {
         sendMemberRemoveOperation(getMemberListVersion(), getLocalMember());
     }
