@@ -17,7 +17,6 @@
 package com.hazelcast.internal.cluster.impl;
 
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.instance.TestUtil;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -28,6 +27,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import static com.hazelcast.instance.TestUtil.terminateInstance;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.assertMemberViewsAreSame;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.getMemberMap;
 import static org.junit.Assert.assertEquals;
@@ -39,6 +39,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     private TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
 
     // TODO: add membership failure tests
+    // ✔ graceful slave shutdown
+    // ✔ graceful master shutdown
     // - slave member failure detected by master
     // - slave member suspected by others and its failure eventually detected by master
     // - master member failure detected by others
@@ -48,42 +50,87 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // - so on...
 
     @Test
-    public void master_detects_slave_failure() {
-        HazelcastInstance master = factory.newHazelcastInstance();
-        HazelcastInstance slave = factory.newHazelcastInstance();
-
-        assertClusterSizeEventually(2, master);
-        assertClusterSizeEventually(2, slave);
-
-        TestUtil.terminateInstance(slave);
-
-        assertClusterSizeEventually(1, master);
-    }
-
-    @Test
-    public void slaves_detect_master_failure() {
-        HazelcastInstance master = factory.newHazelcastInstance();
-        HazelcastInstance slave1 = factory.newHazelcastInstance();
-        HazelcastInstance slave2 = factory.newHazelcastInstance();
+    public void slave_shutdown() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
 
         assertClusterSizeEventually(3, master);
         assertClusterSizeEventually(3, slave1);
         assertClusterSizeEventually(3, slave2);
 
-        TestUtil.terminateInstance(master);
+        slave1.shutdown();
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave2);
+
+        assertMaster(master, getAddress(master));
+        assertMaster(slave2, getAddress(master));
+        assertMemberViewsAreSame(getMemberMap(master), getMemberMap(slave2));
+    }
+
+    @Test
+    public void master_shutdown() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        master.shutdown();
 
         assertClusterSizeEventually(2, slave1);
         assertClusterSizeEventually(2, slave2);
 
         assertMaster(slave1, getAddress(slave1));
         assertMaster(slave2, getAddress(slave1));
-
-        MemberMap memberMap1 = getMemberMap(slave1);
-        MemberMap memberMap2 = getMemberMap(slave2);
-        assertMemberViewsAreSame(memberMap1, memberMap2);
+        assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
     }
 
-    static void assertMaster(HazelcastInstance instance, Address address) {
+    @Test
+    public void slave_crash() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        terminateInstance(slave1);
+
+        assertMaster(master, getAddress(master));
+        assertMaster(slave2, getAddress(master));
+        assertMemberViewsAreSame(getMemberMap(master), getMemberMap(slave2));
+    }
+
+    @Test
+    public void master_crash() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        terminateInstance(master);
+
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(2, slave2);
+
+        assertMaster(slave1, getAddress(slave1));
+        assertMaster(slave2, getAddress(slave1));
+        assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
+    }
+
+    HazelcastInstance newHazelcastInstance() {
+        return factory.newHazelcastInstance();
+    }
+
+    private static void assertMaster(HazelcastInstance instance, Address address) {
         assertEquals(address, getNode(instance).getMasterAddress());
     }
 }

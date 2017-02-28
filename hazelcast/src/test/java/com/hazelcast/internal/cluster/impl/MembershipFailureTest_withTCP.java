@@ -19,66 +19,27 @@ package com.hazelcast.internal.cluster.impl;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.JoinConfig;
 import com.hazelcast.config.TcpIpConfig;
-import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.HazelcastInstanceFactory;
-import com.hazelcast.instance.TestUtil;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.HazelcastSerialClassRunner;
-import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.QuickTest;
 import org.junit.After;
-import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
-import static com.hazelcast.internal.cluster.impl.MembershipFailureTest.assertMaster;
-import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.assertMemberViewsAreSame;
-import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.getMemberMap;
-
 @RunWith(HazelcastSerialClassRunner.class)
 @Category({QuickTest.class})
-public class MembershipFailureTest_withTCP extends HazelcastTestSupport {
+public class MembershipFailureTest_withTCP extends MembershipFailureTest {
 
     @After
     public void tearDown() {
         HazelcastInstanceFactory.terminateAll();
     }
 
-    @Test
-    public void master_detects_slave_failure() {
-        HazelcastInstance master = Hazelcast.newHazelcastInstance(newConfig());
-        HazelcastInstance slave = Hazelcast.newHazelcastInstance(newConfig());
-
-        assertClusterSizeEventually(2, master);
-        assertClusterSizeEventually(2, slave);
-
-        TestUtil.terminateInstance(slave);
-
-        assertClusterSizeEventually(1, master);
-    }
-
-    @Test
-    public void slaves_detect_master_failure() {
-        HazelcastInstance master = Hazelcast.newHazelcastInstance(newConfig());
-        HazelcastInstance slave1 = Hazelcast.newHazelcastInstance(newConfig());
-        HazelcastInstance slave2 = Hazelcast.newHazelcastInstance(newConfig());
-
-        assertClusterSizeEventually(3, master);
-        assertClusterSizeEventually(3, slave1);
-        assertClusterSizeEventually(3, slave2);
-
-        TestUtil.terminateInstance(master);
-
-        assertClusterSizeEventually(2, slave1);
-        assertClusterSizeEventually(2, slave2);
-
-        assertMaster(slave1, getAddress(slave1));
-        assertMaster(slave2, getAddress(slave1));
-
-        MemberMap memberMap1 = getMemberMap(slave1);
-        MemberMap memberMap2 = getMemberMap(slave2);
-        assertMemberViewsAreSame(memberMap1, memberMap2);
+    @Override
+    HazelcastInstance newHazelcastInstance() {
+        return HazelcastInstanceFactory.newHazelcastInstance(newConfig());
     }
 
     private static Config newConfig() {
