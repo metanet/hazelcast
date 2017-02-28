@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Hazelcast, Inc. All Rights Reserved.
+ * Copyright (c) 2008 - 2017, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,41 +16,39 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.config.Config;
+import com.hazelcast.config.JoinConfig;
+import com.hazelcast.config.TcpIpConfig;
+import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.instance.HazelcastInstanceFactory;
 import com.hazelcast.instance.TestUtil;
-import com.hazelcast.nio.Address;
-import com.hazelcast.test.HazelcastParallelClassRunner;
+import com.hazelcast.spi.properties.GroupProperty;
+import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
-import com.hazelcast.test.TestHazelcastInstanceFactory;
-import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
+import static com.hazelcast.internal.cluster.impl.MembershipFailureTest.assertMaster;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.assertMemberViewsAreSame;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.getMemberMap;
-import static org.junit.Assert.assertEquals;
 
-@RunWith(HazelcastParallelClassRunner.class)
-@Category({QuickTest.class, ParallelTest.class})
-public class MembershipFailureTest extends HazelcastTestSupport {
+@RunWith(HazelcastSerialClassRunner.class)
+@Category({QuickTest.class})
+public class MembershipFailureTest_withTCP extends HazelcastTestSupport {
 
-    private TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
-
-    // TODO: add membership failure tests
-    // - slave member failure detected by master
-    // - slave member suspected by others and its failure eventually detected by master
-    // - master member failure detected by others
-    // - master and master-candidate fail simultaneously
-    // - master fails when master-candidate doesn't have the most recent member list
-    // - partial network failure: multiple master claims, eventually split brain and merge
-    // - so on...
+    @After
+    public void tearDown() {
+        HazelcastInstanceFactory.terminateAll();
+    }
 
     @Test
     public void master_detects_slave_failure() {
-        HazelcastInstance master = factory.newHazelcastInstance();
-        HazelcastInstance slave = factory.newHazelcastInstance();
+        HazelcastInstance master = Hazelcast.newHazelcastInstance(newConfig());
+        HazelcastInstance slave = Hazelcast.newHazelcastInstance(newConfig());
 
         assertClusterSizeEventually(2, master);
         assertClusterSizeEventually(2, slave);
@@ -62,9 +60,9 @@ public class MembershipFailureTest extends HazelcastTestSupport {
 
     @Test
     public void slaves_detect_master_failure() {
-        HazelcastInstance master = factory.newHazelcastInstance();
-        HazelcastInstance slave1 = factory.newHazelcastInstance();
-        HazelcastInstance slave2 = factory.newHazelcastInstance();
+        HazelcastInstance master = Hazelcast.newHazelcastInstance(newConfig());
+        HazelcastInstance slave1 = Hazelcast.newHazelcastInstance(newConfig());
+        HazelcastInstance slave2 = Hazelcast.newHazelcastInstance(newConfig());
 
         assertClusterSizeEventually(3, master);
         assertClusterSizeEventually(3, slave1);
@@ -83,7 +81,19 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertMemberViewsAreSame(memberMap1, memberMap2);
     }
 
-    static void assertMaster(HazelcastInstance instance, Address address) {
-        assertEquals(address, getNode(instance).getMasterAddress());
+    private static Config newConfig() {
+        Config config = new Config();
+        config.setProperty(GroupProperty.WAIT_SECONDS_BEFORE_JOIN.getName(), "0");
+        
+        JoinConfig join = config.getNetworkConfig().getJoin();
+        join.getMulticastConfig().setEnabled(false);
+
+        TcpIpConfig tcpIpConfig = join.getTcpIpConfig().setEnabled(true).clear();
+        for (int i = 0; i < 4; i++) {
+            int port = 5701 + i;
+            tcpIpConfig.addMember("127.0.0.1:" + port);
+        }
+
+        return config;
     }
 }

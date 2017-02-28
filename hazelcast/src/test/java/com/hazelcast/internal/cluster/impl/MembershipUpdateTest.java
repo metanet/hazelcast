@@ -60,7 +60,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
     // - existing member missing member removal, then receives periodic member publish
     // - existing member missing member removal, then receives new member join update
     // ✔ existing member receiving out-of-order member updates
-    // - new member receiving out-of-order finalize join & member updates
+    // ✔ new member receiving out-of-order finalize join & member updates
     // - existing member receiving a member list that's not containing itself
     // - new member receiving a finalize join that's not containing itself
     // - byzantine member updates published
@@ -396,7 +396,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         cm.setDelayingPacketFilter(packetFilter, 500, 5000);
     }
 
-    private static void assertMemberViewsAreSame(MemberMap expectedMemberMap, MemberMap actualMemberMap) {
+    static void assertMemberViewsAreSame(MemberMap expectedMemberMap, MemberMap actualMemberMap) {
         assertEquals(expectedMemberMap.getVersion(), actualMemberMap.getVersion());
         assertEquals(expectedMemberMap.size(), actualMemberMap.size());
 
@@ -405,7 +405,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         assertEquals(expectedMembers, actualMembers);
     }
 
-    private MemberMap getMemberMap(HazelcastInstance instance) {
+    static MemberMap getMemberMap(HazelcastInstance instance) {
         ClusterServiceImpl clusterService = getNode(instance).getClusterService();
         return clusterService.getMemberMap();
     }
