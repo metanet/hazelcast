@@ -21,7 +21,6 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
 import com.hazelcast.internal.cluster.impl.operations.HeartbeatOperation;
 import com.hazelcast.internal.cluster.impl.operations.MasterConfirmationOperation;
-import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
@@ -141,7 +140,7 @@ public class ClusterHeartbeatManager {
         memberListPublishInterval = (memberListPublishInterval > 0 ? memberListPublishInterval : 1);
         executionService.scheduleWithRepetition(EXECUTOR_NAME, new Runnable() {
             public void run() {
-                sendMemberListToOthers();
+                clusterService.sendMemberListToOthers();
             }
         }, memberListPublishInterval, memberListPublishInterval, TimeUnit.SECONDS);
     }
@@ -508,26 +507,6 @@ public class ClusterHeartbeatManager {
         }
         nodeEngine.getOperationService().send(new MasterConfirmationOperation(clusterClock.getClusterTime()),
                 masterAddress);
-    }
-
-    /** Invoked on the master to send the member list (see {@link MembersUpdateOperation}) to non-master nodes. */
-    private void sendMemberListToOthers() {
-        if (!node.isMaster()) {
-            return;
-        }
-
-        MemberMap memberMap = clusterService.getMemberMap();
-        MembersView membersView = memberMap.toMembersView();
-
-        for (MemberImpl member : memberMap.getMembers()) {
-            if (member.localMember()) {
-                continue;
-            }
-
-            MembersUpdateOperation op = new MembersUpdateOperation(member.getUuid(), membersView,
-                    clusterClock.getClusterTime(), null, false);
-            nodeEngine.getOperationService().send(op, member.getAddress());
-        }
     }
 
     /**

@@ -276,9 +276,10 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         lock.lock();
         try {
             doUpdateMembers(newMembersView);
+            sendMemberListToOthers();
             // TODO [basri] what about membersRemovedWhileClusterNotActive ???
             clusterJoinManager.reset();
-            logger.info("Mastership is declared with: " + newMembersView);
+            logger.info("Mastership is claimed with: " + newMembersView);
         } finally {
             lock.unlock();
         }
@@ -563,6 +564,26 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
 
         return !suspectedMembers.containsKey(target);
+    }
+
+    /** Invoked on the master to send the member list (see {@link MembersUpdateOperation}) to non-master nodes. */
+    public void sendMemberListToOthers() {
+        if (!node.isMaster()) {
+            return;
+        }
+
+        MemberMap memberMap = getMemberMap();
+        MembersView membersView = memberMap.toMembersView();
+
+        for (MemberImpl member : memberMap.getMembers()) {
+            if (member.localMember()) {
+                continue;
+            }
+
+            MembersUpdateOperation op = new MembersUpdateOperation(member.getUuid(), membersView,
+                    clusterClock.getClusterTime(), null, false);
+            nodeEngine.getOperationService().send(op, member.getAddress());
+        }
     }
 
     // TODO [basri] Can be called only within master node
