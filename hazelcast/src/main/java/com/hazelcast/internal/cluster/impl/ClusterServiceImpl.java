@@ -437,7 +437,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                        } catch (ExecutionException ignored) {
                            // we couldn't fetch MembersView of 'address'. It will be removed from the cluster.
                        }
-                   } else if (!mostRecentMembersView.containsAddress(address)) { // TODO [basri] I am not sure about this
+                   } else if (mostRecentMembersView.containsAddress(address)) {
                        done = false;
                    }
                 }
