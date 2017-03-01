@@ -531,12 +531,12 @@ public class MembershipManager {
         nodeEngine.onMemberLeft(deadMember);
     }
 
-    private void sendMemberRemoveOperation(int memberListVersion, Member deadMember) {
+    private void sendMemberRemoveOperation(Member deadMember) {
         for (Member member : getMembers()) {
             Address address = member.getAddress();
             if (!node.getThisAddress().equals(address) && !address.equals(deadMember.getAddress())) {
                 MemberRemoveOperation
-                        op = new MemberRemoveOperation(memberListVersion, deadMember.getAddress(), deadMember.getUuid());
+                        op = new MemberRemoveOperation(deadMember.getAddress(), deadMember.getUuid());
                 nodeEngine.getOperationService().send(op, address);
             }
         }
