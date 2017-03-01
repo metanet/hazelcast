@@ -134,14 +134,6 @@ public class ClusterHeartbeatManager {
                 sendMasterConfirmation();
             }
         }, masterConfirmationInterval, masterConfirmationInterval, TimeUnit.SECONDS);
-
-//        long memberListPublishInterval = hazelcastProperties.getSeconds(GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS);
-//        memberListPublishInterval = (memberListPublishInterval > 0 ? memberListPublishInterval : 1);
-//        executionService.scheduleWithRepetition(EXECUTOR_NAME, new Runnable() {
-//            public void run() {
-//                clusterService.getMembershipManager().sendMemberListToOthers();
-//            }
-//        }, memberListPublishInterval, memberListPublishInterval, TimeUnit.SECONDS);
     }
 
     /**
@@ -183,7 +175,7 @@ public class ClusterHeartbeatManager {
      * @param member    the member sending the confirmation to the master node
      * @param timestamp the cluster timestamp when the confirmation was made
      */
-    public void acceptMasterConfirmation(MemberImpl member, long timestamp) {
+    void acceptMasterConfirmation(MemberImpl member, long timestamp) {
         if (member != null) {
             if (logger.isFineEnabled()) {
                 logger.fine("MasterConfirmation has been received from " + member);

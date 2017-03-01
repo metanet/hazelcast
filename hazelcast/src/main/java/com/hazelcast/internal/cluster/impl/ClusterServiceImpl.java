@@ -34,6 +34,7 @@ import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOperation;
+import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOperation;
 import com.hazelcast.internal.cluster.impl.operations.TriggerMemberListPublishOperation;
 import com.hazelcast.internal.metrics.MetricsRegistry;
@@ -56,7 +57,6 @@ import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.TransactionalService;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
-import com.hazelcast.spi.impl.operationservice.InternalOperationService;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.transaction.TransactionOptions;
 import com.hazelcast.transaction.TransactionalObject;
@@ -191,7 +191,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     // TODO [basri] So, it should suspect from me permanently.
                     // TODO [basri] Maybe I should notify my members so that they will make 'endpoint' permanently suspect from them either.
                     // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership.
-                    operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), endpoint);
+                    sendSuspicionOrMemberRemove(endpoint);
                 }
             } else if (isMaster()) {
                 clusterHeartbeatManager.acceptMasterConfirmation(member, timestamp);
@@ -201,6 +201,17 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             }
         } finally {
             lock.unlock();
+        }
+    }
+
+    void sendSuspicionOrMemberRemove(Address endpoint) {
+        OperationService operationService = nodeEngine.getOperationService();
+
+        if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+            operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), endpoint);
+        } else {
+            // TODO: we can completely get rid of this member remove part
+            operationService.send(new MemberRemoveOperation(getThisAddress(), node.getThisUuid()), endpoint);
         }
     }
 
@@ -331,8 +342,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             if (!checkValidMaster(callerAddress)) {
                 logger.warning("Not updating members because caller: " + callerAddress  + " is not known master: "
                         + getMasterAddress());
-                InternalOperationService operationService = nodeEngine.getOperationService();
-                operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), callerAddress);
+                sendSuspicionOrMemberRemove(callerAddress);
                 return false;
             }
 
