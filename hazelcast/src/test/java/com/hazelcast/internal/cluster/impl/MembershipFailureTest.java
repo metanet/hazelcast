@@ -23,6 +23,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -36,7 +37,12 @@ import static org.junit.Assert.assertEquals;
 @Category({QuickTest.class, ParallelTest.class})
 public class MembershipFailureTest extends HazelcastTestSupport {
 
-    private TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
+    private TestHazelcastInstanceFactory factory;
+
+    @Before
+    public void init() {
+        factory = createHazelcastInstanceFactory();
+    }
 
     // TODO: add membership failure tests
     // ✔ graceful slave shutdown
