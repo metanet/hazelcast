@@ -42,6 +42,7 @@ import static com.hazelcast.spi.properties.GroupProperty.MASTER_CONFIRMATION_INT
 import static com.hazelcast.spi.properties.GroupProperty.MAX_NO_HEARTBEAT_SECONDS;
 import static com.hazelcast.spi.properties.GroupProperty.MAX_NO_MASTER_CONFIRMATION_SECONDS;
 import static com.hazelcast.spi.properties.GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS;
+import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastParallelClassRunner.class)
@@ -61,12 +62,13 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // ✔ master removes slave because of heartbeat timeout
     // ✔ slaves remove master because of heartbeat timeout
     // ✔ master removes slave because of master confirm timeout
-    // - slave member failure detected by master
+    // ✔ slave member failure detected by master
     // - slave member suspected by others and its failure eventually detected by master
-    // - master member failure detected by others
+    // ✔ master member failure detected by others
     // - master and master-candidate fail simultaneously
     // ✔ master fails when master-candidate doesn't have the most recent member list
     // - partial network failure: multiple master claims, eventually split brain and merge
+    // - member failures during mastership claim
     // - so on...
 
     @Test
@@ -238,6 +240,91 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertEquals(newMasterAddress, getNode(slave1).getMasterAddress());
         assertEquals(newMasterAddress, getNode(slave2).getMasterAddress());
         assertEquals(newMasterAddress, getNode(slave3).getMasterAddress());
+    }
+
+    @Test
+    public void master_candidate_discovers_member_list_recursively() {
+        Config config = new Config().setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+        // master, slave1, slave2
+
+        dropOperationsBetween(master, slave1, MEMBER_INFO_UPDATE);
+
+        HazelcastInstance slave3 = newHazelcastInstance(config);
+        // master, slave1, slave2, slave3
+
+        assertClusterSizeEventually(4, slave3);
+        assertClusterSizeEventually(4, slave2);
+        assertClusterSize(3, slave1);
+
+        dropOperationsBetween(master, asList(slave1, slave2), MEMBER_INFO_UPDATE);
+
+        HazelcastInstance slave4 = newHazelcastInstance(config);
+        // master, slave1, slave2, slave3, slave4
+
+        assertClusterSizeEventually(5, slave4);
+        assertClusterSizeEventually(5, slave3);
+        assertClusterSizeEventually(4, slave2);
+        assertClusterSize(3, slave1);
+
+        dropOperationsBetween(master, asList(slave1, slave2, slave3), MEMBER_INFO_UPDATE);
+
+        HazelcastInstance slave5 = newHazelcastInstance(config);
+        // master, slave1, slave2, slave3, slave4, slave5
+
+        assertClusterSizeEventually(6, slave5);
+        assertClusterSizeEventually(6, slave4);
+        assertClusterSizeEventually(5, slave3);
+        assertClusterSizeEventually(4, slave2);
+        assertClusterSize(3, slave1);
+
+        master.getLifecycleService().terminate();
+
+        assertClusterSizeEventually(5, slave1);
+        assertClusterSizeEventually(5, slave2);
+        assertClusterSizeEventually(5, slave3);
+
+        Address newMasterAddress = getAddress(slave1);
+        assertEquals(newMasterAddress, getNode(slave2).getMasterAddress());
+        assertEquals(newMasterAddress, getNode(slave3).getMasterAddress());
+        assertEquals(newMasterAddress, getNode(slave4).getMasterAddress());
+        assertEquals(newMasterAddress, getNode(slave5).getMasterAddress());
+    }
+
+    @Test
+    public void master_candidate_and_new_member_splits_on_master_failure() {
+        Config config = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), "15")
+                                    .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), "1")
+                                    .setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+
+        dropOperationsBetween(master, slave1, MEMBER_INFO_UPDATE);
+
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave2);
+        assertClusterSize(2, slave1);
+
+        master.getLifecycleService().terminate();
+
+        assertClusterSizeEventually(1, slave1);
+        assertClusterSizeEventually(1, slave2);
+
+        assertEquals(getAddress(slave1), getNode(slave1).getMasterAddress());
+        assertEquals(getAddress(slave2), getNode(slave2).getMasterAddress());
     }
 
     HazelcastInstance newHazelcastInstance() {
