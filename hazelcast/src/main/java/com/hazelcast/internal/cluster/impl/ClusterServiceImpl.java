@@ -165,11 +165,6 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManager.sendMembershipEvents(Collections.<MemberImpl>emptySet(), Collections.singleton(node.getLocalMember()));
     }
 
-    // TODO [basri] Can be called only within master node
-    public void removeAddress(Address deadAddress, String uuid, String reason) {
-        membershipManager.removeAddress(deadAddress, uuid, reason);
-    }
-    
     public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
         membershipManager.suspectAddress(suspectedAddress, reason, destroyConnection);
     }

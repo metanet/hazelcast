@@ -23,6 +23,7 @@ import com.hazelcast.hotrestart.InternalHotRestartService;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.MemberInfo;
+import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.FetchMemberListStateOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
@@ -294,8 +295,17 @@ public class MembershipManager {
         }
     }
 
-    // TODO [basri] Can be called only within master node
-    public void removeAddress(Address deadAddress, String uuid, String reason) {
+    // not used on 3.9+
+    @Deprecated
+    public void removeAddressWithUuid(Address deadAddress, String uuid, String reason) {
+        if (clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+            throw new IllegalStateException("Should not be called on versions 3.9+");
+        }
+
+        if (!ensureMemberIsRemovable(deadAddress)) {
+            return;
+        }
+
         clusterServiceLock.lock();
         try {
             MemberImpl member = getMember(deadAddress);
@@ -306,17 +316,33 @@ public class MembershipManager {
                 }
                 return;
             }
-            doRemoveAddress(deadAddress, reason, true);
+
+            if (deadAddress.equals(node.getMasterAddress())) {
+                assignNewMaster();
+            }
+            if (node.isMaster()) {
+                clusterService.getClusterJoinManager().removeJoin(deadAddress);
+            }
+            Connection conn = node.connectionManager.getConnection(deadAddress);
+            if (conn != null) {
+                conn.close(reason, null);
+            }
+            MemberImpl deadMember = getMember(deadAddress);
+            if (deadMember != null) {
+                removeMember_3_8(deadMember);
+                clusterService.printMemberList();
+            }
+
         } finally {
             clusterServiceLock.unlock();
         }
     }
 
-    public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
+    void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
         suspectAddress(suspectedAddress, null, reason, destroyConnection);
     }
 
-    public void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
+    void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(suspectedAddress)) {
             return;
         }
@@ -402,23 +428,23 @@ public class MembershipManager {
         }
     }
 
+    // TODO: called only on master 
     void doRemoveAddress(Address deadAddress, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(deadAddress)) {
             return;
         }
 
+        assert node.isMaster() : "Master: " + node.getMasterAddress();
+
         clusterServiceLock.lock();
         try {
-            if (deadAddress.equals(node.getMasterAddress())) {
-                assignNewMaster();
-            }
-            if (node.isMaster()) {
-                clusterService.getClusterJoinManager().removeJoin(deadAddress);
-            }
+            clusterService.getClusterJoinManager().removeJoin(deadAddress);
+
             Connection conn = node.connectionManager.getConnection(deadAddress);
             if (destroyConnection && conn != null) {
                 conn.close(reason, null);
             }
+
             MemberImpl deadMember = getMember(deadAddress);
             if (deadMember != null) {
                 removeMember(deadMember);
@@ -429,6 +455,8 @@ public class MembershipManager {
         }
     }
 
+    @Deprecated
+    // not used on 3.9+
     private void assignNewMaster() {
         Address oldMasterAddress = node.getMasterAddress();
         if (node.joined()) {
@@ -472,8 +500,9 @@ public class MembershipManager {
     }
 
     // TODO [basri] should be called only within master
-    // TODO: not used by 3.9+
     private void removeMember(MemberImpl deadMember) {
+        assert clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9);
+
         logger.info("Removing " + deadMember);
         clusterServiceLock.lock();
         try {
@@ -490,6 +519,36 @@ public class MembershipManager {
                     }
 
                     sendMemberListToOthers();
+                }
+
+                handleMemberRemove(newMembers, deadMember);
+            }
+        } finally {
+            clusterServiceLock.unlock();
+        }
+    }
+
+    // not used on 3.9+
+    @Deprecated
+    private void removeMember_3_8(MemberImpl deadMember) {
+        assert clusterService.getClusterVersion().isLessThan(Versions.V3_9);
+        
+        logger.info("Removing " + deadMember);
+        clusterServiceLock.lock();
+        try {
+            ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
+            MemberMap currentMembers = memberMapRef.get();
+            if (currentMembers.contains(deadMember.getAddress())) {
+                clusterHeartbeatManager.removeMember(deadMember);
+                MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, deadMember);
+                memberMapRef.set(newMembers);
+
+                if (node.isMaster()) {
+                    if (logger.isFineEnabled()) {
+                        logger.fine(deadMember + " is dead, sending remove to all other members...");
+                    }
+
+                    sendMemberRemoveOperation(deadMember);
                 }
 
                 handleMemberRemove(newMembers, deadMember);
@@ -531,6 +590,8 @@ public class MembershipManager {
         nodeEngine.onMemberLeft(deadMember);
     }
 
+    // not used on 3.9+
+    @Deprecated
     private void sendMemberRemoveOperation(Member deadMember) {
         for (Member member : getMembers()) {
             Address address = member.getAddress();

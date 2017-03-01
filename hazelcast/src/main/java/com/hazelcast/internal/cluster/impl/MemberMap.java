@@ -201,8 +201,9 @@ final class MemberMap {
     }
 
     Set<MemberImpl> getMembersAfterFirstMember(MemberImpl first) {
-        final Set<MemberImpl> filtered = new LinkedHashSet<MemberImpl>();
-        Iterator<MemberImpl> it = this.members.iterator();
+        final Set<MemberImpl> result = new LinkedHashSet<MemberImpl>();
+        Iterator<MemberImpl> it = members.iterator();
+
         MemberImpl member = null;
         while (it.hasNext()) {
             MemberImpl m = it.next();
@@ -212,31 +213,30 @@ final class MemberMap {
             }
         }
 
-        checkNotNull(member, "Member: " + first + " not found in member list!");
+        checkNotNull(member, first + " not found in member list!");
 
-        filtered.add(member);
+        result.add(member);
         while (it.hasNext()) {
-            filtered.add(it.next());
+            result.add(it.next());
         }
 
-        return filtered;
+        return result;
     }
 
-    Set<MemberImpl> getMembersBeforeMember(Address member) {
-        if (!addressToMemberMap.containsKey(member)) {
-            throw new IllegalArgumentException(member + " is not in the member list!");
+    Set<MemberImpl> getMembersBeforeMember(Address address) {
+        if (!addressToMemberMap.containsKey(address)) {
+            throw new IllegalArgumentException(address + " not found in the member list!");
         }
 
-        final Set<MemberImpl> before = new LinkedHashSet<MemberImpl>();
-        for (MemberImpl m : this.members) {
-            if (m.getAddress().equals(member)) {
+        final Set<MemberImpl> result = new LinkedHashSet<MemberImpl>();
+        for (MemberImpl m : members) {
+            if (m.getAddress().equals(address)) {
                 break;
-            } else {
-                before.add(m);
             }
+            result.add(m);
         }
 
-        return before;
+        return result;
     }
 
 }

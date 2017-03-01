@@ -25,6 +25,8 @@ import com.hazelcast.nio.ObjectDataOutput;
 
 import java.io.IOException;
 
+@Deprecated
+// not used on 3.9+
 public class MemberRemoveOperation extends AbstractClusterOperation {
 
     private Address address;
@@ -55,7 +57,7 @@ public class MemberRemoveOperation extends AbstractClusterOperation {
             logger.fine(msg);
         }
 
-        clusterService.removeAddress(address, memberUuid, msg);
+        clusterService.getMembershipManager().removeAddressWithUuid(address, memberUuid, msg);
     }
 
     private boolean isCallerValid(Address caller) {
