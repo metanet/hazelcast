@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.HazelcastParallelClassRunner;
@@ -29,8 +30,16 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import static com.hazelcast.instance.TestUtil.terminateInstance;
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT;
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MASTER_CONFIRM;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.assertMemberViewsAreSame;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.getMemberMap;
+import static com.hazelcast.internal.cluster.impl.PacketFiltersUtil.dropOperationsFrom;
+import static com.hazelcast.spi.properties.GroupProperty.HEARTBEAT_INTERVAL_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MASTER_CONFIRMATION_INTERVAL_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MAX_NO_HEARTBEAT_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MAX_NO_MASTER_CONFIRMATION_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS;
 import static org.junit.Assert.assertEquals;
 
 @RunWith(HazelcastParallelClassRunner.class)
@@ -47,6 +56,9 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // TODO: add membership failure tests
     // ✔ graceful slave shutdown
     // ✔ graceful master shutdown
+    // ✔ master removes slave because of heartbeat timeout
+    // ✔ slaves remove master because of heartbeat timeout
+    // ✔ master removes slave because of master confirm timeout
     // - slave member failure detected by master
     // - slave member suspected by others and its failure eventually detected by master
     // - master member failure detected by others
@@ -132,11 +144,76 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
     }
 
+    @Test
+    public void slave_heartbeat_timeout() {
+        Config config = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), "15")
+                                     .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), "1");
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+
+        dropOperationsFrom(slave2, HEARTBEAT);
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(1, slave2);
+    }
+
+    @Test
+    public void master_heartbeat_timeout() {
+        Config config = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), "15")
+                                    .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), "1")
+                                    .setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "3");
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+
+        dropOperationsFrom(master, HEARTBEAT);
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        assertClusterSizeEventually(1, master);
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(2, slave2);
+    }
+
+    @Test
+    public void slave_master_confirmation_timeout() {
+        Config config = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), "15")
+                                    .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), "1")
+                                    .setProperty(MAX_NO_MASTER_CONFIRMATION_SECONDS.getName(), "15")
+                                    .setProperty(MASTER_CONFIRMATION_INTERVAL_SECONDS.getName(), "1");
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+
+        dropOperationsFrom(slave2, MASTER_CONFIRM);
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(1, slave2);
+    }
+
     HazelcastInstance newHazelcastInstance() {
         return factory.newHazelcastInstance();
+    }
+
+    HazelcastInstance newHazelcastInstance(Config config) {
+        return factory.newHazelcastInstance(config);
     }
 
     private static void assertMaster(Address masterAddress, HazelcastInstance instance) {
         assertEquals(masterAddress, getNode(instance).getMasterAddress());
     }
+
 }

@@ -56,6 +56,7 @@ import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.TransactionalService;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.operationservice.InternalOperationService;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.transaction.TransactionOptions;
 import com.hazelcast.transaction.TransactionalObject;
@@ -170,7 +171,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
     
     public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
-        membershipManager.suspectAddress(suspectedAddress, null, reason, destroyConnection);
+        membershipManager.suspectAddress(suspectedAddress, reason, destroyConnection);
     }
 
     public void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
@@ -322,14 +323,16 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     public boolean updateMembers(MembersView membersView, Address callerAddress) {
         lock.lock();
         try {
-            if (!checkValidMaster(callerAddress)) {
-                logger.warning("Not updating members because caller: " + callerAddress  + " is not known master: "
-                        + getMasterAddress());
+            if (!node.joined()) {
+                logger.warning("Not updating members received from caller: " + callerAddress +  " because node is not joined! ");
                 return false;
             }
 
-            if (!node.joined()) {
-                logger.warning("Not updating members received from caller: " + callerAddress +  " because node is not joined! ");
+            if (!checkValidMaster(callerAddress)) {
+                logger.warning("Not updating members because caller: " + callerAddress  + " is not known master: "
+                        + getMasterAddress());
+                InternalOperationService operationService = nodeEngine.getOperationService();
+                operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), callerAddress);
                 return false;
             }
 

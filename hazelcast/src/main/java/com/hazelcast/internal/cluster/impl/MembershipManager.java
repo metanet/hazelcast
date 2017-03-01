@@ -471,6 +471,7 @@ public class MembershipManager {
         }
     }
 
+    // TODO [basri] should be called only within master
     // TODO: not used by 3.9+
     private void removeMember(MemberImpl deadMember) {
         logger.info("Removing " + deadMember);
@@ -487,8 +488,8 @@ public class MembershipManager {
                     if (logger.isFineEnabled()) {
                         logger.fine(deadMember + " is dead, sending remove to all other members...");
                     }
-                    // TODO [basri] I will publish a new member list
-                    sendMemberRemoveOperation(getMemberListVersion(), deadMember);
+
+                    sendMemberListToOthers();
                 }
 
                 handleMemberRemove(newMembers, deadMember);

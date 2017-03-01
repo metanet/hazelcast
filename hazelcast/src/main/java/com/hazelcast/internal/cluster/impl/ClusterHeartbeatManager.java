@@ -292,7 +292,7 @@ public class ClusterHeartbeatManager {
             if (!member.localMember()) {
                 try {
                     logIfConnectionToEndpointIsMissing(now, member);
-                    if (removeMemberIfNotHeartBeating(now, member)) {
+                    if (suspectMemberIfNotHeartBeating(now, member)) {
                         continue;
                     }
 
@@ -317,14 +317,17 @@ public class ClusterHeartbeatManager {
      * @param member the member which needs to be checked
      * @return if the member has been removed
      */
-    private boolean removeMemberIfNotHeartBeating(long now, MemberImpl member) {
+    private boolean suspectMemberIfNotHeartBeating(long now, MemberImpl member) {
+        if (clusterService.getMembershipManager().isMemberSuspected(member.getAddress())) {
+            return true;
+        }
+
         long heartbeatTime = getHeartbeatTime(member);
         if ((now - heartbeatTime) > maxNoHeartbeatMillis) {
             String reason = format("Removing %s because it has not sent any heartbeats for %d ms."
                             + " Now: %s, last heartbeat time was %s", member, maxNoHeartbeatMillis,
                     timeToString(now), timeToString(heartbeatTime));
             logger.warning(reason);
-            // TODO [basri] If I am the master, I can remove the member. Otherwise, I can only suspect it because I rely on my local information
             clusterService.suspectAddress(member.getAddress(), reason, true);
             return true;
         }
@@ -379,10 +382,8 @@ public class ClusterHeartbeatManager {
                 try {
                     logIfConnectionToEndpointIsMissing(now, member);
 
-                    if (isMaster(member)) {
-                        if (removeMemberIfNotHeartBeating(now, member)) {
-                            continue;
-                        }
+                    if (suspectMemberIfNotHeartBeating(now, member)) {
+                        continue;
                     }
 
                     pingMemberIfRequired(now, member);
