@@ -32,8 +32,10 @@ import org.junit.runner.RunWith;
 import static com.hazelcast.instance.TestUtil.terminateInstance;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MASTER_CONFIRM;
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MEMBER_INFO_UPDATE;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.assertMemberViewsAreSame;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.getMemberMap;
+import static com.hazelcast.internal.cluster.impl.PacketFiltersUtil.dropOperationsBetween;
 import static com.hazelcast.internal.cluster.impl.PacketFiltersUtil.dropOperationsFrom;
 import static com.hazelcast.spi.properties.GroupProperty.HEARTBEAT_INTERVAL_SECONDS;
 import static com.hazelcast.spi.properties.GroupProperty.MASTER_CONFIRMATION_INTERVAL_SECONDS;
@@ -63,7 +65,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // - slave member suspected by others and its failure eventually detected by master
     // - master member failure detected by others
     // - master and master-candidate fail simultaneously
-    // - master fails when master-candidate doesn't have the most recent member list
+    // ✔ master fails when master-candidate doesn't have the most recent member list
     // - partial network failure: multiple master claims, eventually split brain and merge
     // - so on...
 
@@ -202,6 +204,40 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(2, master);
         assertClusterSizeEventually(2, slave1);
         assertClusterSizeEventually(1, slave2);
+    }
+
+    @Test
+    public void master_candidate_has_stale_member_list() {
+        Config config = new Config().setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        dropOperationsBetween(master, slave1, MEMBER_INFO_UPDATE);
+
+        HazelcastInstance slave3 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(4, slave3);
+        assertClusterSizeEventually(4, slave2);
+        assertClusterSize(3, slave1);
+
+        master.getLifecycleService().terminate();
+
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+        assertClusterSizeEventually(3, slave3);
+
+        Address newMasterAddress = getAddress(slave1);
+        assertEquals(newMasterAddress, getNode(slave1).getMasterAddress());
+        assertEquals(newMasterAddress, getNode(slave2).getMasterAddress());
+        assertEquals(newMasterAddress, getNode(slave3).getMasterAddress());
     }
 
     HazelcastInstance newHazelcastInstance() {
