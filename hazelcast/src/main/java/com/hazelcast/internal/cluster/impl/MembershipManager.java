@@ -717,7 +717,7 @@ public class MembershipManager {
 
         for (MemberInfo memberInfo : membersView.getMembers()) {
             Address memberAddress = memberInfo.getAddress();
-            if (!(isMemberSuspected(memberAddress) || futures.containsKey(memberAddress))) {
+            if (!(node.getThisAddress().equals(memberAddress) || isMemberSuspected(memberAddress) || futures.containsKey(memberAddress))) {
                 // this is a new member for us. lets ask its members view
                 logger.fine("Asking MembersView of " + memberAddress);
                 futures.put(memberAddress, invokeFetchMemberListStateOperation(memberAddress));
