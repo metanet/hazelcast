@@ -171,7 +171,7 @@ public abstract class AbstractJoiner implements Joiner {
             }
 
             if (clusterService.getSize() == 1) {
-                logger.info('\n' + node.clusterService.membersString());
+                clusterService.printMemberList();
             }
         }
     }

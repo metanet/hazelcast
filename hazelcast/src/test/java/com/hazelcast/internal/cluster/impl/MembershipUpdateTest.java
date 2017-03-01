@@ -288,7 +288,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
 
         allowMembershipUpdatesFrom(hz1);
         ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(hz1);
-        clusterService.sendMemberListToMember(getAddress(hz2));
+        clusterService.getMembershipManager().sendMemberListToMember(getAddress(hz2));
 
         assertClusterSizeEventually(3, hz2);
 
@@ -413,7 +413,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
 
     static MemberMap getMemberMap(HazelcastInstance instance) {
         ClusterServiceImpl clusterService = getNode(instance).getClusterService();
-        return clusterService.getMemberMap();
+        return clusterService.getMembershipManager().getMemberMap();
     }
 
     private static class MembershipUpdatePacketFilter extends OperationPacketFilter {

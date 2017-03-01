@@ -70,8 +70,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(2, master);
         assertClusterSizeEventually(2, slave2);
 
-        assertMaster(master, getAddress(master));
-        assertMaster(slave2, getAddress(master));
+        assertMaster(getAddress(master), master);
+        assertMaster(getAddress(master), slave2);
         assertMemberViewsAreSame(getMemberMap(master), getMemberMap(slave2));
     }
 
@@ -90,8 +90,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(2, slave1);
         assertClusterSizeEventually(2, slave2);
 
-        assertMaster(slave1, getAddress(slave1));
-        assertMaster(slave2, getAddress(slave1));
+        assertMaster(getAddress(slave1), slave1);
+        assertMaster(getAddress(slave1), slave2);
         assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
     }
 
@@ -107,8 +107,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
 
         terminateInstance(slave1);
 
-        assertMaster(master, getAddress(master));
-        assertMaster(slave2, getAddress(master));
+        assertMaster(getAddress(master), master);
+        assertMaster(getAddress(master), slave2);
         assertMemberViewsAreSame(getMemberMap(master), getMemberMap(slave2));
     }
 
@@ -127,8 +127,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(2, slave1);
         assertClusterSizeEventually(2, slave2);
 
-        assertMaster(slave1, getAddress(slave1));
-        assertMaster(slave2, getAddress(slave1));
+        assertMaster(getAddress(slave1), slave1);
+        assertMaster(getAddress(slave1), slave2);
         assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
     }
 
@@ -136,7 +136,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         return factory.newHazelcastInstance();
     }
 
-    private static void assertMaster(HazelcastInstance instance, Address address) {
-        assertEquals(address, getNode(instance).getMasterAddress());
+    private static void assertMaster(Address masterAddress, HazelcastInstance instance) {
+        assertEquals(masterAddress, getNode(instance).getMasterAddress());
     }
 }

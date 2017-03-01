@@ -86,7 +86,7 @@ public class ClusterHeartbeatManager {
     private volatile long lastHeartbeat;
     private volatile long lastClusterTimeDiff;
 
-    public ClusterHeartbeatManager(Node node, ClusterServiceImpl clusterService) {
+    ClusterHeartbeatManager(Node node, ClusterServiceImpl clusterService) {
         this.node = node;
         this.clusterService = clusterService;
         this.nodeEngine = node.getNodeEngine();
@@ -115,7 +115,6 @@ public class ClusterHeartbeatManager {
      * <ul>
      * <li>heartbeat operation to the {@link #getHeartbeatInterval(HazelcastProperties)} interval</li>
      * <li>master confirmation to the {@link GroupProperty#MASTER_CONFIRMATION_INTERVAL_SECONDS} interval</li>
-     * <li>member list publication to the {@link GroupProperty#MEMBER_LIST_PUBLISH_INTERVAL_SECONDS} interval</li>
      * </ul>
      */
     void init() {
@@ -136,13 +135,13 @@ public class ClusterHeartbeatManager {
             }
         }, masterConfirmationInterval, masterConfirmationInterval, TimeUnit.SECONDS);
 
-        long memberListPublishInterval = hazelcastProperties.getSeconds(GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS);
-        memberListPublishInterval = (memberListPublishInterval > 0 ? memberListPublishInterval : 1);
-        executionService.scheduleWithRepetition(EXECUTOR_NAME, new Runnable() {
-            public void run() {
-                clusterService.sendMemberListToOthers();
-            }
-        }, memberListPublishInterval, memberListPublishInterval, TimeUnit.SECONDS);
+//        long memberListPublishInterval = hazelcastProperties.getSeconds(GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS);
+//        memberListPublishInterval = (memberListPublishInterval > 0 ? memberListPublishInterval : 1);
+//        executionService.scheduleWithRepetition(EXECUTOR_NAME, new Runnable() {
+//            public void run() {
+//                clusterService.getMembershipManager().sendMemberListToOthers();
+//            }
+//        }, memberListPublishInterval, memberListPublishInterval, TimeUnit.SECONDS);
     }
 
     /**
@@ -454,7 +453,9 @@ public class ClusterHeartbeatManager {
             return;
         }
         try {
-            HeartbeatOperation heartbeat = new HeartbeatOperation(clusterService.getMemberListVersion(), clusterClock.getClusterTime());
+            int memberListVersion = clusterService.getMembershipManager().getMemberListVersion();
+            HeartbeatOperation heartbeat = new HeartbeatOperation(
+                    memberListVersion, clusterClock.getClusterTime());
             heartbeat.setCallerUuid(node.getThisUuid());
             node.nodeEngine.getOperationService().send(heartbeat, target);
         } catch (Exception e) {

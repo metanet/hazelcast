@@ -58,7 +58,7 @@ public final class HeartbeatOperation extends VersionedClusterOperation {
             return;
         }
 
-        int localMemberListVersion = service.getMemberListVersion();
+        int localMemberListVersion = service.getMembershipManager().getMemberListVersion();
 
         ILogger logger = getLogger();
         if (service.isMaster()) {
