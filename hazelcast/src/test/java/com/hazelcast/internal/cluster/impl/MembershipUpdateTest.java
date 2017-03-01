@@ -32,6 +32,7 @@ import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.util.collection.IntHashSet;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -49,7 +50,12 @@ import static org.junit.Assert.assertNotNull;
 @Category({QuickTest.class, ParallelTest.class})
 public class MembershipUpdateTest extends HazelcastTestSupport {
 
-    private TestHazelcastInstanceFactory factory = createHazelcastInstanceFactory();
+    private TestHazelcastInstanceFactory factory;
+
+    @Before
+    public void init() {
+        factory = createHazelcastInstanceFactory();
+    }
 
     // TODO: add membership update tests
     // ✔ sequential member join
