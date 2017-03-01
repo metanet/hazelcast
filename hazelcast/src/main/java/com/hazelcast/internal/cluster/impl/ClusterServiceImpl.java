@@ -66,6 +66,7 @@ import com.hazelcast.transaction.TransactionOptions;
 import com.hazelcast.transaction.TransactionalObject;
 import com.hazelcast.transaction.impl.Transaction;
 import com.hazelcast.util.executor.ExecutorType;
+import com.hazelcast.util.executor.ManagedExecutorService;
 import com.hazelcast.version.Version;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -91,6 +92,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static com.hazelcast.cluster.memberselector.MemberSelectors.NON_LOCAL_MEMBER_SELECTOR;
+import static com.hazelcast.spi.ExecutionService.SYSTEM_EXECUTOR;
 import static com.hazelcast.util.Preconditions.checkFalse;
 import static com.hazelcast.util.Preconditions.checkNotNull;
 import static com.hazelcast.util.Preconditions.checkTrue;
@@ -247,8 +249,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             return;
         }
 
-        MembersView localMemberView;
-        Set<Address> membersToAsk;
+        final MembersView localMemberView;
+        final Set<Address> membersToAsk;
         lock.lock();
         try {
             boolean claimMastership = doSuspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
@@ -271,18 +273,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
 
         logger.info("Local " + localMemberView + " with suspected members: "  + suspectedMembers.keySet() + " and initial addresses to ask: " + membersToAsk);
-
-        MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
-        lock.lock();
-        try {
-            doUpdateMembers(newMembersView);
-            sendMemberListToOthers();
-            // TODO [basri] what about membersRemovedWhileClusterNotActive ???
-            clusterJoinManager.reset();
-            logger.info("Mastership is claimed with: " + newMembersView);
-        } finally {
-            lock.unlock();
-        }
+        ManagedExecutorService executor = nodeEngine.getExecutionService().getExecutor(SYSTEM_EXECUTOR);
+        executor.submit(new FetchMostRecentMemberListTask(localMemberView, membersToAsk));
     }
 
     // called under cluster service lock
@@ -1214,7 +1206,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         if (membershipAwareServices != null && !membershipAwareServices.isEmpty()) {
             for (final MembershipAwareService service : membershipAwareServices) {
                 // service events should not block each other
-                nodeEngine.getExecutionService().execute(ExecutionService.SYSTEM_EXECUTOR, new Runnable() {
+                nodeEngine.getExecutionService().execute(SYSTEM_EXECUTOR, new Runnable() {
                     public void run() {
                         service.memberAttributeChanged(event);
                     }
@@ -1543,4 +1535,32 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 + "{address=" + thisAddress
                 + '}';
     }
+
+    private class FetchMostRecentMemberListTask implements Runnable {
+
+        final MembersView localMemberView;
+        final Set<Address> membersToAsk;
+
+        public FetchMostRecentMemberListTask(MembersView localMemberView, Set<Address> membersToAsk) {
+            this.localMemberView = localMemberView;
+            this.membersToAsk = membersToAsk;
+        }
+
+        @Override
+        public void run() {
+            MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
+            lock.lock();
+            try {
+                doUpdateMembers(newMembersView);
+                sendMemberListToOthers();
+                // TODO [basri] what about membersRemovedWhileClusterNotActive ???
+                clusterJoinManager.reset();
+                logger.info("Mastership is claimed with: " + newMembersView);
+            } finally {
+                lock.unlock();
+            }
+        }
+
+    }
+
 }
