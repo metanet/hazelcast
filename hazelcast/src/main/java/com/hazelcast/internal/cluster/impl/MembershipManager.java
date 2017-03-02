@@ -81,16 +81,12 @@ public class MembershipManager {
 
     private final Map<Address, Long> suspectedMembers = new HashMap<Address, Long>();
 
-    private final MembershipManagerCompat membershipManagerCompat;
-
     MembershipManager(Node node, ClusterServiceImpl clusterService, Lock clusterServiceLock) {
         this.node = node;
         this.clusterService = clusterService;
         this.clusterServiceLock = clusterServiceLock;
         this.nodeEngine = node.getNodeEngine();
         this.logger = node.getLogger(getClass());
-
-        this.membershipManagerCompat = new MembershipManagerCompat(node, clusterService, clusterServiceLock);
         
         registerThisMember();
     }
@@ -384,7 +380,7 @@ public class MembershipManager {
     }
 
     // TODO: called only on master 
-    void doRemoveAddress(Address address, String reason, boolean destroyConnection) {
+    private void doRemoveAddress(Address address, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(address)) {
             return;
         }
@@ -789,12 +785,6 @@ public class MembershipManager {
                 clusterServiceLock.unlock();
             }
         }
-    }
-
-    // used for 3.8 compatibility
-    public MembershipManagerCompat getMembershipManagerCompat() {
-        assert clusterService.getClusterVersion().isLessThan(Versions.V3_9);
-        return membershipManagerCompat;
     }
 }
 

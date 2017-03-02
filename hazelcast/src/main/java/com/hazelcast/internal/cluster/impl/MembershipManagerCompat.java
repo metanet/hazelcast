@@ -67,7 +67,7 @@ public class MembershipManagerCompat {
         clusterServiceLock.lock();
         try {
             MemberImpl member = membershipManager.getMember(deadAddress);
-            if (member == null || !uuid.equals(member.getUuid())) {
+            if (member == null || (uuid != null && !uuid.equals(member.getUuid()))) {
                 if (logger.isFineEnabled()) {
                     logger.fine("Cannot remove " + deadAddress + ", either member is not present "
                             + "or uuid is not matching. Uuid: " + uuid + ", member: " + member);
@@ -85,11 +85,9 @@ public class MembershipManagerCompat {
             if (conn != null) {
                 conn.close(reason, null);
             }
-            MemberImpl deadMember = membershipManager.getMember(deadAddress);
-            if (deadMember != null) {
-                removeMember(deadMember);
-                clusterService.printMemberList();
-            }
+            
+            removeMember(member);
+            clusterService.printMemberList();
 
         } finally {
             clusterServiceLock.unlock();

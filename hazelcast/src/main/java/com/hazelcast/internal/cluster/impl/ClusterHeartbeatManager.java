@@ -353,7 +353,7 @@ public class ClusterHeartbeatManager {
                     timeToString(lastConfirmation));
             logger.warning(reason);
             // TODO [basri] I am the master so I can remove the member
-            clusterService.removeAddress(member.getAddress(), reason);
+            clusterService.suspectAddress(member.getAddress(), reason, true);
             return true;
         }
         return false;

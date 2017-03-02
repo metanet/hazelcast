@@ -108,6 +108,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     private final MembershipManager membershipManager;
 
+    private final MembershipManagerCompat membershipManagerCompat;
+
     private final ClusterStateManager clusterStateManager;
 
     private final ClusterJoinManager clusterJoinManager;
@@ -127,6 +129,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         thisAddress = node.getThisAddress();
 
         membershipManager = new MembershipManager(node, this, lock);
+        membershipManagerCompat = new MembershipManagerCompat(node, this, lock);
         clusterStateManager = new ClusterStateManager(node, lock);
         clusterJoinManager = new ClusterJoinManager(node, this, lock);
         clusterHeartbeatManager = new ClusterHeartbeatManager(node, this);
@@ -166,11 +169,19 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
-        membershipManager.suspectAddress(suspectedAddress, reason, destroyConnection);
+        if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+            membershipManager.suspectAddress(suspectedAddress, reason, destroyConnection);
+        } else {
+            membershipManagerCompat.removeMember(suspectedAddress, null, reason);
+        }
     }
 
     public void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
-        membershipManager.suspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
+        if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+            membershipManager.suspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
+        } else {
+            membershipManagerCompat.removeMember(suspectedAddress, suspectedUuid, reason);
+        }
     }
 
     public void handleMasterConfirmation(Address endpoint, long timestamp) {
@@ -266,7 +277,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     // TODO [basri] Can be called only within master node
     public void removeAddress(Address deadAddress, String reason) {
-        membershipManager.doRemoveAddress(deadAddress, reason, true);
+//        membershipManager.doRemoveAddress(deadAddress, reason, true);
+        throw new UnsupportedOperationException();
     }
 
     public void merge(Address newTargetAddress) {
@@ -844,6 +856,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     public ClusterHeartbeatManager getClusterHeartbeatManager() {
         return clusterHeartbeatManager;
+    }
+
+    // used for 3.8 compatibility
+    public MembershipManagerCompat getMembershipManagerCompat() {
+        assert getClusterVersion().isLessThan(Versions.V3_9);
+        return membershipManagerCompat;
     }
 
     @Override

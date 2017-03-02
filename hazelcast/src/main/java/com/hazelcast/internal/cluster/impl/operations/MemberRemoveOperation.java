@@ -57,7 +57,7 @@ public class MemberRemoveOperation extends AbstractClusterOperation {
             logger.fine(msg);
         }
 
-        clusterService.getMembershipManager().getMembershipManagerCompat().removeMember(address, memberUuid, msg);
+        clusterService.getMembershipManagerCompat().removeMember(address, memberUuid, msg);
     }
 
     private boolean isCallerValid(Address caller) {
