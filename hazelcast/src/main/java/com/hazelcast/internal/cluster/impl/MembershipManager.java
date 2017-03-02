@@ -25,7 +25,6 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.FetchMemberListStateOperation;
-import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.logging.ILogger;
@@ -42,7 +41,6 @@ import com.hazelcast.spi.properties.HazelcastProperties;
 import com.hazelcast.util.executor.ManagedExecutorService;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,7 +60,6 @@ import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.EXECUTOR_NA
 import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.MEMBERSHIP_EVENT_EXECUTOR_NAME;
 import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.SERVICE_NAME;
 import static com.hazelcast.spi.ExecutionService.SYSTEM_EXECUTOR;
-import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
 
 /**
@@ -84,12 +81,16 @@ public class MembershipManager {
 
     private final Map<Address, Long> suspectedMembers = new HashMap<Address, Long>();
 
+    private final MembershipManagerCompat membershipManagerCompat;
+
     MembershipManager(Node node, ClusterServiceImpl clusterService, Lock clusterServiceLock) {
         this.node = node;
         this.clusterService = clusterService;
         this.clusterServiceLock = clusterServiceLock;
         this.nodeEngine = node.getNodeEngine();
         this.logger = node.getLogger(getClass());
+
+        this.membershipManagerCompat = new MembershipManagerCompat(node, clusterService, clusterServiceLock);
         
         registerThisMember();
     }
@@ -113,7 +114,6 @@ public class MembershipManager {
 
     private void registerThisMember() {
         MemberImpl thisMember = node.getLocalMember();
-        //        setMembers(1, thisMember);
         memberMapRef.set(MemberMap.singleton(thisMember));
     }
 
@@ -193,6 +193,7 @@ public class MembershipManager {
     }
 
     // handles both new and left members
+    // TODO: improve member update path, handling new & removed members etc...
     void updateMembers(MembersView membersView) {
         MemberMap currentMemberMap = memberMapRef.get();
 
@@ -232,7 +233,7 @@ public class MembershipManager {
             }
         }
 
-        setMembers(membersView.getVersion(), members);
+        setMembers(MemberMap.createNew(membersView.getVersion(), members));
 
         // TODO: handle removed members
         for (MemberImpl member : removedMembers) {
@@ -259,16 +260,13 @@ public class MembershipManager {
                 node.hazelcastInstance, memberInfo.getAttributes(), memberInfo.isLiteMember());
     }
 
-    private void setMembers(int version, MemberImpl... members) {
-        if (members == null || members.length == 0) {
-            return;
-        }
+    void setMembers(MemberMap memberMap) {
         if (logger.isFineEnabled()) {
-            logger.fine("Setting members " + Arrays.toString(members) + ", version: " + version);
+            logger.fine("Setting members " + memberMap.getMembers() + ", version: " + memberMap.getVersion());
         }
         clusterServiceLock.lock();
         try {
-            memberMapRef.set(MemberMap.createNew(version, members));
+            memberMapRef.set(memberMap);
             retainSuspectedMembers();
         } finally {
             clusterServiceLock.unlock();
@@ -290,49 +288,6 @@ public class MembershipManager {
         clusterServiceLock.lock();
         try {
             return suspectedMembers.containsKey(address);
-        } finally {
-            clusterServiceLock.unlock();
-        }
-    }
-
-    // not used on 3.9+
-    @Deprecated
-    public void removeAddressWithUuid(Address deadAddress, String uuid, String reason) {
-        if (clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            throw new IllegalStateException("Should not be called on versions 3.9+");
-        }
-
-        if (!ensureMemberIsRemovable(deadAddress)) {
-            return;
-        }
-
-        clusterServiceLock.lock();
-        try {
-            MemberImpl member = getMember(deadAddress);
-            if (member == null || !uuid.equals(member.getUuid())) {
-                if (logger.isFineEnabled()) {
-                    logger.fine("Cannot remove " + deadAddress + ", either member is not present "
-                            + "or uuid is not matching. Uuid: " + uuid + ", member: " + member);
-                }
-                return;
-            }
-
-            if (deadAddress.equals(node.getMasterAddress())) {
-                assignNewMaster();
-            }
-            if (node.isMaster()) {
-                clusterService.getClusterJoinManager().removeJoin(deadAddress);
-            }
-            Connection conn = node.connectionManager.getConnection(deadAddress);
-            if (conn != null) {
-                conn.close(reason, null);
-            }
-            MemberImpl deadMember = getMember(deadAddress);
-            if (deadMember != null) {
-                removeMember_3_8(deadMember);
-                clusterService.printMemberList();
-            }
-
         } finally {
             clusterServiceLock.unlock();
         }
@@ -429,8 +384,8 @@ public class MembershipManager {
     }
 
     // TODO: called only on master 
-    void doRemoveAddress(Address deadAddress, String reason, boolean destroyConnection) {
-        if (!ensureMemberIsRemovable(deadAddress)) {
+    void doRemoveAddress(Address address, String reason, boolean destroyConnection) {
+        if (!ensureMemberIsRemovable(address)) {
             return;
         }
 
@@ -438,127 +393,51 @@ public class MembershipManager {
 
         clusterServiceLock.lock();
         try {
-            clusterService.getClusterJoinManager().removeJoin(deadAddress);
+            clusterService.getClusterJoinManager().removeJoin(address);
 
-            Connection conn = node.connectionManager.getConnection(deadAddress);
+            Connection conn = node.connectionManager.getConnection(address);
             if (destroyConnection && conn != null) {
                 conn.close(reason, null);
             }
 
-            MemberImpl deadMember = getMember(deadAddress);
-            if (deadMember != null) {
-                removeMember(deadMember);
-                clusterService.printMemberList();
-            }
+            removeMember(address);
+
         } finally {
             clusterServiceLock.unlock();
-        }
-    }
-
-    @Deprecated
-    // not used on 3.9+
-    private void assignNewMaster() {
-        Address oldMasterAddress = node.getMasterAddress();
-        if (node.joined()) {
-            Collection<MemberImpl> members = getMembers();
-            Member newMaster = null;
-            int size = members.size();
-            if (size > 1) {
-                Iterator<MemberImpl> iterator = members.iterator();
-                Member member = iterator.next();
-                if (member.getAddress().equals(oldMasterAddress)) {
-                    newMaster = iterator.next();
-                } else {
-                    logger.severe(format("Old master %s is dead, but the first of member list is a different member %s!",
-                            oldMasterAddress, member));
-                    newMaster = member;
-                }
-            } else {
-                logger.warning(format("Old master %s is dead and this node is not master, "
-                        + "but member list contains only %d members: %s", oldMasterAddress, size, members));
-            }
-            logger.info(format("Old master %s left the cluster, assigning new master %s", oldMasterAddress, newMaster));
-            if (newMaster != null) {
-                node.setMasterAddress(newMaster.getAddress());
-            } else {
-                node.setMasterAddress(null);
-            }
-        } else {
-            node.setMasterAddress(null);
-        }
-
-        if (logger.isFineEnabled()) {
-            logger.fine(format("Old master: %s, new master: %s ", oldMasterAddress, node.getMasterAddress()));
-        }
-
-        ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
-        if (node.isMaster()) {
-            clusterHeartbeatManager.resetMemberMasterConfirmations();
-        } else {
-            clusterHeartbeatManager.sendMasterConfirmation();
         }
     }
 
     // TODO [basri] should be called only within master
-    private void removeMember(MemberImpl deadMember) {
+    private void removeMember(Address address) {
         assert clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9);
+        assert node.isMaster() : "Master: " + node.getMasterAddress();
 
-        logger.info("Removing " + deadMember);
         clusterServiceLock.lock();
         try {
             ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
             MemberMap currentMembers = memberMapRef.get();
-            if (currentMembers.contains(deadMember.getAddress())) {
-                clusterHeartbeatManager.removeMember(deadMember);
-                MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, deadMember);
-                memberMapRef.set(newMembers);
+            MemberImpl member = currentMembers.getMember(address);
+            if (member != null) {
+                logger.info("Removing " + member);
+                clusterHeartbeatManager.removeMember(member);
+                MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, member);
+                setMembers(newMembers);
 
-                if (node.isMaster()) {
-                    if (logger.isFineEnabled()) {
-                        logger.fine(deadMember + " is dead, sending remove to all other members...");
-                    }
-
-                    sendMemberListToOthers();
+                if (logger.isFineEnabled()) {
+                    logger.fine(member + " is removed. Publishing new member list.");
                 }
+                sendMemberListToOthers();
 
-                handleMemberRemove(newMembers, deadMember);
+                handleMemberRemove(newMembers, member);
+            } else {
+                logger.fine("No member to remove with address: " + address);
             }
         } finally {
             clusterServiceLock.unlock();
         }
     }
 
-    // not used on 3.9+
-    @Deprecated
-    private void removeMember_3_8(MemberImpl deadMember) {
-        assert clusterService.getClusterVersion().isLessThan(Versions.V3_9);
-        
-        logger.info("Removing " + deadMember);
-        clusterServiceLock.lock();
-        try {
-            ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
-            MemberMap currentMembers = memberMapRef.get();
-            if (currentMembers.contains(deadMember.getAddress())) {
-                clusterHeartbeatManager.removeMember(deadMember);
-                MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, deadMember);
-                memberMapRef.set(newMembers);
-
-                if (node.isMaster()) {
-                    if (logger.isFineEnabled()) {
-                        logger.fine(deadMember + " is dead, sending remove to all other members...");
-                    }
-
-                    sendMemberRemoveOperation(deadMember);
-                }
-
-                handleMemberRemove(newMembers, deadMember);
-            }
-        } finally {
-            clusterServiceLock.unlock();
-        }
-    }
-
-    private void handleMemberRemove(MemberMap newMembers, MemberImpl removedMember) {
+    void handleMemberRemove(MemberMap newMembers, MemberImpl removedMember) {
         ClusterState clusterState = clusterService.getClusterState();
         if (clusterState != ClusterState.ACTIVE) {
             if (logger.isFineEnabled()) {
@@ -588,19 +467,6 @@ public class MembershipManager {
         node.getPartitionService().memberRemoved(deadMember);
         // sync call
         nodeEngine.onMemberLeft(deadMember);
-    }
-
-    // not used on 3.9+
-    @Deprecated
-    private void sendMemberRemoveOperation(Member deadMember) {
-        for (Member member : getMembers()) {
-            Address address = member.getAddress();
-            if (!node.getThisAddress().equals(address) && !address.equals(deadMember.getAddress())) {
-                MemberRemoveOperation
-                        op = new MemberRemoveOperation(deadMember.getAddress(), deadMember.getUuid());
-                nodeEngine.getOperationService().send(op, address);
-            }
-        }
     }
 
     void sendMembershipEvents(Collection<MemberImpl> currentMembers, Collection<MemberImpl> newMembers) {
@@ -923,6 +789,12 @@ public class MembershipManager {
                 clusterServiceLock.unlock();
             }
         }
+    }
 
+    // used for 3.8 compatibility
+    public MembershipManagerCompat getMembershipManagerCompat() {
+        assert clusterService.getClusterVersion().isLessThan(Versions.V3_9);
+        return membershipManagerCompat;
     }
 }
+
