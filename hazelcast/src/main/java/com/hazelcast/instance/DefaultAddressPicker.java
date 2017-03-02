@@ -362,11 +362,6 @@ class DefaultAddressPicker implements AddressPicker {
         return preferIPv4Stack || awsEnabled;
     }
 
-    @Deprecated
-    public Address getAddress() {
-        return getBindAddress();
-    }
-
     @Override
     public Address getBindAddress() {
         return bindAddress;
