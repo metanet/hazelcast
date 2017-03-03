@@ -35,6 +35,7 @@ import com.hazelcast.spi.EventService;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.MembershipAwareService;
 import com.hazelcast.spi.MembershipServiceEvent;
+import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.spi.properties.HazelcastProperties;
@@ -114,20 +115,24 @@ public class MembershipManager {
     }
 
     public MemberImpl getMember(Address address) {
-        if (address == null) {
-            return null;
-        }
+        assert address != null : "Address required!";
         MemberMap memberMap = memberMapRef.get();
         return memberMap.getMember(address);
     }
 
     public MemberImpl getMember(String uuid) {
-        if (uuid == null) {
-            return null;
-        }
+        assert uuid != null : "UUID required!";
 
         MemberMap memberMap = memberMapRef.get();
         return memberMap.getMember(uuid);
+    }
+
+    MemberImpl getMember(Address address, String uuid) {
+        assert address != null : "Address required!";
+        assert uuid != null : "UUID required!";
+
+        MemberMap memberMap = memberMapRef.get();
+        return memberMap.getMember(address, uuid);
     }
 
     public Collection<MemberImpl> getMembers() {
@@ -287,10 +292,6 @@ public class MembershipManager {
         } finally {
             clusterServiceLock.unlock();
         }
-    }
-
-    void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
-        suspectAddress(suspectedAddress, null, reason, destroyConnection);
     }
 
     void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
@@ -521,7 +522,7 @@ public class MembershipManager {
 
         // TODO [basri] what if I am shutting down?
 
-        for (MemberImpl m : memberMap.getMembersBeforeMember(node.getThisAddress())) {
+        for (MemberImpl m : memberMap.headMemberSet(node.getLocalMember(), false)) {
             if (!isMemberSuspected(m.getAddress())) {
                 return false;
             }
@@ -654,7 +655,7 @@ public class MembershipManager {
     private Future<MembersView> invokeFetchMemberListStateOperation(Address target) {
         // TODO [basri] define config param
         long fetchMemberListStateTimeoutMs = TimeUnit.SECONDS.toMillis(30);
-        FetchMemberListStateOperation op = new FetchMemberListStateOperation(node.getThisUuid());
+        Operation op = new FetchMemberListStateOperation().setCallerUuid(node.getThisUuid());
 
         return nodeEngine.getOperationService()
                 .createInvocationBuilder(SERVICE_NAME, op, target)

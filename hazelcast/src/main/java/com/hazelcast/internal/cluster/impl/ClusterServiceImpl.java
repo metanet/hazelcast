@@ -169,11 +169,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
-        if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            membershipManager.suspectAddress(suspectedAddress, reason, destroyConnection);
-        } else {
-            membershipManagerCompat.removeMember(suspectedAddress, null, reason);
-        }
+        suspectAddress(suspectedAddress, null, reason, destroyConnection);
     }
 
     public void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
@@ -192,12 +188,11 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 if (!(isMaster() || clusterJoinManager.isMastershipClaimInProgress())) {
                     logger.warning("MasterConfirmation has been received from " + endpoint
                             + ", but it is not a member of this cluster!");
-                    OperationService operationService = getNodeEngine().getOperationService();
                     // TODO [basri] This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
                     // TODO [basri] So, it should suspect from me permanently.
                     // TODO [basri] Maybe I should notify my members so that they will make 'endpoint' permanently suspect from them either.
                     // TODO [basri] IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership.
-                    sendSuspicionOrMemberRemove(endpoint);
+                    sendExplicitSuspicion(endpoint);
                 }
             } else if (isMaster()) {
                 clusterHeartbeatManager.acceptMasterConfirmation(member, timestamp);
@@ -210,10 +205,11 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    void sendSuspicionOrMemberRemove(Address endpoint) {
+    void sendExplicitSuspicion(Address endpoint) {
         OperationService operationService = nodeEngine.getOperationService();
 
         if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+            // TODO: UUID not used?
             operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), endpoint);
         } else {
             // TODO: we can completely get rid of this member remove part
@@ -221,41 +217,39 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public MembersView handleMastershipClaim(Address targetAddress, String targetUuid) {
-        // TODO [basri] check targetAddress is not me DONE
+    public MembersView handleMastershipClaim(Address candidateAddress, String candidateUuid) {
+        // TODO [basri] check candidateAddress is not me DONE
         // TODO [basri] check I am not master DONE
         // TODO [basri] check target address is not current master DONE
         // TODO [basri] target address is a valid member with its uuid DONE
         // TODO [basri] check that I suspect everyone before the target address DONE
         // TODO [basri] check that target address is not suspected DONE
 
-        checkNotNull(targetAddress);
-        checkNotNull(targetUuid);
+        checkNotNull(candidateAddress);
+        checkNotNull(candidateUuid);
+        checkFalse(getThisAddress().equals(candidateAddress), "cannot accept my own mastership claim!");
 
         lock.lock();
         try {
-            checkFalse(getThisAddress().equals(targetAddress), "cannot accept my own mastership claim!");
             checkFalse(isMaster(),
-                    targetAddress + " claims mastership but this node is master!");
-            checkFalse(targetAddress.equals(getMasterAddress()),
-                    targetAddress + " claims mastership but it is already the known master!");
-            MemberImpl newMaster = getMember(targetAddress);
-            checkTrue(newMaster != null ,
-                    targetAddress + " claims mastership but it is not a member!");
-            checkTrue(newMaster.getUuid().equals(targetUuid),
-                    targetAddress + " claims mastership but it has a different uuid: " + targetUuid
-                            + " than its known uuid: " + newMaster.getUuid() );
+                    candidateAddress + " claims mastership but this node is master!");
+            checkFalse(candidateAddress.equals(getMasterAddress()),
+                    candidateAddress + " claims mastership but it is already the known master!");
+
+            MemberImpl masterCandidate = membershipManager.getMember(candidateAddress, candidateUuid);
+            checkTrue(masterCandidate != null ,
+                    candidateAddress + " claims mastership but it is not a member!");
 
             MemberMap memberMap = membershipManager.getMemberMap();
-            if (!shouldAcceptMastership(memberMap, targetAddress)) {
+            if (!shouldAcceptMastership(memberMap, masterCandidate)) {
                 throw new RetryableHazelcastException();
             }
 
-            node.setMasterAddress(newMaster.getAddress());
-            Set<MemberImpl> members = memberMap.getMembersAfterFirstMember(newMaster);
+            node.setMasterAddress(masterCandidate.getAddress());
+            Set<MemberImpl> members = memberMap.tailMemberSet(masterCandidate, true);
             MembersView response = MembersView.createNew(memberMap.getVersion(), members);
 
-            logger.warning("Mastership of " + targetAddress + " is accepted. Response: " + response);
+            logger.warning("Mastership of " + candidateAddress + " is accepted. Response: " + response);
 
             return response;
         } finally {
@@ -264,18 +258,19 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     // called under cluster service lock
-    // mastership is accepted when all members before the target is suspected, and target is not suspected
-    private boolean shouldAcceptMastership(MemberMap memberMap, Address target) {
-        for (MemberImpl member : memberMap.getMembersBeforeMember(target)) {
+    // mastership is accepted when all members before the candidate is suspected, and candidate is not suspected
+    private boolean shouldAcceptMastership(MemberMap memberMap, MemberImpl candidate) {
+        for (MemberImpl member : memberMap.headMemberSet(candidate, false)) {
             if (!membershipManager.isMemberSuspected(member.getAddress())) {
                 return false;
             }
         }
 
-        return !membershipManager.isMemberSuspected(target);
+        return !membershipManager.isMemberSuspected(candidate.getAddress());
     }
 
     // TODO [basri] Can be called only within master node
+    // TODO: Called by tests only, can be removed  
     public void removeAddress(Address deadAddress, String reason) {
 //        membershipManager.doRemoveAddress(deadAddress, reason, true);
         throw new UnsupportedOperationException();
@@ -349,7 +344,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             if (!checkValidMaster(callerAddress)) {
                 logger.warning("Not updating members because caller: " + callerAddress  + " is not known master: "
                         + getMasterAddress());
-                sendSuspicionOrMemberRemove(callerAddress);
+                sendExplicitSuspicion(callerAddress);
                 return false;
             }
 

@@ -475,8 +475,13 @@ public class ClusterJoinManager {
         clusterServiceLock.lock();
         try {
             if (node.joined()) {
-                logger.warning("Cannot set master address to " + master
-                        + " because node is already joined! Current master address: " + node.getMasterAddress());
+                Address currentMasterAddress = node.getMasterAddress();
+                if (master.equals(currentMasterAddress)) {
+                    logger.warning("Cannot set master address to " + master
+                            + " because node is already joined! Current master: " + currentMasterAddress);
+                } else {
+                    logger.fine("Master address is already set to " + master);
+                }
                 return false;
             }
 

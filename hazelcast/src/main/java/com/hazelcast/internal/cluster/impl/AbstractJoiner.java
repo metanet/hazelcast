@@ -329,7 +329,7 @@ public abstract class AbstractJoiner implements Joiner {
             // TODO [basri] join request is coming from master of the split and it thinks that I am its member.
             // TODO [basri] this is partial split case and we are trying to convert it to a full split.
             // TODO [basri] So it should remove me first from its cluster.
-            clusterService.sendSuspicionOrMemberRemove(joinMessage.getAddress());
+            clusterService.sendExplicitSuspicion(joinMessage.getAddress());
             logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessage.getAddress()
                     + ", because it thinks this-node as its member.");
             return false;

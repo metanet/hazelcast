@@ -16,19 +16,18 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.nio.Address;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-import static com.hazelcast.util.Preconditions.checkNotNull;
 import static java.util.Collections.singletonMap;
 import static java.util.Collections.unmodifiableCollection;
 
@@ -172,6 +171,16 @@ final class MemberMap {
         return uuidToMemberMap.get(uuid);
     }
 
+    MemberImpl getMember(Address address, String uuid) {
+        MemberImpl member1 = addressToMemberMap.get(address);
+        MemberImpl member2 = uuidToMemberMap.get(uuid);
+
+        if (member1 != null && member2 != null && member1.equals(member2)) {
+            return member1;
+        }
+        return null;
+    }
+
     boolean contains(Address address) {
         return addressToMemberMap.containsKey(address);
     }
@@ -200,43 +209,57 @@ final class MemberMap {
         return MembersView.createNew(version, members);
     }
 
-    Set<MemberImpl> getMembersAfterFirstMember(MemberImpl first) {
-        final Set<MemberImpl> result = new LinkedHashSet<MemberImpl>();
-        Iterator<MemberImpl> it = members.iterator();
+    Set<MemberImpl> tailMemberSet(MemberImpl member, boolean inclusive) {
+        ensureMemberExist(member);
 
-        MemberImpl member = null;
-        while (it.hasNext()) {
-            MemberImpl m = it.next();
-            if (m.equals(first)) {
-                member = m;
-                break;
+        Set<MemberImpl> result = new LinkedHashSet<MemberImpl>();
+        boolean found = false;
+        
+        for (MemberImpl m : members) {
+            if (!found && m.equals(member)) {
+                found = true;
+                if (inclusive) {
+                    result.add(m);
+                }
+                continue;
+            }
+
+            if (found) {
+                result.add(m);
             }
         }
 
-        checkNotNull(member, first + " not found in member list!");
+        assert found : member + " should have been found!";
 
-        result.add(member);
-        while (it.hasNext()) {
-            result.add(it.next());
+        return result;
+    }
+
+    Set<MemberImpl> headMemberSet(Member member, boolean inclusive) {
+        ensureMemberExist(member);
+
+        Set<MemberImpl> result = new LinkedHashSet<MemberImpl>();
+        for (MemberImpl m : members) {
+            if (!m.equals(member)) {
+                result.add(m);
+                continue;
+            }
+
+            if (inclusive) {
+                result.add(m);
+            }
+            break;
         }
 
         return result;
     }
 
-    Set<MemberImpl> getMembersBeforeMember(Address address) {
-        if (!addressToMemberMap.containsKey(address)) {
-            throw new IllegalArgumentException(address + " not found in the member list!");
+    private void ensureMemberExist(Member member) {
+        if (!addressToMemberMap.containsKey(member.getAddress())) {
+            throw new IllegalArgumentException(member + " not found!");
         }
-
-        final Set<MemberImpl> result = new LinkedHashSet<MemberImpl>();
-        for (MemberImpl m : members) {
-            if (m.getAddress().equals(address)) {
-                break;
-            }
-            result.add(m);
+        if (!uuidToMemberMap.containsKey(member.getUuid())) {
+            throw new IllegalArgumentException(member + " not found!");
         }
-
-        return result;
     }
 
 }
