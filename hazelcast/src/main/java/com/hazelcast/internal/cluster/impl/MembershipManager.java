@@ -104,7 +104,7 @@ public class MembershipManager {
         memberListPublishInterval = (memberListPublishInterval > 0 ? memberListPublishInterval : 1);
         executionService.scheduleWithRepetition(EXECUTOR_NAME, new Runnable() {
             public void run() {
-                sendMemberListToOthers();
+                publishMemberList();
             }
         }, memberListPublishInterval, memberListPublishInterval, TimeUnit.SECONDS);
     }
@@ -171,6 +171,17 @@ public class MembershipManager {
         MembersUpdateOperation op = new MembersUpdateOperation(memberUuid, memberMap.toMembersView(),
                 clusterService.getClusterTime(), null, false);
         nodeEngine.getOperationService().send(op, target);
+    }
+
+    private void publishMemberList() {
+        clusterServiceLock.lock();
+        try {
+            if (!clusterService.getClusterJoinManager().isMastershipClaimInProgress()) {
+                sendMemberListToOthers();
+            }
+        } finally {
+            clusterServiceLock.unlock();
+        }
     }
 
     /** Invoked on the master to send the member list (see {@link MembersUpdateOperation}) to non-master nodes. */
