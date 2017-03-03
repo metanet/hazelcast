@@ -18,7 +18,9 @@ package com.hazelcast.internal.cluster.impl;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.Member;
 import com.hazelcast.nio.Address;
+import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
@@ -67,7 +69,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // ✔ master member failure detected by others
     // - master and master-candidate fail simultaneously
     // ✔ master fails when master-candidate doesn't have the most recent member list
-    // - partial network failure: multiple master claims, eventually split brain and merge
+    // - partial network failure: multiple master claims, eventually split brain and merge: [A, B, C, D, E] splits into [B, D] and [C, E]
     // - member failures during mastership claim
     // - partial split: 2 members [A, B] partially split into [A, B] and [B], then eventually merge
     // - so on...
@@ -328,6 +330,41 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertEquals(getAddress(slave2), getNode(slave2).getMasterAddress());
     }
 
+    @Test
+    public void multiple_master_claims() {
+        Config config = new Config();
+        HazelcastInstance member1 = newHazelcastInstance(config);
+        final HazelcastInstance member2 = newHazelcastInstance(config);
+        final HazelcastInstance member3 = newHazelcastInstance(config);
+        final HazelcastInstance member4 = newHazelcastInstance(config);
+        final HazelcastInstance member5 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(5, member1);
+        assertClusterSizeEventually(5, member2);
+        assertClusterSizeEventually(5, member3);
+        assertClusterSizeEventually(5, member4);
+        assertClusterSizeEventually(5, member5);
+
+        suspectMember(member3, member2);
+        suspectMember(member5, member2);
+
+        member1.getLifecycleService().terminate();
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertClusterSize(2, member2);
+                assertClusterSize(2, member4);
+                assertMemberViewsAreSame(getMemberMap(member2), getMemberMap(member4));
+
+                assertClusterSize(2, member3);
+                assertClusterSize(2, member5);
+                assertMemberViewsAreSame(getMemberMap(member3), getMemberMap(member5));
+            }
+        });
+    }
+
     HazelcastInstance newHazelcastInstance() {
         return factory.newHazelcastInstance();
     }
@@ -338,6 +375,12 @@ public class MembershipFailureTest extends HazelcastTestSupport {
 
     private static void assertMaster(Address masterAddress, HazelcastInstance instance) {
         assertEquals(masterAddress, getNode(instance).getMasterAddress());
+    }
+
+    private void suspectMember(HazelcastInstance suspectingInstance, HazelcastInstance suspectedInstance) {
+        ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(suspectingInstance);
+        Member suspectedMember = suspectedInstance.getCluster().getLocalMember();
+        clusterService.suspectAddress(suspectedMember.getAddress(), suspectedMember.getUuid(), "test", false);
     }
 
 }

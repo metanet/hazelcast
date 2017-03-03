@@ -223,7 +223,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         // TODO [basri] check candidateAddress is not current master. this will be safe when we implement 'cancel suspicion'
         // verify candidateAddress is a valid member with its uuid
         // verify I suspect everyone before the candidateAddress
-        // verify candidateAddress is not suspected
+        // verify candidateAddress is not suspected.
 
         checkNotNull(candidateAddress);
         checkNotNull(candidateUuid);
@@ -239,6 +239,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             MemberImpl masterCandidate = membershipManager.getMember(candidateAddress, candidateUuid);
             checkTrue(masterCandidate != null ,
                     candidateAddress + " claims mastership but it is not a member!");
+
+            checkFalse(membershipManager.isMemberSuspected(candidateAddress),
+                    candidateAddress + " claims mastership but it is already suspected!");
 
             MemberMap memberMap = membershipManager.getMemberMap();
             if (!shouldAcceptMastership(memberMap, masterCandidate)) {
