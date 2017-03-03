@@ -18,6 +18,9 @@ package com.hazelcast.internal.cluster.impl;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.LifecycleEvent;
+import com.hazelcast.core.LifecycleEvent.LifecycleState;
+import com.hazelcast.core.LifecycleListener;
 import com.hazelcast.core.Member;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.AssertTask;
@@ -30,6 +33,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
+
+import java.util.concurrent.CountDownLatch;
 
 import static com.hazelcast.instance.TestUtil.terminateInstance;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT;
@@ -44,6 +49,8 @@ import static com.hazelcast.spi.properties.GroupProperty.MASTER_CONFIRMATION_INT
 import static com.hazelcast.spi.properties.GroupProperty.MAX_NO_HEARTBEAT_SECONDS;
 import static com.hazelcast.spi.properties.GroupProperty.MAX_NO_MASTER_CONFIRMATION_SECONDS;
 import static com.hazelcast.spi.properties.GroupProperty.MEMBER_LIST_PUBLISH_INTERVAL_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MERGE_FIRST_RUN_DELAY_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MERGE_NEXT_RUN_DELAY_SECONDS;
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 
@@ -69,7 +76,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // ✔ master member failure detected by others
     // - master and master-candidate fail simultaneously
     // ✔ master fails when master-candidate doesn't have the most recent member list
-    // - partial network failure: multiple master claims, eventually split brain and merge: [A, B, C, D, E] splits into [B, D] and [C, E]
+    // ✔ partial network failure: multiple master claims
     // - member failures during mastership claim
     // - partial split: 2 members [A, B] partially split into [A, B] and [B], then eventually merge
     // - so on...
@@ -363,6 +370,38 @@ public class MembershipFailureTest extends HazelcastTestSupport {
                 assertMemberViewsAreSame(getMemberMap(member3), getMemberMap(member5));
             }
         });
+    }
+
+    @Test
+    public void slave_splits_and_eventually_merges_back() {
+        Config config = new Config();
+        config.setProperty(MERGE_FIRST_RUN_DELAY_SECONDS.getName(), "15")
+              .setProperty(MERGE_NEXT_RUN_DELAY_SECONDS.getName(), "5");
+        final HazelcastInstance member1 = newHazelcastInstance(config);
+        final HazelcastInstance member2 = newHazelcastInstance(config);
+        final HazelcastInstance member3 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(3, member1);
+        assertClusterSizeEventually(3, member2);
+        assertClusterSizeEventually(3, member3);
+
+        final CountDownLatch mergeLatch = new CountDownLatch(1);
+        member3.getLifecycleService().addLifecycleListener(new LifecycleListener() {
+            @Override
+            public void stateChanged(LifecycleEvent event) {
+                if (event.getState() == LifecycleState.MERGED) {
+                    mergeLatch.countDown();
+                }
+            }
+        });
+
+        suspectMember(member3, member1);
+        suspectMember(member3, member2);
+        assertClusterSizeEventually(1, member3);
+
+        assertOpenEventually(mergeLatch);
+        assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member2));
+        assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member3));
     }
 
     HazelcastInstance newHazelcastInstance() {

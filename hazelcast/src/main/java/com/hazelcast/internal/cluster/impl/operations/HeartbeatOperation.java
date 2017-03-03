@@ -84,6 +84,7 @@ public final class HeartbeatOperation extends VersionedClusterOperation {
         }
     }
 
+    // TODO [basri] If I am the master and I receive a heartbeat from a non-member address, I can tell it to suspect me
     private MemberImpl getHeartBeatingMember(ClusterServiceImpl service) {
         MemberImpl member = service.getMember(getCallerAddress());
         ILogger logger = getLogger();
