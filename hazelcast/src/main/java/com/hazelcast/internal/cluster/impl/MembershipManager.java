@@ -370,17 +370,14 @@ public class MembershipManager {
 
             logger.info("Starting mastership claim process...");
 
-            // TODO [basri] should be here or after the master address is updated?
-            // TODO [basri] We need to make sure that all pending join requests are cancelled temporarily.
+            // Make sure that all pending join requests are cancelled temporarily.
             clusterJoinManager.setMastershipClaimInProgress();
 
-            // TODO [basri] update master address
             node.setMasterAddress(node.getThisAddress());
             return true;
         }
     }
 
-    // TODO: called only on master 
     private void doRemoveAddress(Address address, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(address)) {
             return;
@@ -398,13 +395,11 @@ public class MembershipManager {
             }
 
             removeMember(address);
-
         } finally {
             clusterServiceLock.unlock();
         }
     }
 
-    // TODO [basri] should be called only within master
     private void removeMember(Address address) {
         assert clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9);
         assert node.isMaster() : "Master: " + node.getMasterAddress();

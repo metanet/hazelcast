@@ -69,6 +69,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // ✔ master fails when master-candidate doesn't have the most recent member list
     // - partial network failure: multiple master claims, eventually split brain and merge
     // - member failures during mastership claim
+    // - partial split: 2 members [A, B] partially split into [A, B] and [B], then eventually merge
     // - so on...
 
     @Test

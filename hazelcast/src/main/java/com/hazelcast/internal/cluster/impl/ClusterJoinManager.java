@@ -667,8 +667,6 @@ public class ClusterJoinManager {
                     + " Removing old member and processing join request...", member);
             logger.warning(msg);
 
-            // TODO [basri] If I am the master, I will remove the "target" from the cluster.
-            // TODO [basri] If I am a slave, I will suspect the current master.
             clusterService.suspectAddress(target, msg, false);
             Connection existing = node.connectionManager.getConnection(target);
             if (existing != connection) {
