@@ -8,7 +8,7 @@ import com.hazelcast.instance.HazelcastInstanceProxy;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
 import com.hazelcast.nio.Address;
-import com.hazelcast.nio.tcp.FirewallingMockConnectionManager;
+import com.hazelcast.nio.tcp.FirewallingConnectionManager;
 import com.hazelcast.spi.properties.GroupProperty;
 import org.junit.Before;
 import org.junit.Test;
@@ -282,8 +282,8 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
         applyOnBrains(UNBLACKLIST_MEMBERS);
     }
 
-    private static FirewallingMockConnectionManager getFireWalledConnectionManager(HazelcastInstance hz) {
-        return (FirewallingMockConnectionManager) getNode(hz).getConnectionManager();
+    private static FirewallingConnectionManager getFireWalledConnectionManager(HazelcastInstance hz) {
+        return (FirewallingConnectionManager) getNode(hz).getConnectionManager();
     }
 
     protected Brains getBrains() {
@@ -336,8 +336,8 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
     }
 
     public static void blockCommunicationBetween(HazelcastInstance h1, HazelcastInstance h2) {
-        FirewallingMockConnectionManager h1CM = getFireWalledConnectionManager(h1);
-        FirewallingMockConnectionManager h2CM = getFireWalledConnectionManager(h2);
+        FirewallingConnectionManager h1CM = getFireWalledConnectionManager(h1);
+        FirewallingConnectionManager h2CM = getFireWalledConnectionManager(h2);
         Node h1Node = getNode(h1);
         Node h2Node = getNode(h2);
         h1CM.block(h2Node.getThisAddress());
@@ -345,8 +345,8 @@ public abstract class SplitBrainTestSupport extends HazelcastTestSupport {
     }
 
     public static void unblockCommunicationBetween(HazelcastInstance h1, HazelcastInstance h2) {
-        FirewallingMockConnectionManager h1CM = getFireWalledConnectionManager(h1);
-        FirewallingMockConnectionManager h2CM = getFireWalledConnectionManager(h2);
+        FirewallingConnectionManager h1CM = getFireWalledConnectionManager(h1);
+        FirewallingConnectionManager h2CM = getFireWalledConnectionManager(h2);
         Node h1Node = getNode(h1);
         Node h2Node = getNode(h2);
         h1CM.unblock(h2Node.getThisAddress());
