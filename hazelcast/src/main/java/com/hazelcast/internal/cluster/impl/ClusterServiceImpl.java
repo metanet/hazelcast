@@ -308,6 +308,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     logger.fine("Not finalizing join because caller: " + callerAddress + " is not known master: "
                             + getMasterAddress());
                 }
+                sendExplicitSuspicion(callerAddress);
                 return false;
             }
 
@@ -350,6 +351,15 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 return false;
             }
 
+            Member localMember = getLocalMember();
+            if (!membersView.containsAddress(localMember.getAddress(), localMember.getUuid())) {
+                logger.warning("Not updating members because member list doesn't contain us! -> " + membersView);
+                sendExplicitSuspicion(callerAddress);
+                // TODO: suspect from callerAddress (with UUID)?
+                return false;
+            }
+
+            // TODO: should we move this into membershipManager?
             if (!shouldProcessMemberUpdate(membersView)) {
                 return false;
             }

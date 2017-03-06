@@ -351,7 +351,7 @@ public class MembershipManager {
 
         ClusterJoinManager clusterJoinManager = clusterService.getClusterJoinManager();
         if (node.isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
-            doRemoveAddress(suspectedAddress, reason, destroyConnection);
+            removeEndpoint(suspectedAddress, reason, destroyConnection);
             return false;
         } else {
             if (suspectedMember == null || suspectedMembers.containsKey(suspectedAddress)) {
@@ -389,7 +389,7 @@ public class MembershipManager {
         }
     }
 
-    private void doRemoveAddress(Address address, String reason, boolean destroyConnection) {
+    private void removeEndpoint(Address address, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(address)) {
             return;
         }
@@ -432,6 +432,7 @@ public class MembershipManager {
                 sendMemberListToOthers();
 
                 handleMemberRemove(newMembers, member);
+                clusterService.printMemberList();
             } else {
                 logger.fine("No member to remove with address: " + address);
             }
