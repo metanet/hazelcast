@@ -476,7 +476,7 @@ public class ClusterJoinManager {
         try {
             if (node.joined()) {
                 Address currentMasterAddress = node.getMasterAddress();
-                if (master.equals(currentMasterAddress)) {
+                if (!master.equals(currentMasterAddress)) {
                     logger.warning("Cannot set master address to " + master
                             + " because node is already joined! Current master: " + currentMasterAddress);
                 } else {
