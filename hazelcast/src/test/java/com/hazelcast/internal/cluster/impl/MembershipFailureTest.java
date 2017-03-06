@@ -74,7 +74,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // ✔ slave member failure detected by master
     // - slave member suspected by others and its failure eventually detected by master
     // ✔ master member failure detected by others
-    // - master and master-candidate fail simultaneously
+    // ✔ master and master-candidate fail simultaneously
     // ✔ master fails when master-candidate doesn't have the most recent member list
     // ✔ partial network failure: multiple master claims
     // - member failures during mastership claim
@@ -156,6 +156,59 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertMaster(getAddress(slave1), slave1);
         assertMaster(getAddress(slave1), slave2);
         assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
+    }
+
+    @Test
+    public void masterAndMasterCandidate_crashSequentially() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance masterCandidate = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(4, master);
+        assertClusterSizeEventually(4, masterCandidate);
+        assertClusterSizeEventually(4, slave1);
+
+        terminateInstance(master);
+        terminateInstance(masterCandidate);
+
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(2, slave2);
+
+        assertMaster(getAddress(slave1), slave1);
+        assertMaster(getAddress(slave1), slave2);
+        assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
+    }
+
+    @Test
+    public void masterAndMasterCandidate_crashSimultaneously() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance masterCandidate = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(4, master);
+        assertClusterSizeEventually(4, masterCandidate);
+        assertClusterSizeEventually(4, slave1);
+
+        terminateInstanceAsync(master);
+        terminateInstanceAsync(masterCandidate);
+
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(2, slave2);
+
+        assertMaster(getAddress(slave1), slave1);
+        assertMaster(getAddress(slave1), slave2);
+        assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
+    }
+
+    private static void terminateInstanceAsync(final HazelcastInstance master) {
+        spawn(new Runnable() {
+            @Override
+            public void run() {
+                terminateInstance(master);
+            }
+        });
     }
 
     @Test
