@@ -110,6 +110,8 @@ final class PacketFiltersUtil {
 
         EndpointAgnosticClusterOperationPacketFilter(InternalSerializationService serializationService, int...typeIds) {
             super(serializationService);
+            
+            assert typeIds.length > 0 : "At least one operation type must be defined!";
             for (int id : typeIds) {
                 types.add(id);
             }

@@ -37,6 +37,7 @@ import org.junit.runner.RunWith;
 import java.util.concurrent.CountDownLatch;
 
 import static com.hazelcast.instance.TestUtil.terminateInstance;
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.FETCH_MEMBER_LIST_STATE;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MASTER_CONFIRM;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MEMBER_INFO_UPDATE;
@@ -53,6 +54,7 @@ import static com.hazelcast.spi.properties.GroupProperty.MERGE_FIRST_RUN_DELAY_S
 import static com.hazelcast.spi.properties.GroupProperty.MERGE_NEXT_RUN_DELAY_SECONDS;
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category({QuickTest.class, ParallelTest.class})
@@ -77,7 +79,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     // ✔ master and master-candidate fail simultaneously
     // ✔ master fails when master-candidate doesn't have the most recent member list
     // ✔ partial network failure: multiple master claims
-    // - member failures during mastership claim
+    // ✔ member failures during mastership claim
     // ✔ partial split: 3 members [A, B, C] partially split into [A, B, C] and [C], then eventually merge
     // - so on...
 
@@ -209,6 +211,78 @@ public class MembershipFailureTest extends HazelcastTestSupport {
                 terminateInstance(master);
             }
         });
+    }
+
+    @Test
+    public void slaveCrash_duringMastershipClaim() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance masterCandidate = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(4, master);
+        assertClusterSizeEventually(4, masterCandidate);
+        assertClusterSizeEventually(4, slave1);
+        assertClusterSizeEventually(4, slave2);
+
+        // drop FETCH_MEMBER_LIST_STATE packets to block mastership claim process
+        dropOperationsBetween(masterCandidate, slave1, FETCH_MEMBER_LIST_STATE);
+
+        terminateInstance(master);
+
+        final ClusterServiceImpl clusterService = getNode(masterCandidate).getClusterService();
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                assertTrue(clusterService.getClusterJoinManager().isMastershipClaimInProgress());
+            }
+        });
+        
+        sleepSeconds(3);
+        terminateInstance(slave1);
+
+        assertClusterSizeEventually(2, masterCandidate);
+        assertClusterSizeEventually(2, slave2);
+
+        assertMaster(getAddress(masterCandidate), masterCandidate);
+        assertMaster(getAddress(masterCandidate), slave2);
+        assertMemberViewsAreSame(getMemberMap(masterCandidate), getMemberMap(slave2));
+    }
+
+    @Test
+    public void masterCandidateCrash_duringMastershipClaim() {
+        HazelcastInstance master = newHazelcastInstance();
+        HazelcastInstance masterCandidate = newHazelcastInstance();
+        HazelcastInstance slave1 = newHazelcastInstance();
+        HazelcastInstance slave2 = newHazelcastInstance();
+
+        assertClusterSizeEventually(4, master);
+        assertClusterSizeEventually(4, masterCandidate);
+        assertClusterSizeEventually(4, slave1);
+        assertClusterSizeEventually(4, slave2);
+
+        // drop FETCH_MEMBER_LIST_STATE packets to block mastership claim process
+        dropOperationsBetween(masterCandidate, slave1, FETCH_MEMBER_LIST_STATE);
+
+        terminateInstance(master);
+
+        final ClusterServiceImpl clusterService = getNode(masterCandidate).getClusterService();
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() throws Exception {
+                assertTrue(clusterService.getClusterJoinManager().isMastershipClaimInProgress());
+            }
+        });
+
+        sleepSeconds(3);
+        terminateInstance(masterCandidate);
+
+        assertClusterSizeEventually(2, slave1);
+        assertClusterSizeEventually(2, slave2);
+
+        assertMaster(getAddress(slave1), slave1);
+        assertMaster(getAddress(slave1), slave2);
+        assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
     }
 
     @Test
