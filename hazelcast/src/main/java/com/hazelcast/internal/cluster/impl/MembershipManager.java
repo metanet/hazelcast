@@ -354,15 +354,18 @@ public class MembershipManager {
             removeEndpoint(suspectedAddress, reason, destroyConnection);
             return false;
         } else {
-            if (suspectedMember == null || suspectedMembers.containsKey(suspectedAddress)) {
+            if (suspectedMember == null) {
+                logger.fine("Ignoring suspect request for " + suspectedAddress + " since it's not member.");
                 return false;
             }
 
-            suspectedMembers.put(suspectedAddress, 0L);
-            if (reason != null) {
-                logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
-            } else {
-                logger.warning(suspectedAddress + " is suspected to be dead");
+            if (!suspectedMembers.containsKey(suspectedAddress)) {
+                suspectedMembers.put(suspectedAddress, 0L);
+                if (reason != null) {
+                    logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
+                } else {
+                    logger.warning(suspectedAddress + " is suspected to be dead");
+                }
             }
 
             Connection conn = node.connectionManager.getConnection(suspectedAddress);
