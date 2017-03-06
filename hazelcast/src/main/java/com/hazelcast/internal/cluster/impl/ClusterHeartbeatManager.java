@@ -16,6 +16,7 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
@@ -26,6 +27,7 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.Connection;
 import com.hazelcast.spi.ExecutionService;
+import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.spi.properties.HazelcastProperties;
@@ -293,7 +295,7 @@ public class ClusterHeartbeatManager {
                     }
 
                     pingMemberIfRequired(now, member);
-                    sendHeartbeat(member.getAddress());
+                    sendHeartbeat(member);
                 } catch (Throwable e) {
                     logger.severe(e);
                 }
@@ -378,7 +380,7 @@ public class ClusterHeartbeatManager {
                     }
 
                     pingMemberIfRequired(now, member);
-                    sendHeartbeat(member.getAddress());
+                    sendHeartbeat(member);
                 } catch (Throwable e) {
                     logger.severe(e);
                 }
@@ -438,17 +440,18 @@ public class ClusterHeartbeatManager {
         });
     }
 
-    /** Send a {@link HeartbeatOperation} to the {@code target} */
-    private void sendHeartbeat(Address target) {
+    /** Send a {@link HeartbeatOperation} to the {@code target}
+     * @param target target Member
+     */
+    private void sendHeartbeat(Member target) {
         if (target == null) {
             return;
         }
         try {
             int memberListVersion = clusterService.getMembershipManager().getMemberListVersion();
-            HeartbeatOperation heartbeat = new HeartbeatOperation(
-                    memberListVersion, clusterClock.getClusterTime());
+            Operation heartbeat = new HeartbeatOperation(target.getUuid(), memberListVersion, clusterClock.getClusterTime());
             heartbeat.setCallerUuid(node.getThisUuid());
-            node.nodeEngine.getOperationService().send(heartbeat, target);
+            node.nodeEngine.getOperationService().send(heartbeat, target.getAddress());
         } catch (Exception e) {
             if (logger.isFineEnabled()) {
                 logger.fine(format("Error while sending heartbeat -> %s[%s]", e.getClass().getName(), e.getMessage()));
