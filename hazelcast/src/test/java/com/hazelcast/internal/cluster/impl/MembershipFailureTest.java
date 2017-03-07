@@ -378,6 +378,44 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     }
 
     @Test
+    public void slave_receives_member_list_from_non_master() {
+        String infiniteTimeout = Integer.toString(Integer.MAX_VALUE);
+        Config config = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), infiniteTimeout)
+                                    .setProperty(MAX_NO_MASTER_CONFIRMATION_SECONDS.getName(), infiniteTimeout)
+                                    .setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
+
+        HazelcastInstance master = newHazelcastInstance(config);
+        HazelcastInstance slave1 = newHazelcastInstance(config);
+        HazelcastInstance slave2 = newHazelcastInstance(config);
+        HazelcastInstance slave3 = newHazelcastInstance(config);
+
+        assertClusterSizeEventually(4, master);
+        assertClusterSizeEventually(4, slave1);
+        assertClusterSizeEventually(4, slave2);
+        assertClusterSizeEventually(4, slave3);
+
+        dropOperationsFrom(master, HEARTBEAT, MASTER_CONFIRM);
+        dropOperationsFrom(slave1, HEARTBEAT, MASTER_CONFIRM);
+        dropOperationsFrom(slave2, HEARTBEAT, MASTER_CONFIRM);
+        dropOperationsFrom(slave3, HEARTBEAT, MASTER_CONFIRM);
+
+        suspectMember(slave2, master);
+        suspectMember(slave2, slave1);
+        suspectMember(slave3, master);
+        suspectMember(slave3, slave1);
+
+        assertClusterSizeEventually(2, slave2);
+        assertClusterSizeEventually(2, slave3);
+
+        assertMemberViewsAreSame(getMemberMap(slave2), getMemberMap(slave3));
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+
+        assertMemberViewsAreSame(getMemberMap(master), getMemberMap(slave1));
+    }
+
+    @Test
     public void master_candidate_has_stale_member_list() {
         Config config = new Config().setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
         HazelcastInstance master = newHazelcastInstance(config);
