@@ -36,6 +36,7 @@ import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOperation;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOperation;
+import com.hazelcast.internal.cluster.impl.operations.TriggerExplicitSuspicionOp;
 import com.hazelcast.internal.cluster.impl.operations.TriggerMemberListPublishOperation;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.Probe;
@@ -136,7 +137,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManagerCompat = new MembershipManagerCompat(node, this, lock);
         clusterStateManager = new ClusterStateManager(node, lock);
         clusterJoinManager = new ClusterJoinManager(node, this, lock);
-        clusterHeartbeatManager = new ClusterHeartbeatManager(node, this);
+        clusterHeartbeatManager = new ClusterHeartbeatManager(node, this, lock);
 
         node.connectionManager.addConnectionListener(this);
         //MEMBERSHIP_EVENT_EXECUTOR is a single threaded executor to ensure that events are executed in correct order.
@@ -172,6 +173,15 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManager.sendMembershipEvents(Collections.<MemberImpl>emptySet(), Collections.singleton(node.getLocalMember()));
     }
 
+    public void handleExplicitSuspicion(Address expectedMasterAddress, int expectedMemberListVersion, Address suspectedAddress) {
+        membershipManager.handleExplicitSuspicion(expectedMasterAddress, expectedMemberListVersion, suspectedAddress);
+    }
+
+    public void triggerExplicitSuspicion(Address caller, int callerMemberListVersion,
+                                         Address endpoint, Address endpointMasterAddress, int endpointMemberListVersion) {
+        membershipManager.triggerExplicitSuspicion(caller, callerMemberListVersion, endpoint, endpointMasterAddress, endpointMemberListVersion);
+    }
+
     public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
         suspectAddress(suspectedAddress, null, reason, destroyConnection);
     }
@@ -184,24 +194,46 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public void handleMasterConfirmation(Address endpoint, long timestamp) {
+    public void handleMasterConfirmation(Address endpoint, int endpointMemberListVersion, long timestamp) {
         lock.lock();
         try {
             final MemberImpl member = getMember(endpoint);
             if (member == null) {
-                if (!(isMaster() || clusterJoinManager.isMastershipClaimInProgress())) {
+                if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+                    if (!isMaster()) {
+                        logger.warning(endpoint + " has sent MasterConfirmation with member list version: "
+                                + endpointMemberListVersion + ", but this node is not master!");
+                        return;
+                    }
+
+                    if (clusterJoinManager.isMastershipClaimInProgress()) {
+                        // this is a new member I have discovered...
+                        return;
+                    }
+
                     logger.warning("MasterConfirmation has been received from " + endpoint
                             + ", but it is not a member of this cluster!");
                     // This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
                     // It should suspect me so that it can move on.
                     // IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership.
-                    // TODO [basri] Maybe I should notify my members so that they will make 'endpoint' permanently suspect from them either.
-                    sendExplicitSuspicion(endpoint);
+
+                    sendExplicitSuspicion(endpoint, getThisAddress(), endpointMemberListVersion);
+
+                    OperationService operationService = nodeEngine.getOperationService();
+                    int memberListVersion = membershipManager.getMemberListVersion();
+                    for (Member m : getMembers(NON_LOCAL_MEMBER_SELECTOR)) {
+                        Operation op = new TriggerExplicitSuspicionOp(memberListVersion, endpoint, getThisAddress(), endpointMemberListVersion);
+                        operationService.send(op, m.getAddress());
+                    }
+                } else {
+                    // to make it 3.8 compatible
+                    sendExplicitSuspicion(endpoint, getThisAddress(), endpointMemberListVersion);
                 }
             } else if (isMaster()) {
                 clusterHeartbeatManager.acceptMasterConfirmation(member, timestamp);
             } else {
-                logger.warning(endpoint + " has sent MasterConfirmation, but this node is not master!");
+                logger.warning(endpoint + " has sent MasterConfirmation with member list version: "
+                        + endpointMemberListVersion + ", but this node is not master!");
                 // it will be kicked from the cluster by the correct master because of master confirmation timeout
             }
         } finally {
@@ -209,12 +241,12 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    void sendExplicitSuspicion(Address endpoint) {
+    void sendExplicitSuspicion(Address endpoint, Address endpointMasterAddress, int endpointMemberListVersion) {
         OperationService operationService = nodeEngine.getOperationService();
 
         if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            // Not sending uuid because I want `endpoint` to remove me from its cluster in any case
-            operationService.send(new ExplicitSuspicionOperation(getThisAddress(), false), endpoint);
+            Operation op = new ExplicitSuspicionOperation(endpointMasterAddress, endpointMemberListVersion, getThisAddress());
+            operationService.send(op, endpoint);
         } else {
             // TODO: we can completely get rid of this member remove part
             operationService.send(new MemberRemoveOperation(getThisAddress()), endpoint);
@@ -312,7 +344,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     logger.fine("Not finalizing join because caller: " + callerAddress + " is not known master: "
                             + getMasterAddress());
                 }
-                sendExplicitSuspicion(callerAddress);
+                sendExplicitSuspicion(callerAddress, callerAddress, membersView.getVersion());
                 return false;
             }
 
@@ -355,7 +387,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             if (!checkValidMaster(callerAddress)) {
                 logger.warning("Not updating members because caller: " + callerAddress  + " is not known master: "
                         + getMasterAddress());
-                sendExplicitSuspicion(callerAddress);
+                sendExplicitSuspicion(callerAddress, callerAddress, membersView.getVersion());
                 return false;
             }
 
@@ -379,7 +411,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         Member localMember = getLocalMember();
         if (!membersView.containsAddress(localMember.getAddress(), localMember.getUuid())) {
             logger.warning("Not updating members because member list doesn't contain us! -> " + membersView);
-            sendExplicitSuspicion(callerAddress);
+            sendExplicitSuspicion(callerAddress, callerAddress, membersView.getVersion());
             // TODO: suspect from callerAddress (with UUID)?
             return false;
         }

@@ -346,6 +346,38 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     }
 
     @Test
+    public void slave_master_confirmation_timeout_explicit_suspicion() {
+        Config config1 = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), "15")
+                                    .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), "1")
+                                    .setProperty(MAX_NO_MASTER_CONFIRMATION_SECONDS.getName(), "15")
+                                    .setProperty(MASTER_CONFIRMATION_INTERVAL_SECONDS.getName(), "1");
+
+        String infiniteTimeout = Integer.toString(Integer.MAX_VALUE);
+        Config config2 = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), infiniteTimeout)
+                                     .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), infiniteTimeout)
+                                     .setProperty(MAX_NO_MASTER_CONFIRMATION_SECONDS.getName(), infiniteTimeout)
+                                     .setProperty(MASTER_CONFIRMATION_INTERVAL_SECONDS.getName(), infiniteTimeout);
+
+        HazelcastInstance master = newHazelcastInstance(config1);
+        HazelcastInstance slave1 = newHazelcastInstance(config1);
+        HazelcastInstance slave2 = newHazelcastInstance(config2);
+
+        assertClusterSizeEventually(3, master);
+        assertClusterSizeEventually(3, slave1);
+        assertClusterSizeEventually(3, slave2);
+
+        dropOperationsBetween(master, slave2, MEMBER_INFO_UPDATE);
+
+        assertClusterSizeEventually(2, master);
+        assertClusterSizeEventually(2, slave1);
+
+        ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(slave2);
+        clusterService.getClusterHeartbeatManager().sendMasterConfirmation();
+
+        assertClusterSizeEventually(1, slave2);
+    }
+
+    @Test
     public void master_candidate_has_stale_member_list() {
         Config config = new Config().setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), "5");
         HazelcastInstance master = newHazelcastInstance(config);

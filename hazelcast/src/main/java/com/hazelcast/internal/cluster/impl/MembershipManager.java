@@ -305,6 +305,45 @@ public class MembershipManager {
         }
     }
 
+    void triggerExplicitSuspicion(Address caller, int callerMemberListVersion,
+                                  Address endpoint, Address endpointMasterAddress, int endpointMemberListVersion) {
+        clusterServiceLock.lock();
+        try {
+            Address masterAddress = clusterService.getMasterAddress();
+            int memberListVersion = getMemberListVersion();
+
+            if (!(masterAddress.equals(caller) && memberListVersion == callerMemberListVersion)) {
+                logger.fine("Ignoring explicit suspicion trigger for endpoint: " + endpoint + " with endpoint master address: "
+                        + endpointMasterAddress + " and endpoint member list version: " + endpointMemberListVersion + "."
+                        + " caller: " + caller + " caller member list version: " + callerMemberListVersion
+                        + " current master: " + masterAddress + " current member list version: " + memberListVersion);
+                return;
+            }
+
+            clusterService.sendExplicitSuspicion(endpoint, endpointMasterAddress, endpointMemberListVersion);
+        } finally {
+            clusterServiceLock.unlock();
+        }
+    }
+
+    void handleExplicitSuspicion(Address expectedMasterAddress, int expectedMemberListVersion, Address suspectedAddress) {
+        clusterServiceLock.lock();
+        try {
+            Address masterAddress = clusterService.getMasterAddress();
+            int memberListVersion = getMemberListVersion();
+            if (!(masterAddress.equals(expectedMasterAddress) && memberListVersion == expectedMemberListVersion)) {
+                logger.fine("Ignoring explicit suspicion of " + suspectedAddress + ". expected master address: "
+                        + expectedMasterAddress + ", expected member list version: " + expectedMemberListVersion
+                        + ", current master address: " + masterAddress + ", current member list version: " + memberListVersion);
+                return;
+            }
+
+            suspectAddress(suspectedAddress, null, "explicit suspicion", true);
+        } finally {
+            clusterServiceLock.unlock();
+        }
+    }
+
     void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
         if (!ensureMemberIsRemovable(suspectedAddress)) {
             return;

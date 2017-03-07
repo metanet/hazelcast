@@ -20,6 +20,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
+import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.HeartbeatOperation;
 import com.hazelcast.internal.cluster.impl.operations.MasterConfirmationOperation;
 import com.hazelcast.internal.metrics.Probe;
@@ -40,6 +41,7 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 
 import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.EXECUTOR_NAME;
 import static com.hazelcast.util.StringUtil.timeToString;
@@ -72,6 +74,7 @@ public class ClusterHeartbeatManager {
     private final NodeEngineImpl nodeEngine;
     private final ClusterServiceImpl clusterService;
     private final ClusterClockImpl clusterClock;
+    private final Lock clusterServiceLock;
 
     private final ConcurrentMap<MemberImpl, Long> heartbeatTimes = new ConcurrentHashMap<MemberImpl, Long>();
     private final ConcurrentMap<MemberImpl, Long> masterConfirmationTimes = new ConcurrentHashMap<MemberImpl, Long>();
@@ -88,10 +91,11 @@ public class ClusterHeartbeatManager {
     private volatile long lastHeartbeat;
     private volatile long lastClusterTimeDiff;
 
-    ClusterHeartbeatManager(Node node, ClusterServiceImpl clusterService) {
+    ClusterHeartbeatManager(Node node, ClusterServiceImpl clusterService, Lock clusterServiceLock) {
         this.node = node;
         this.clusterService = clusterService;
         this.nodeEngine = node.getNodeEngine();
+        this.clusterServiceLock = clusterServiceLock;
         clusterClock = clusterService.getClusterClock();
         logger = node.getLogger(getClass());
 
@@ -484,24 +488,36 @@ public class ClusterHeartbeatManager {
      * {@link NodeState#SHUT_DOWN} state and is not the master node.
      */
     public void sendMasterConfirmation() {
-        if (!node.joined() || node.getState() == NodeState.SHUT_DOWN || node.isMaster()) {
-            return;
+        clusterServiceLock.lock();
+        try {
+            if (!node.joined() || node.getState() == NodeState.SHUT_DOWN || node.isMaster()) {
+                return;
+            }
+            Address masterAddress = node.getMasterAddress();
+            if (masterAddress == null) {
+                logger.fine("Could not send MasterConfirmation, masterAddress is null!");
+                return;
+            }
+            MemberImpl masterMember = clusterService.getMember(masterAddress);
+            if (masterMember == null) {
+                logger.fine("Could not send MasterConfirmation, masterMember is null!");
+                return;
+            }
+            if (logger.isFineEnabled()) {
+                logger.fine("Sending MasterConfirmation to " + masterMember);
+            }
+
+            int memberListVersion = 0;
+            if (clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+                MemberMap memberMap = clusterService.getMembershipManager().getMemberMap();
+                memberListVersion = memberMap.getVersion();
+            }
+
+            Operation op = new MasterConfirmationOperation(memberListVersion, clusterClock.getClusterTime());
+            nodeEngine.getOperationService().send(op, masterAddress);
+        } finally {
+            clusterServiceLock.unlock();
         }
-        Address masterAddress = node.getMasterAddress();
-        if (masterAddress == null) {
-            logger.fine("Could not send MasterConfirmation, masterAddress is null!");
-            return;
-        }
-        MemberImpl masterMember = clusterService.getMember(masterAddress);
-        if (masterMember == null) {
-            logger.fine("Could not send MasterConfirmation, masterMember is null!");
-            return;
-        }
-        if (logger.isFineEnabled()) {
-            logger.fine("Sending MasterConfirmation to " + masterMember);
-        }
-        nodeEngine.getOperationService().send(new MasterConfirmationOperation(clusterClock.getClusterTime()),
-                masterAddress);
     }
 
     /**
