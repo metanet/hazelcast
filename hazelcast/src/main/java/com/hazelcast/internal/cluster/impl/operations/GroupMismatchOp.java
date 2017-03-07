@@ -19,24 +19,33 @@ package com.hazelcast.internal.cluster.impl.operations;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook;
 import com.hazelcast.logging.ILogger;
+import com.hazelcast.nio.Connection;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
-public class AuthenticationFailureOperation extends AbstractClusterOperation {
+public class GroupMismatchOp extends AbstractClusterOperation {
 
-    public AuthenticationFailureOperation() {
+    public GroupMismatchOp() {
     }
 
     @Override
     public void run() {
-        final NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
-        final Node node = nodeEngine.getNode();
-        final ILogger logger = nodeEngine.getLogger("com.hazelcast.security");
-        logger.severe("Node could not join cluster. Authentication failed on master node! Node is going to shutdown now!");
-        node.shutdown(true);
+        NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
+        Connection connection = getConnection();
+
+        String message = "Node could not join cluster at node: " + connection.getEndPoint()
+                + " Cause: the target cluster has a different group-name";
+
+        connection.close(message, null);
+
+        ILogger logger = nodeEngine.getLogger("com.hazelcast.cluster");
+        logger.warning(message);
+
+        Node node = nodeEngine.getNode();
+        node.getJoiner().blacklist(getCallerAddress(), true);
     }
 
     @Override
     public int getId() {
-        return ClusterDataSerializerHook.AUTH_FAILURE;
+        return ClusterDataSerializerHook.GROUP_MISMATCH;
     }
 }

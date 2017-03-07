@@ -22,9 +22,9 @@ import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
 /**
  * Requests member list publish from master node
  */
-public class TriggerMemberListPublishOperation extends AbstractClusterOperation {
+public class TriggerMemberListPublishOp extends AbstractClusterOperation {
 
-    public TriggerMemberListPublishOperation() {
+    public TriggerMemberListPublishOp() {
     }
 
     @Override

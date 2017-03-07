@@ -25,44 +25,46 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 
 import java.io.IOException;
 
-public class BeforeJoinCheckFailureOperation extends AbstractClusterOperation {
+/**
+ * When a node wants to join the cluster, its sends its ConfigCheck to the cluster where it is validated.
+ * If the ConfigCheck fails, this operation is send to that node to trigger him to shutdown himself. This
+ * way he will not join the cluster.
+ *
+ * @see AuthenticationFailureOp
+ */
+public class ConfigMismatchOp extends AbstractClusterOperation {
 
-    private String failReasonMsg;
+    private String msg;
 
-    public BeforeJoinCheckFailureOperation() {
+    public ConfigMismatchOp() {
     }
 
-    public BeforeJoinCheckFailureOperation(String failReasonMsg) {
-        this.failReasonMsg = failReasonMsg;
+    public ConfigMismatchOp(String msg) {
+        this.msg = msg;
     }
 
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
-        out.writeUTF(failReasonMsg);
+        out.writeUTF(msg);
     }
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
-        failReasonMsg = in.readUTF();
+        msg = in.readUTF();
     }
 
     @Override
     public void run() {
-        final NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
-        final Node node = nodeEngine.getNode();
-        if (node.joined()) {
-            throw new IllegalStateException("Node is already joined but received a termination message! "
-                + "Reason: " + failReasonMsg);
-        }
-
-        final ILogger logger = nodeEngine.getLogger("com.hazelcast.security");
-        logger.severe("Node could not join cluster. Before join check failed node is going to shutdown now!");
-        logger.severe("Reason of failure for node join: " + failReasonMsg);
+        NodeEngineImpl nodeEngine = (NodeEngineImpl) getNodeEngine();
+        Node node = nodeEngine.getNode();
+        ILogger logger = nodeEngine.getLogger("com.hazelcast.cluster");
+        logger.severe("Node could not join cluster. A Configuration mismatch was detected: "
+                + msg + " Node is going to shutdown now!");
         node.shutdown(true);
     }
 
     @Override
     public int getId() {
-        return ClusterDataSerializerHook.BEFORE_JOIN_CHECK_FAILURE;
+        return ClusterDataSerializerHook.CONFIG_MISMATCH;
     }
 }
