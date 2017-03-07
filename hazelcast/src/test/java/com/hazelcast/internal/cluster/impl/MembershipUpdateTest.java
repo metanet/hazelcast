@@ -477,29 +477,6 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         // TODO: assert eventually hz2 suspects hz3
     }
 
-//    @Test
-//    public void newMemberReceives_finalizeJoinFromNonMaster() {
-//        Config config = new Config();
-//        config.setProperty(MEMBER_LIST_PUBLISH_INTERVAL_SECONDS.getName(), String.valueOf(Integer.MAX_VALUE));
-//
-//        HazelcastInstance hz1 = factory.newHazelcastInstance(config);
-//        HazelcastInstance hz2 = factory.newHazelcastInstance(config);
-//        HazelcastInstance hz3 = factory.newHazelcastInstance(config);
-//
-//        Node node = getNode(hz1);
-//        ClusterServiceImpl clusterService = node.getClusterService();
-//        MembershipManager membershipManager = clusterService.getMembershipManager();
-//        MembersView membersView = membershipManager.createMembersView();
-//
-//        Operation memberUpdate = new MembersUpdateOperation(membershipManager.getMember(getAddress(hz3)).getUuid(),
-//                membersView, clusterService.getClusterTime(), null, false);
-//
-//        NodeEngineImpl nonMasterNodeEngine = getNodeEngineImpl(hz2);
-//        nonMasterNodeEngine.getOperationService().send(memberUpdate, getAddress(hz3));
-//
-//        // TODO: assert eventually hz2 suspects hz3
-//    }
-
     static void assertMemberViewsAreSame(MemberMap expectedMemberMap, MemberMap actualMemberMap) {
         assertEquals(expectedMemberMap.getVersion(), actualMemberMap.getVersion());
         assertEquals(expectedMemberMap.size(), actualMemberMap.size());

@@ -116,6 +116,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     private final ClusterHeartbeatManager clusterHeartbeatManager;
 
+    private final boolean useLegacyMemberListFormat;
+
     private volatile String clusterId;
 
     public ClusterServiceImpl(Node node) {
@@ -127,6 +129,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         clusterClock = new ClusterClockImpl(logger);
 
         thisAddress = node.getThisAddress();
+
+        useLegacyMemberListFormat = node.getProperties().getBoolean(GroupProperty.USE_LEGACY_MEMBER_LIST_FORMAT);
 
         membershipManager = new MembershipManager(node, this, lock);
         membershipManagerCompat = new MembershipManagerCompat(node, this, lock);
@@ -727,22 +731,39 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public String memberListString() {
+    private String legacyMemberListString() {
         StringBuilder sb = new StringBuilder("\n\nMembers [");
         Collection<MemberImpl> members = getMemberImpls();
-        sb.append(members != null ? members.size() : 0);
+        sb.append(members.size());
         sb.append("] {");
-        if (members != null) {
-            for (Member member : members) {
-                sb.append("\n\t").append(member);
-            }
+        for (Member member : members) {
+            sb.append("\n\t").append(member);
         }
         sb.append("\n}\n");
         return sb.toString();
     }
 
+    public String memberListString() {
+        MemberMap memberMap = membershipManager.getMemberMap();
+        Collection<MemberImpl> members = memberMap.getMembers();
+        StringBuilder sb = new StringBuilder("\n\nMembers {")
+                .append("size:").append(members.size()).append(", ")
+                .append("ver:").append(memberMap.getVersion())
+                .append("} [");
+
+        for (Member member : members) {
+            sb.append("\n\t").append(member);
+        }
+        sb.append("\n]\n");
+        return sb.toString();
+    }
+
     void printMemberList() {
-        logger.info(memberListString());
+        if (getClusterVersion().isLessThan(Versions.V3_9) || useLegacyMemberListFormat) {
+            logger.info(legacyMemberListString());
+        } else {
+            logger.info(memberListString());
+        }
     }
 
     @Override
