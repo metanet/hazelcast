@@ -488,36 +488,33 @@ public class ClusterHeartbeatManager {
      * {@link NodeState#SHUT_DOWN} state and is not the master node.
      */
     public void sendMasterConfirmation() {
-        clusterServiceLock.lock();
-        try {
-            if (!node.joined() || node.getState() == NodeState.SHUT_DOWN || node.isMaster()) {
-                return;
-            }
-            Address masterAddress = node.getMasterAddress();
-            if (masterAddress == null) {
-                logger.fine("Could not send MasterConfirmation, masterAddress is null!");
-                return;
-            }
-            MemberImpl masterMember = clusterService.getMember(masterAddress);
-            if (masterMember == null) {
-                logger.fine("Could not send MasterConfirmation, masterMember is null!");
-                return;
-            }
-            if (logger.isFineEnabled()) {
-                logger.fine("Sending MasterConfirmation to " + masterMember);
-            }
-
-            int memberListVersion = 0;
-            if (clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-                MemberMap memberMap = clusterService.getMembershipManager().getMemberMap();
-                memberListVersion = memberMap.getVersion();
-            }
-
-            Operation op = new MasterConfirmationOperation(memberListVersion, clusterClock.getClusterTime());
-            nodeEngine.getOperationService().send(op, masterAddress);
-        } finally {
-            clusterServiceLock.unlock();
+        if (!node.joined() || node.getState() == NodeState.SHUT_DOWN || node.isMaster()) {
+            return;
         }
+        Address masterAddress = node.getMasterAddress();
+        if (masterAddress == null) {
+            logger.fine("Could not send MasterConfirmation, master address is null!");
+            return;
+        }
+
+        MemberMap memberMap = clusterService.getMembershipManager().getMemberMap();
+        MemberImpl masterMember = memberMap.getMember(masterAddress);
+        if (masterMember == null) {
+            logger.fine("Could not send MasterConfirmation, master member is null! master address: " + masterAddress);
+            return;
+        }
+
+        if (logger.isFineEnabled()) {
+            logger.fine("Sending MasterConfirmation to " + masterMember);
+        }
+
+        int memberListVersion = 0;
+        if (clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
+            memberListVersion = memberMap.getVersion();
+        }
+
+        Operation op = new MasterConfirmationOperation(memberListVersion, clusterClock.getClusterTime());
+        nodeEngine.getOperationService().send(op, masterAddress);
     }
 
     /**

@@ -356,9 +356,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 return false;
             }
 
-            if (!checkMemberUpdateContainsLocalMember(membersView, callerAddress)) {
-                return false;
-            }
+            assertMemberUpdateContainsLocalMember(membersView);
 
             initialClusterState(clusterState, clusterVersion);
             setClusterId(clusterId);
@@ -391,9 +389,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 return false;
             }
 
-            if (!checkMemberUpdateContainsLocalMember(membersView, callerAddress)) {
-                return false;
-            }
+            assertMemberUpdateContainsLocalMember(membersView);
 
             // TODO: should we move this into membershipManager?
             if (!shouldProcessMemberUpdate(membersView)) {
@@ -407,15 +403,14 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    private boolean checkMemberUpdateContainsLocalMember(MembersView membersView, Address callerAddress) {
-        Member localMember = getLocalMember();
-        if (!membersView.containsAddress(localMember.getAddress(), localMember.getUuid())) {
-            logger.warning("Not updating members because member list doesn't contain us! -> " + membersView);
-            sendExplicitSuspicion(callerAddress, callerAddress, membersView.getVersion());
-            // TODO: suspect from callerAddress (with UUID)?
-            return false;
+    private void assertMemberUpdateContainsLocalMember(MembersView membersView) {
+        if (!ASSERTION_ENABLED) {
+             return;
         }
-        return true;
+
+        Member localMember = getLocalMember();
+        assert membersView.containsAddress(localMember.getAddress(), localMember.getUuid())
+                : "Not applying member update because member list doesn't contain us! -> " + membersView;
     }
 
     private boolean checkValidMaster(Address callerAddress) {
