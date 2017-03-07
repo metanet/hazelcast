@@ -320,6 +320,10 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 return false;
             }
 
+            if (!checkMemberUpdateContainsLocalMember(membersView, callerAddress)) {
+                return false;
+            }
+
             initialClusterState(clusterState, clusterVersion);
             setClusterId(clusterId);
             ClusterClockImpl clusterClock = getClusterClock();
@@ -351,11 +355,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 return false;
             }
 
-            Member localMember = getLocalMember();
-            if (!membersView.containsAddress(localMember.getAddress(), localMember.getUuid())) {
-                logger.warning("Not updating members because member list doesn't contain us! -> " + membersView);
-                sendExplicitSuspicion(callerAddress);
-                // TODO: suspect from callerAddress (with UUID)?
+            if (!checkMemberUpdateContainsLocalMember(membersView, callerAddress)) {
                 return false;
             }
 
@@ -369,6 +369,17 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         } finally {
             lock.unlock();
         }
+    }
+
+    private boolean checkMemberUpdateContainsLocalMember(MembersView membersView, Address callerAddress) {
+        Member localMember = getLocalMember();
+        if (!membersView.containsAddress(localMember.getAddress(), localMember.getUuid())) {
+            logger.warning("Not updating members because member list doesn't contain us! -> " + membersView);
+            sendExplicitSuspicion(callerAddress);
+            // TODO: suspect from callerAddress (with UUID)?
+            return false;
+        }
+        return true;
     }
 
     private boolean checkValidMaster(Address callerAddress) {
