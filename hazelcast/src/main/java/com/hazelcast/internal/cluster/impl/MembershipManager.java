@@ -569,8 +569,6 @@ public class MembershipManager {
             return false;
         }
 
-        // TODO [basri] what if I am shutting down?
-
         for (MemberImpl m : memberMap.headMemberSet(node.getLocalMember(), false)) {
             if (!isMemberSuspected(m.getAddress())) {
                 return false;

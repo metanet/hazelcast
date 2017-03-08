@@ -41,7 +41,6 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 
 import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.EXECUTOR_NAME;
 import static com.hazelcast.util.StringUtil.timeToString;
@@ -74,7 +73,6 @@ public class ClusterHeartbeatManager {
     private final NodeEngineImpl nodeEngine;
     private final ClusterServiceImpl clusterService;
     private final ClusterClockImpl clusterClock;
-    private final Lock clusterServiceLock;
 
     private final ConcurrentMap<MemberImpl, Long> heartbeatTimes = new ConcurrentHashMap<MemberImpl, Long>();
     private final ConcurrentMap<MemberImpl, Long> masterConfirmationTimes = new ConcurrentHashMap<MemberImpl, Long>();
@@ -91,11 +89,10 @@ public class ClusterHeartbeatManager {
     private volatile long lastHeartbeat;
     private volatile long lastClusterTimeDiff;
 
-    ClusterHeartbeatManager(Node node, ClusterServiceImpl clusterService, Lock clusterServiceLock) {
+    ClusterHeartbeatManager(Node node, ClusterServiceImpl clusterService) {
         this.node = node;
         this.clusterService = clusterService;
         this.nodeEngine = node.getNodeEngine();
-        this.clusterServiceLock = clusterServiceLock;
         clusterClock = clusterService.getClusterClock();
         logger = node.getLogger(getClass());
 

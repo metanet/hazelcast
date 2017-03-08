@@ -137,7 +137,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManagerCompat = new MembershipManagerCompat(node, this, lock);
         clusterStateManager = new ClusterStateManager(node, lock);
         clusterJoinManager = new ClusterJoinManager(node, this, lock);
-        clusterHeartbeatManager = new ClusterHeartbeatManager(node, this, lock);
+        clusterHeartbeatManager = new ClusterHeartbeatManager(node, this);
 
         node.connectionManager.addConnectionListener(this);
         //MEMBERSHIP_EVENT_EXECUTOR is a single threaded executor to ensure that events are executed in correct order.
@@ -616,11 +616,17 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
     @Override
     public MemberImpl getMember(Address address) {
+        if (address == null) {
+            return null;
+        }
         return membershipManager.getMember(address);
     }
 
     @Override
     public MemberImpl getMember(String uuid) {
+        if (uuid == null) {
+            return null;
+        }
         return membershipManager.getMember(uuid);
     }
 

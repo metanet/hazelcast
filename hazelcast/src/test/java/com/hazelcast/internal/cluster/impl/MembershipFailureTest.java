@@ -23,6 +23,7 @@ import com.hazelcast.core.LifecycleEvent.LifecycleState;
 import com.hazelcast.core.LifecycleListener;
 import com.hazelcast.core.Member;
 import com.hazelcast.nio.Address;
+import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
@@ -35,6 +36,7 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 
 import static com.hazelcast.instance.TestUtil.terminateInstance;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.FETCH_MEMBER_LIST_STATE;
@@ -599,6 +601,60 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertOpenEventually(mergeLatch);
         assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member2));
         assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member3));
+    }
+
+    @Test
+    public void masterCandidate_canGracefullyShutdown_whenMasterShutdown() throws Exception {
+        Config config = new Config();
+        // slow down the migrations
+        config.setProperty(GroupProperty.PARTITION_MIGRATION_INTERVAL.getName(), "1");
+        config.setProperty(GroupProperty.PARTITION_COUNT.getName(), "12");
+
+        HazelcastInstance master = factory.newHazelcastInstance(config);
+        final HazelcastInstance masterCandidate = factory.newHazelcastInstance(config);
+        HazelcastInstance slave = factory.newHazelcastInstance(config);
+
+        warmUpPartitions(master, masterCandidate, slave);
+
+        Future shutdownF = spawn(new Runnable() {
+            @Override
+            public void run() {
+                masterCandidate.shutdown();
+            }
+        });
+
+        sleepSeconds(3);
+        master.shutdown();
+
+        shutdownF.get();
+        assertClusterSizeEventually(1, slave);
+    }
+
+    @Test
+    public void masterCandidate_canGracefullyShutdown_whenMasterCrashes() throws Exception {
+        Config config = new Config();
+        // slow down the migrations
+        config.setProperty(GroupProperty.PARTITION_MIGRATION_INTERVAL.getName(), "1");
+        config.setProperty(GroupProperty.PARTITION_COUNT.getName(), "12");
+
+        HazelcastInstance master = factory.newHazelcastInstance(config);
+        final HazelcastInstance masterCandidate = factory.newHazelcastInstance(config);
+        HazelcastInstance slave = factory.newHazelcastInstance(config);
+
+        warmUpPartitions(master, masterCandidate, slave);
+
+        Future shutdownF = spawn(new Runnable() {
+            @Override
+            public void run() {
+                masterCandidate.shutdown();
+            }
+        });
+
+        sleepSeconds(1);
+        terminateInstance(master);
+
+        shutdownF.get();
+        assertClusterSizeEventually(1, slave);
     }
 
     HazelcastInstance newHazelcastInstance() {
