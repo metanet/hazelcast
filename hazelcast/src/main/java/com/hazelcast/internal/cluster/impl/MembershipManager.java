@@ -592,7 +592,6 @@ public class MembershipManager {
 
     private MembersView decideNewMembersView(MembersView localMembersView, Set<Address> addresses) {
         Map<Address, Future<MembersView>> futures = new HashMap<Address, Future<MembersView>>();
-
         MembersView latestMembersView = fetchLatestMembersView(localMembersView, addresses, futures);
 
         logger.fine("Latest " + latestMembersView + " before final decision...");
@@ -610,12 +609,8 @@ public class MembershipManager {
             // if it is not certain if a member has accepted the mastership claim, its response will be ignored
 
             Future<MembersView> future = futures.get(address);
-            // TODO [basri] could it be that `future == null` ?
             if (isMemberSuspected(address)) {
                 logger.fine(memberInfo + " is excluded because suspected");
-                continue;
-            } else if (future == null) {
-                logger.warning(memberInfo + " is excluded because I haven't asked to it");
                 continue;
             } else if (!future.isDone()) {
                 logger.fine(memberInfo + " is excluded because I don't know its response");
@@ -654,30 +649,27 @@ public class MembershipManager {
                 Address address = e.getKey();
                 Future<MembersView> future = e.getValue();
 
-                // If we started to suspect a member after asking its member list, we don't need to wait for its result.
-                if (!isMemberSuspected(address)) {
-                    // If there is no suspicion yet, we just keep waiting till we have a successful or failed result.
-                    if (future.isDone()) {
-                        try {
-                            MembersView membersView = future.get();
-                            if (membersView.isLaterThan(latestMembersView)) {
-                                logger.fine("A more recent " + membersView + " is received from " + address);
-                                latestMembersView = membersView;
+                if (future.isDone()) {
+                    try {
+                        MembersView membersView = future.get();
+                        if (membersView.isLaterThan(latestMembersView)) {
+                            logger.fine("A more recent " + membersView + " is received from " + address);
+                            latestMembersView = membersView;
 
-                                // If we discover a new member via a fetched member list, we should also ask for its members view.
-                                if (checkFetchedMembersView(membersView, futures)) {
-                                    // there are some new addresses added to the futures map. lets wait for their results.
-                                    done = false;
-                                }
+                            // If we discover a new member via a fetched member list, we should also ask for its members view.
+                            if (checkFetchedMembersView(membersView, futures)) {
+                                // there are some new addresses added to the futures map. lets wait for their results.
+                                done = false;
                             }
-                        } catch (InterruptedException ignored) {
-                            Thread.currentThread().interrupt();
-                        } catch (ExecutionException ignored) {
-                            // we couldn't fetch MembersView of 'address'. It will be removed from the cluster.
                         }
-                    } else if (latestMembersView.containsAddress(address)) {
-                        done = false;
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    } catch (ExecutionException ignored) {
+                        // we couldn't learn MembersView of 'address'. It will be removed from the cluster.
                     }
+                } else if (!isMemberSuspected(address) && latestMembersView.containsAddress(address)) {
+                    // we don't suspect from 'address' and we need to learn its response
+                    done = false;
                 }
             }
 
@@ -696,7 +688,7 @@ public class MembershipManager {
     }
 
     private boolean checkFetchedMembersView(MembersView membersView, Map<Address, Future<MembersView>> futures) {
-        boolean done = false;
+        boolean isNewMemberPresent = false;
 
         for (MemberInfo memberInfo : membersView.getMembers()) {
             Address memberAddress = memberInfo.getAddress();
@@ -704,11 +696,11 @@ public class MembershipManager {
                 // this is a new member for us. lets ask its members view
                 logger.fine("Asking MembersView of " + memberAddress);
                 futures.put(memberAddress, invokeFetchMembersViewOp(memberAddress));
-                done = true;
+                isNewMemberPresent = true;
             }
         }
 
-        return done;
+        return isNewMemberPresent;
     }
 
     private Future<MembersView> invokeFetchMembersViewOp(Address target) {
