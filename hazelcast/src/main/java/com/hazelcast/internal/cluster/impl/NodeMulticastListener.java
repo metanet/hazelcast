@@ -75,7 +75,7 @@ public class NodeMulticastListener implements MulticastListener {
                     + "Removing " + node.getMasterAddress();
             logger.warning(message);
             // I just make a local suspicion. Probably other nodes will eventually suspect as well.
-            node.getClusterService().suspectAddress(node.getMasterAddress(), message, false);
+            node.getClusterService().suspectMember(node.getMasterAddress(), message, false);
         }
     }
 

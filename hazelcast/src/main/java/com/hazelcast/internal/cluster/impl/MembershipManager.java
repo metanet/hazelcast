@@ -340,23 +340,33 @@ public class MembershipManager {
                 return;
             }
 
-            suspectAddress(suspectedAddress, null, "explicit suspicion", true);
+            suspectMember(suspectedAddress, null, "explicit suspicion", true);
         } finally {
             clusterServiceLock.unlock();
         }
     }
 
-    void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
+    void suspectMember(Address suspectedAddress, String suspectedUuid, String reason, boolean shouldCloseConn) {
         if (!ensureMemberIsRemovable(suspectedAddress)) {
             return;
         }
 
         final MembersView localMemberView;
         final Set<Address> membersToAsk;
+        
         clusterServiceLock.lock();
         try {
-            boolean claimMastership = doSuspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
-            if (!claimMastership) {
+            ClusterJoinManager clusterJoinManager = clusterService.getClusterJoinManager();
+            if (node.isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
+                removeMember(suspectedAddress, reason, shouldCloseConn);
+                return;
+            }
+
+            if (!addSuspectedMember(suspectedAddress, suspectedUuid, reason, shouldCloseConn)) {
+                return;
+            }
+
+            if (!tryStartMastershipClaim()) {
                 return;
             }
 
@@ -379,109 +389,109 @@ public class MembershipManager {
         executor.submit(new DecideNewMembersViewTask(localMemberView, membersToAsk));
     }
 
-    // called under cluster service lock
-    private boolean doSuspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
+    private boolean tryStartMastershipClaim() {
+        ClusterJoinManager clusterJoinManager = clusterService.getClusterJoinManager();
+        if (clusterJoinManager.isMastershipClaimInProgress()) {
+            return false;
+        }
+
+        MemberMap memberMap = memberMapRef.get();
+        if (!shouldClaimMastership(memberMap)) {
+            return false;
+        }
+
+        logger.info("Starting mastership claim process...");
+
+        // Make sure that all pending join requests are cancelled temporarily.
+        clusterJoinManager.setMastershipClaimInProgress();
+
+        node.setMasterAddress(node.getThisAddress());
+        return true;
+    }
+
+    private boolean addSuspectedMember(Address suspectedAddress, String suspectedUuid, String reason,
+            boolean shouldCloseConn) {
+
+        MemberImpl suspectedMember = getSuspectedMember(suspectedAddress, suspectedUuid);
+        if (suspectedMember == null) {
+            logger.fine("Ignoring suspect request for " + suspectedAddress + " since it's not member.");
+            return false;
+        }
+
+        if (!suspectedMembers.containsKey(suspectedAddress)) {
+            suspectedMembers.put(suspectedAddress, 0L);
+            if (reason != null) {
+                logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
+            } else {
+                logger.warning(suspectedAddress + " is suspected to be dead");
+            }
+        }
+
+        if (shouldCloseConn) {
+            closeConnection(suspectedAddress, reason);
+        }
+        return true;
+    }
+
+    private MemberImpl getSuspectedMember(Address suspectedAddress, String suspectedUuid) {
         MemberImpl suspectedMember = getMember(suspectedAddress);
         if (suspectedUuid != null && (suspectedMember == null || !suspectedUuid.equals(suspectedMember.getUuid()))) {
             if (logger.isFineEnabled()) {
                 logger.fine("Cannot suspect " + suspectedAddress + ", either member is not present "
                         + "or uuid is not matching. Uuid: " + suspectedUuid + ", member: " + suspectedMember);
             }
-            return false;
+            return null;
         }
-
-        ClusterJoinManager clusterJoinManager = clusterService.getClusterJoinManager();
-        if (node.isMaster() && !clusterJoinManager.isMastershipClaimInProgress()) {
-            removeEndpoint(suspectedAddress, reason, destroyConnection);
-            return false;
-        } else {
-            if (suspectedMember == null) {
-                logger.fine("Ignoring suspect request for " + suspectedAddress + " since it's not member.");
-                return false;
-            }
-
-            if (!suspectedMembers.containsKey(suspectedAddress)) {
-                suspectedMembers.put(suspectedAddress, 0L);
-                if (reason != null) {
-                    logger.warning(suspectedAddress + " is suspected to be dead for reason: " + reason);
-                } else {
-                    logger.warning(suspectedAddress + " is suspected to be dead");
-                }
-            }
-
-            Connection conn = node.connectionManager.getConnection(suspectedAddress);
-            if (destroyConnection && conn != null) {
-                conn.close(reason, null);
-            }
-
-            if (clusterJoinManager.isMastershipClaimInProgress()) {
-                return false;
-            }
-
-            MemberMap memberMap = memberMapRef.get();
-            if (!shouldClaimMastership(memberMap)) {
-                return false;
-            }
-
-            logger.info("Starting mastership claim process...");
-
-            // Make sure that all pending join requests are cancelled temporarily.
-            clusterJoinManager.setMastershipClaimInProgress();
-
-            node.setMasterAddress(node.getThisAddress());
-            return true;
-        }
+        return suspectedMember;
     }
 
-    private void removeEndpoint(Address address, String reason, boolean destroyConnection) {
+    private void removeMember(Address address, String reason, boolean shouldCloseConn) {
+        assert node.isMaster() : "Master: " + node.getMasterAddress();
+        assert clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9);
+
         if (!ensureMemberIsRemovable(address)) {
             return;
         }
-
-        assert node.isMaster() : "Master: " + node.getMasterAddress();
 
         clusterServiceLock.lock();
         try {
             clusterService.getClusterJoinManager().removeJoin(address);
 
-            Connection conn = node.connectionManager.getConnection(address);
-            if (destroyConnection && conn != null) {
-                conn.close(reason, null);
+            if (shouldCloseConn) {
+                closeConnection(address, reason);
             }
 
-            removeMember(address);
+            MemberMap currentMembers = memberMapRef.get();
+            MemberImpl member = currentMembers.getMember(address);
+
+            if (member == null) {
+                logger.fine("No member to remove with address: " + address);
+                return;
+            }
+
+            logger.info("Removing " + member);
+            ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
+            clusterHeartbeatManager.removeMember(member);
+
+            MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, member);
+            setMembers(newMembers);
+
+            if (logger.isFineEnabled()) {
+                logger.fine(member + " is removed. Publishing new member list.");
+            }
+            sendMemberListToOthers();
+
+            handleMemberRemove(newMembers, member);
+            clusterService.printMemberList();
         } finally {
             clusterServiceLock.unlock();
         }
     }
 
-    private void removeMember(Address address) {
-        assert clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9);
-        assert node.isMaster() : "Master: " + node.getMasterAddress();
-
-        clusterServiceLock.lock();
-        try {
-            ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
-            MemberMap currentMembers = memberMapRef.get();
-            MemberImpl member = currentMembers.getMember(address);
-            if (member != null) {
-                logger.info("Removing " + member);
-                clusterHeartbeatManager.removeMember(member);
-                MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, member);
-                setMembers(newMembers);
-
-                if (logger.isFineEnabled()) {
-                    logger.fine(member + " is removed. Publishing new member list.");
-                }
-                sendMemberListToOthers();
-
-                handleMemberRemove(newMembers, member);
-                clusterService.printMemberList();
-            } else {
-                logger.fine("No member to remove with address: " + address);
-            }
-        } finally {
-            clusterServiceLock.unlock();
+    private void closeConnection(Address address, String reason) {
+        Connection conn = node.connectionManager.getConnection(address);
+        if (conn != null) {
+            conn.close(reason, null);
         }
     }
 

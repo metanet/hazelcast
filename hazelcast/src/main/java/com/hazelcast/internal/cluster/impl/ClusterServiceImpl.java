@@ -182,13 +182,13 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManager.triggerExplicitSuspicion(caller, callerMemberListVersion, endpoint, endpointMasterAddress, endpointMemberListVersion);
     }
 
-    public void suspectAddress(Address suspectedAddress, String reason, boolean destroyConnection) {
-        suspectAddress(suspectedAddress, null, reason, destroyConnection);
+    public void suspectMember(Address suspectedAddress, String reason, boolean destroyConnection) {
+        suspectMember(suspectedAddress, null, reason, destroyConnection);
     }
 
-    public void suspectAddress(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
+    public void suspectMember(Address suspectedAddress, String suspectedUuid, String reason, boolean destroyConnection) {
         if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            membershipManager.suspectAddress(suspectedAddress, suspectedUuid, reason, destroyConnection);
+            membershipManager.suspectMember(suspectedAddress, suspectedUuid, reason, destroyConnection);
         } else {
             membershipManagerCompat.removeMember(suspectedAddress, suspectedUuid, reason);
         }

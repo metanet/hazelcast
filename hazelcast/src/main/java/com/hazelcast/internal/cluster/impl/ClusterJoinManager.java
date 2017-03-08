@@ -667,7 +667,7 @@ public class ClusterJoinManager {
                     + " Removing old member and processing join request...", member);
             logger.warning(msg);
 
-            clusterService.suspectAddress(target, msg, false);
+            clusterService.suspectMember(target, msg, false);
             Connection existing = node.connectionManager.getConnection(target);
             if (existing != connection) {
                 if (existing != null) {

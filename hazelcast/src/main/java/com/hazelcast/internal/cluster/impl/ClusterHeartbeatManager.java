@@ -323,7 +323,7 @@ public class ClusterHeartbeatManager {
                             + " Now: %s, last heartbeat time was %s", member, maxNoHeartbeatMillis,
                     timeToString(now), timeToString(heartbeatTime));
             logger.warning(reason);
-            clusterService.suspectAddress(member.getAddress(), reason, true);
+            clusterService.suspectMember(member.getAddress(), reason, true);
             return true;
         }
         if (logger.isFineEnabled() && (now - heartbeatTime) > heartbeatIntervalMillis * HEART_BEAT_INTERVAL_FACTOR) {
@@ -355,7 +355,7 @@ public class ClusterHeartbeatManager {
                     timeToString(now),
                     timeToString(lastConfirmation));
             logger.warning(reason);
-            clusterService.suspectAddress(member.getAddress(), reason, true);
+            clusterService.suspectMember(member.getAddress(), reason, true);
             return true;
         }
         return false;
@@ -433,7 +433,7 @@ public class ClusterHeartbeatManager {
                     // host not reachable
                     String reason = format("%s could not ping %s", node.getThisAddress(), address);
                     logger.warning(reason);
-                    clusterService.suspectAddress(address, reason, true);
+                    clusterService.suspectMember(address, reason, true);
                 } catch (Throwable ignored) {
                     EmptyStatement.ignore(ignored);
                 }

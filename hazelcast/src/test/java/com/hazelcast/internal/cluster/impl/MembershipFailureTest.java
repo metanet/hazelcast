@@ -639,7 +639,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
     private void suspectMember(HazelcastInstance suspectingInstance, HazelcastInstance suspectedInstance) {
         ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(suspectingInstance);
         Member suspectedMember = suspectedInstance.getCluster().getLocalMember();
-        clusterService.suspectAddress(suspectedMember.getAddress(), suspectedMember.getUuid(), "test", false);
+        clusterService.suspectMember(suspectedMember.getAddress(), suspectedMember.getUuid(), "test", false);
     }
 
 }

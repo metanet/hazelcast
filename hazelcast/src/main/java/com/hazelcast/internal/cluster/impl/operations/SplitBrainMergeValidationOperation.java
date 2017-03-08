@@ -125,7 +125,7 @@ public class SplitBrainMergeValidationOperation extends AbstractJoinOperation {
             // I am the master. I can remove the member directly
             String reason = "Removing " + caller + ", since it thinks it's already split from this cluster "
                     + "and looking to merge.";
-            service.suspectAddress(caller, reason, true);
+            service.suspectMember(caller, reason, true);
         }
     }
 
