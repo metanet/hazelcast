@@ -21,8 +21,8 @@ import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
 import com.hazelcast.internal.cluster.Versions;
-import com.hazelcast.internal.cluster.impl.operations.HeartbeatOperation;
-import com.hazelcast.internal.cluster.impl.operations.MasterConfirmationOperation;
+import com.hazelcast.internal.cluster.impl.operations.HeartbeatOp;
+import com.hazelcast.internal.cluster.impl.operations.MasterConfirmationOp;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
@@ -441,7 +441,7 @@ public class ClusterHeartbeatManager {
         });
     }
 
-    /** Send a {@link HeartbeatOperation} to the {@code target}
+    /** Send a {@link HeartbeatOp} to the {@code target}
      * @param target target Member
      */
     private void sendHeartbeat(Member target) {
@@ -450,9 +450,9 @@ public class ClusterHeartbeatManager {
         }
         try {
             int memberListVersion = clusterService.getMembershipManager().getMemberListVersion();
-            Operation heartbeat = new HeartbeatOperation(target.getUuid(), memberListVersion, clusterClock.getClusterTime());
-            heartbeat.setCallerUuid(node.getThisUuid());
-            node.nodeEngine.getOperationService().send(heartbeat, target.getAddress());
+            Operation op = new HeartbeatOp(target.getUuid(), memberListVersion, clusterClock.getClusterTime());
+            op.setCallerUuid(node.getThisUuid());
+            node.nodeEngine.getOperationService().send(op, target.getAddress());
         } catch (Exception e) {
             if (logger.isFineEnabled()) {
                 logger.fine(format("Error while sending heartbeat -> %s[%s]", e.getClass().getName(), e.getMessage()));
@@ -481,7 +481,7 @@ public class ClusterHeartbeatManager {
     }
 
     /**
-     * Sends a {@link MasterConfirmationOperation} to the master if this node is joined, it is not in the
+     * Sends a {@link MasterConfirmationOp} to the master if this node is joined, it is not in the
      * {@link NodeState#SHUT_DOWN} state and is not the master node.
      */
     public void sendMasterConfirmation() {
@@ -510,7 +510,7 @@ public class ClusterHeartbeatManager {
             memberListVersion = memberMap.getVersion();
         }
 
-        Operation op = new MasterConfirmationOperation(memberListVersion, clusterClock.getClusterTime());
+        Operation op = new MasterConfirmationOp(memberListVersion, clusterClock.getClusterTime());
         nodeEngine.getOperationService().send(op, masterAddress);
     }
 

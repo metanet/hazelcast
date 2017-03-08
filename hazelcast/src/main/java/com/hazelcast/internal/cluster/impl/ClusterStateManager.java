@@ -20,7 +20,7 @@ import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberLeftException;
 import com.hazelcast.instance.Node;
-import com.hazelcast.internal.cluster.impl.operations.LockClusterStateOperation;
+import com.hazelcast.internal.cluster.impl.operations.LockClusterStateOp;
 import com.hazelcast.internal.partition.InternalPartitionService;
 import com.hazelcast.internal.util.LockGuard;
 import com.hazelcast.logging.ILogger;
@@ -386,7 +386,7 @@ public class ClusterStateManager {
 
         final Address thisAddress = node.getThisAddress();
         for (Member member : members) {
-            Operation op = new LockClusterStateOperation(stateChange, thisAddress, txnId, leaseTime, partitionStateVersion);
+            Operation op = new LockClusterStateOp(stateChange, thisAddress, txnId, leaseTime, partitionStateVersion);
             Future future = nodeEngine.getOperationService().invokeOnTarget(SERVICE_NAME, op, member.getAddress());
             futures.add(future);
         }

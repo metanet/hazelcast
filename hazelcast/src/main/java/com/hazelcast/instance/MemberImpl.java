@@ -20,7 +20,7 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.HazelcastInstanceAware;
 import com.hazelcast.core.Member;
 import com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook;
-import com.hazelcast.internal.cluster.impl.operations.MemberAttributeChangedOperation;
+import com.hazelcast.internal.cluster.impl.operations.MemberAttributeChangedOp;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
@@ -181,8 +181,8 @@ public final class MemberImpl extends AbstractMember implements Member, Hazelcas
         }
 
         if (instance != null) {
-            MemberAttributeChangedOperation operation = new MemberAttributeChangedOperation(REMOVE, key, null);
-            invokeOnAllMembers(operation);
+            MemberAttributeChangedOp op = new MemberAttributeChangedOp(REMOVE, key, null);
+            invokeOnAllMembers(op);
         }
     }
 
@@ -203,8 +203,8 @@ public final class MemberImpl extends AbstractMember implements Member, Hazelcas
         }
 
         if (instance != null) {
-            MemberAttributeChangedOperation operation = new MemberAttributeChangedOperation(PUT, key, value);
-            invokeOnAllMembers(operation);
+            MemberAttributeChangedOp op = new MemberAttributeChangedOp(PUT, key, value);
+            invokeOnAllMembers(op);
         }
     }
 

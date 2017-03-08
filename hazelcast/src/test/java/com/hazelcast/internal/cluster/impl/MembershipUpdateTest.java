@@ -21,7 +21,7 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.MemberInfo;
-import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
+import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOp;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.impl.NodeEngineImpl;
@@ -452,7 +452,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         MembersView membersView = MembersView.createNew(membershipManager.getMemberListVersion() + 1, 
                 Arrays.asList(membershipManager.getMember(getAddress(hz1)), membershipManager.getMember(getAddress(hz2))));
 
-        Operation memberUpdate = new MembersUpdateOperation(membershipManager.getMember(getAddress(hz3)).getUuid(),
+        Operation memberUpdate = new MembersUpdateOp(membershipManager.getMember(getAddress(hz3)).getUuid(),
                 membersView, clusterService.getClusterTime(), null, true);
 
         Future<Object> future =
@@ -484,7 +484,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         MembersView membersView =
                 MembersView.cloneAdding(membershipManager.createMembersView(), singleton(newMemberInfo));
 
-        Operation memberUpdate = new MembersUpdateOperation(membershipManager.getMember(getAddress(hz3)).getUuid(),
+        Operation memberUpdate = new MembersUpdateOp(membershipManager.getMember(getAddress(hz3)).getUuid(),
                 membersView, clusterService.getClusterTime(), null, true);
 
         NodeEngineImpl nonMasterNodeEngine = getNodeEngineImpl(hz2);

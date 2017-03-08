@@ -32,17 +32,17 @@ import java.io.IOException;
 /**
  * Validate whether clusters may merge to recover from a split brain, based on configuration & cluster version.
  */
-public class SplitBrainMergeValidationOperation extends AbstractJoinOperation {
+public class SplitBrainMergeValidationOp extends AbstractJoinOperation {
 
     private SplitBrainJoinMessage request;
     private SplitBrainJoinMessage response;
 
     private transient boolean removeCaller;
 
-    public SplitBrainMergeValidationOperation() {
+    public SplitBrainMergeValidationOp() {
     }
 
-    public SplitBrainMergeValidationOperation(SplitBrainJoinMessage request) {
+    public SplitBrainMergeValidationOp(SplitBrainJoinMessage request) {
         this.request = request;
     }
 

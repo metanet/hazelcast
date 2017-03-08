@@ -33,11 +33,11 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.Versions;
-import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOperation;
+import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOp;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
-import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOperation;
+import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOp;
 import com.hazelcast.internal.cluster.impl.operations.TriggerExplicitSuspicionOp;
-import com.hazelcast.internal.cluster.impl.operations.TriggerMemberListPublishOperation;
+import com.hazelcast.internal.cluster.impl.operations.TriggerMemberListPublishOp;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
@@ -58,6 +58,7 @@ import com.hazelcast.spi.OperationService;
 import com.hazelcast.spi.TransactionalService;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.operationservice.InternalOperationService;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.transaction.TransactionOptions;
 import com.hazelcast.transaction.TransactionalObject;
@@ -245,7 +246,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         OperationService operationService = nodeEngine.getOperationService();
 
         if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            Operation op = new ExplicitSuspicionOperation(endpointMasterAddress, endpointMemberListVersion, getThisAddress());
+            Operation op = new ExplicitSuspicionOp(endpointMasterAddress, endpointMemberListVersion, getThisAddress());
             operationService.send(op, endpoint);
         } else {
             // TODO: we can completely get rid of this member remove part
@@ -476,14 +477,14 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
      * @deprecated in 3.9
      */
     @Deprecated
-    private boolean shouldProcessMemberUpdate(MemberMap currentMembers,
-                                              Collection<MemberInfo> newMemberInfos) {
+    private boolean shouldProcessMemberUpdate(MemberMap currentMembers, Collection<MemberInfo> newMemberInfos) {
         int currentMembersSize = currentMembers.size();
         int newMembersSize = newMemberInfos.size();
+        InternalOperationService operationService = nodeEngine.getOperationService();
 
         if (currentMembersSize > newMembersSize) {
             logger.warning("Received an older member update, no need to process...");
-            nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
+            operationService.send(new TriggerMemberListPublishOp(), getMasterAddress());
             return false;
         }
 
@@ -496,7 +497,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 logger.warning("Received an inconsistent member update "
                         + "which contains new members and removes some of the current members! "
                         + "Ignoring and requesting a new member update...");
-                nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
+                operationService.send(new TriggerMemberListPublishOp(), getMasterAddress());
             }
             return false;
         }
@@ -509,7 +510,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             logger.warning("Received an inconsistent member update."
                     + " It has more members but also removes some of the current members!"
                     + " Ignoring and requesting a new member update...");
-            nodeEngine.getOperationService().send(new TriggerMemberListPublishOperation(), getMasterAddress());
+            operationService.send(new TriggerMemberListPublishOp(), getMasterAddress());
             return false;
         }
     }
@@ -871,7 +872,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     private void shutdownNodes() {
-        final Operation op = new ShutdownNodeOperation();
+        final Operation op = new ShutdownNodeOp();
 
         logger.info("Sending shutting down operations to all members...");
 

@@ -25,7 +25,7 @@ import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.FetchMembersViewOp;
-import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOperation;
+import com.hazelcast.internal.cluster.impl.operations.MembersUpdateOp;
 import com.hazelcast.internal.partition.impl.InternalPartitionServiceImpl;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
@@ -170,7 +170,7 @@ public class MembershipManager {
         MemberImpl member = memberMap.getMember(target);
         String memberUuid = member != null ? member.getUuid() : null;
 
-        MembersUpdateOperation op = new MembersUpdateOperation(memberUuid, memberMap.toMembersView(),
+        MembersUpdateOp op = new MembersUpdateOp(memberUuid, memberMap.toMembersView(),
                 clusterService.getClusterTime(), null, false);
         nodeEngine.getOperationService().send(op, target);
     }
@@ -186,7 +186,7 @@ public class MembershipManager {
         }
     }
 
-    /** Invoked on the master to send the member list (see {@link MembersUpdateOperation}) to non-master nodes. */
+    /** Invoked on the master to send the member list (see {@link MembersUpdateOp}) to non-master nodes. */
     private void sendMemberListToOthers() {
         if (!node.isMaster()) {
             return;
@@ -200,7 +200,7 @@ public class MembershipManager {
                 continue;
             }
 
-            MembersUpdateOperation op = new MembersUpdateOperation(member.getUuid(), membersView,
+            MembersUpdateOp op = new MembersUpdateOp(member.getUuid(), membersView,
                     clusterService.getClusterTime(), null, false);
             nodeEngine.getOperationService().send(op, member.getAddress());
         }
