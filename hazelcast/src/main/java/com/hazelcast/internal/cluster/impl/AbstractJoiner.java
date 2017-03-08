@@ -325,13 +325,13 @@ public abstract class AbstractJoiner implements Joiner {
 
     private boolean checkMembershipIntersectionSetEmpty(SplitBrainJoinMessage joinMessage) {
         Collection<Address> targetMemberAddresses = joinMessage.getMemberAddresses();
+        Address joinMessageAddress = joinMessage.getAddress();
         if (targetMemberAddresses.contains(node.getThisAddress())) {
             // Join request is coming from master of the split and it thinks that I am its member.
             // This is partial split case and we want to convert it to a full split.
             // So it should remove me from its cluster.
-//            clusterService.sendExplicitSuspicion(joinMessage.getAddress());
-            // TODO [basri[ fix this. we need member list version here
-            logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessage.getAddress()
+            clusterService.sendExplicitSuspicion(joinMessageAddress, joinMessageAddress, joinMessage.getMemberListVersion());
+            logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessageAddress
                     + ", because it thinks this-node as its member.");
             return false;
         }
@@ -339,7 +339,7 @@ public abstract class AbstractJoiner implements Joiner {
         Collection<Address> thisMemberAddresses = clusterService.getMemberAddresses();
         for (Address address : thisMemberAddresses) {
             if (targetMemberAddresses.contains(address)) {
-                logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessage.getAddress()
+                logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessageAddress
                         + ", because it thinks " + address + " as its member. "
                         + "But " + address + " is member of this cluster.");
                 return false;

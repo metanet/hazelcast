@@ -24,7 +24,7 @@ import com.hazelcast.internal.cluster.impl.operations.BeforeJoinCheckFailureOper
 import com.hazelcast.internal.cluster.impl.operations.ChangeClusterStateOperation;
 import com.hazelcast.internal.cluster.impl.operations.ConfigMismatchOperation;
 import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOperation;
-import com.hazelcast.internal.cluster.impl.operations.FetchMemberListStateOperation;
+import com.hazelcast.internal.cluster.impl.operations.FetchMembersViewOp;
 import com.hazelcast.internal.cluster.impl.operations.FinalizeJoinOperation;
 import com.hazelcast.internal.cluster.impl.operations.GroupMismatchOperation;
 import com.hazelcast.internal.cluster.impl.operations.HeartbeatOperation;
@@ -295,7 +295,7 @@ public final class ClusterDataSerializerHook implements DataSerializerHook {
         constructors[FETCH_MEMBER_LIST_STATE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             @Override
             public IdentifiedDataSerializable createNew(Integer arg) {
-                return new FetchMemberListStateOperation();
+                return new FetchMembersViewOp();
             }
         };
         constructors[EXPLICIT_SUSPICION] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
