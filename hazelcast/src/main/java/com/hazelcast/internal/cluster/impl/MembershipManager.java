@@ -271,7 +271,7 @@ public class MembershipManager {
         boolean localMember = thisAddress.equals(address);
         
         return new MemberImpl(address, memberInfo.getVersion(), localMember, memberInfo.getUuid(),
-                node.hazelcastInstance, memberInfo.getAttributes(), memberInfo.isLiteMember());
+                memberInfo.getAttributes(), memberInfo.isLiteMember(), node.hazelcastInstance);
     }
 
     void setMembers(MemberMap memberMap) {

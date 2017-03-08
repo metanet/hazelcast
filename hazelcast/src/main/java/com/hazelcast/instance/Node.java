@@ -193,7 +193,7 @@ public class Node {
             nodeExtension = nodeContext.createNodeExtension(this);
             final Map<String, Object> memberAttributes = findMemberAttributes(config.getMemberAttributeConfig().asReadOnly());
             localMember = new MemberImpl(address, version, true, nodeExtension.createMemberUuid(address),
-                    hazelcastInstance, memberAttributes, liteMember);
+                    memberAttributes, liteMember, hazelcastInstance);
             loggingService.setThisMember(localMember);
             logger = loggingService.getLogger(Node.class.getName());
             hazelcastThreadGroup = new HazelcastThreadGroup(hazelcastInstance.getName(), logger, configClassLoader);
@@ -772,7 +772,7 @@ public class Node {
         String newUuid = UuidUtil.createMemberUuid(address);
         logger.warning("Setting new local member. old uuid: " + localMember.getUuid() + " new uuid: " + newUuid);
         Map<String, Object> memberAttributes = localMember.getAttributes();
-        localMember = new MemberImpl(address, version, true, newUuid, hazelcastInstance, memberAttributes, liteMember);
+        localMember = new MemberImpl(address, version, true, newUuid, memberAttributes, liteMember, hazelcastInstance);
 
         assert !joined() : "Node should not join concurrently while setting member uuid!";
     }
