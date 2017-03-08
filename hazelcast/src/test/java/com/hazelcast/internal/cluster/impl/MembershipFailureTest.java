@@ -337,9 +337,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
 
         String infiniteTimeout = Integer.toString(Integer.MAX_VALUE);
         Config config2 = new Config().setProperty(MAX_NO_HEARTBEAT_SECONDS.getName(), infiniteTimeout)
-                                     .setProperty(HEARTBEAT_INTERVAL_SECONDS.getName(), infiniteTimeout)
-                                     .setProperty(MAX_NO_MASTER_CONFIRMATION_SECONDS.getName(), infiniteTimeout)
-                                     .setProperty(MASTER_CONFIRMATION_INTERVAL_SECONDS.getName(), infiniteTimeout);
+                                     .setProperty(MAX_NO_MASTER_CONFIRMATION_SECONDS.getName(), infiniteTimeout);
 
         HazelcastInstance master = newHazelcastInstance(config1);
         HazelcastInstance slave1 = newHazelcastInstance(config1);
@@ -350,10 +348,12 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(3, slave2);
 
         dropOperationsBetween(master, slave2, MEMBER_INFO_UPDATE);
+        dropOperationsFrom(slave2, MASTER_CONFIRM, HEARTBEAT);
 
         assertClusterSizeEventually(2, master);
         assertClusterSizeEventually(2, slave1);
 
+        dropOperationsFrom(slave2, HEARTBEAT);
         ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(slave2);
         clusterService.getClusterHeartbeatManager().sendMasterConfirmation();
 
