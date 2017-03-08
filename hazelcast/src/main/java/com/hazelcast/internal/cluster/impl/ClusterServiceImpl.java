@@ -308,12 +308,6 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return !membershipManager.isMemberSuspected(candidate.getAddress());
     }
 
-    // TODO: Called by tests only, can be removed
-    public void removeAddress(Address deadAddress, String reason) {
-//        membershipManager.doRemoveAddress(deadAddress, reason, true);
-        throw new UnsupportedOperationException();
-    }
-
     public void merge(Address newTargetAddress) {
         node.getJoiner().setTargetAddress(newTargetAddress);
         LifecycleServiceImpl lifecycleService = node.hazelcastInstance.getLifecycleService();
