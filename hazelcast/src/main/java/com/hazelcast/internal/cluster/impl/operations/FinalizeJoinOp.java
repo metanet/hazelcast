@@ -39,16 +39,13 @@ import static com.hazelcast.spi.impl.OperationResponseHandlerFactory.createEmpty
 
 public class FinalizeJoinOp extends MembersUpdateOp {
 
-    public static final int FINALIZE_JOIN_TIMEOUT_FACTOR = 5;
-    public static final int FINALIZE_JOIN_MAX_TIMEOUT = 60;
-
-    private static final int POST_JOIN_TRY_COUNT = 100;
-
     private PostJoinOp postJoinOp;
     private String clusterId;
     private long clusterStartTime;
     private ClusterState clusterState;
     private Version clusterVersion;
+
+    private transient boolean finalized;
 
     public FinalizeJoinOp() {
     }
@@ -70,8 +67,9 @@ public class FinalizeJoinOp extends MembersUpdateOp {
 
         ClusterServiceImpl clusterService = getService();
         Address callerAddress = getConnectionEndpointOrThisAddress();
+        String callerUuid = getCallerUuid();
 
-        boolean finalized = clusterService.finalizeJoin(getMembersView(), callerAddress,
+        finalized = clusterService.finalizeJoin(getMembersView(), callerAddress, callerUuid,
                 clusterId, clusterState, clusterVersion, clusterStartTime, masterTime);
 
         if (!finalized) {
@@ -79,9 +77,17 @@ public class FinalizeJoinOp extends MembersUpdateOp {
         }
 
         processPartitionState();
+    }
+
+    @Override
+    public void afterRun() throws Exception {
+        super.afterRun();
+
+        if (!finalized) {
+            return;
+        }
 
         sendPostJoinOperations();
-
         runPostJoinOp();
     }
 
@@ -108,15 +114,15 @@ public class FinalizeJoinOp extends MembersUpdateOp {
         // Post join operations must be lock free; means no locks at all;
         // no partition locks, no key-based locks, no service level locks!
         final Operation[] postJoinOperations = nodeEngine.getPostJoinOperations();
-        final OperationService operationService = nodeEngine.getOperationService();
 
         if (postJoinOperations != null && postJoinOperations.length > 0) {
+            final OperationService operationService = nodeEngine.getOperationService();
             final Collection<Member> members = clusterService.getMembers();
+
             for (Member member : members) {
                 if (!member.localMember()) {
                     PostJoinOp operation = new PostJoinOp(postJoinOperations);
-                    operationService.createInvocationBuilder(ClusterServiceImpl.SERVICE_NAME,
-                            operation, member.getAddress()).setTryCount(POST_JOIN_TRY_COUNT).invoke();
+                    operationService.invokeOnTarget(ClusterServiceImpl.SERVICE_NAME, operation, member.getAddress());
                 }
             }
         }
