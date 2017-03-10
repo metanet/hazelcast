@@ -41,6 +41,7 @@ import java.util.concurrent.Future;
 import static com.hazelcast.instance.TestUtil.terminateInstance;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.FETCH_MEMBER_LIST_STATE;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT;
+import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT_COMPLAINT;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MASTER_CONFIRM;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.MEMBER_INFO_UPDATE;
 import static com.hazelcast.internal.cluster.impl.MembershipUpdateTest.assertMemberViewsAreSame;
@@ -276,11 +277,11 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         HazelcastInstance slave1 = newHazelcastInstance(config);
         HazelcastInstance slave2 = newHazelcastInstance(config);
 
-        dropOperationsFrom(slave2, HEARTBEAT);
-
         assertClusterSizeEventually(3, master);
         assertClusterSizeEventually(3, slave1);
         assertClusterSizeEventually(3, slave2);
+
+        dropOperationsFrom(slave2, HEARTBEAT);
 
         assertClusterSizeEventually(2, master);
         assertClusterSizeEventually(2, slave1);
@@ -296,16 +297,20 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         HazelcastInstance slave1 = newHazelcastInstance(config);
         HazelcastInstance slave2 = newHazelcastInstance(config);
 
-        dropOperationsFrom(master, HEARTBEAT);
-
         assertClusterSizeEventually(3, master);
         assertClusterSizeEventually(3, slave1);
         assertClusterSizeEventually(3, slave2);
+
+        dropOperationsFrom(master, HEARTBEAT);
+        dropOperationsFrom(slave1, HEARTBEAT_COMPLAINT);
+        dropOperationsFrom(slave2, HEARTBEAT_COMPLAINT);
 
         assertClusterSizeEventually(1, master);
         assertClusterSizeEventually(2, slave1);
         assertClusterSizeEventually(2, slave2);
     }
+
+    // TODO [basri] add new master timeout tests
 
     @Test
     public void slave_master_confirmation_timeout() {
@@ -317,11 +322,11 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         HazelcastInstance slave1 = newHazelcastInstance(config);
         HazelcastInstance slave2 = newHazelcastInstance(config);
 
-        dropOperationsFrom(slave2, MASTER_CONFIRM);
-
         assertClusterSizeEventually(3, master);
         assertClusterSizeEventually(3, slave1);
         assertClusterSizeEventually(3, slave2);
+
+        dropOperationsFrom(slave2, MASTER_CONFIRM);
 
         assertClusterSizeEventually(2, master);
         assertClusterSizeEventually(2, slave1);

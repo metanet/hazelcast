@@ -30,6 +30,8 @@ import static com.hazelcast.internal.cluster.Versions.V3_9;
 
 public class MasterConfirmationOp extends AbstractClusterOperation {
 
+    private static final String NON_AVAILABLE_UUID = "n/a";
+
     private MembersViewMetadata membersViewMetadata;
 
     private long timestamp;
@@ -51,8 +53,11 @@ public class MasterConfirmationOp extends AbstractClusterOperation {
 
         if (membersViewMetadata == null) {
             // 3.8
-            // TODO [basri] fix this
-            membersViewMetadata = new MembersViewMetadata(endpoint, "n/a", getNodeEngine().getThisAddress(), 0);
+            String callerUuid = getCallerUuid();
+            if (callerUuid == null) {
+                callerUuid = NON_AVAILABLE_UUID;
+            }
+            membersViewMetadata = new MembersViewMetadata(endpoint, callerUuid, getNodeEngine().getThisAddress(), 0);
         }
 
         final ClusterServiceImpl clusterService = getService();

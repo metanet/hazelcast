@@ -27,6 +27,7 @@ import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOp;
 import com.hazelcast.internal.cluster.impl.operations.FetchMembersViewOp;
 import com.hazelcast.internal.cluster.impl.operations.FinalizeJoinOp;
 import com.hazelcast.internal.cluster.impl.operations.GroupMismatchOp;
+import com.hazelcast.internal.cluster.impl.operations.HeartbeatComplaintOp;
 import com.hazelcast.internal.cluster.impl.operations.HeartbeatOp;
 import com.hazelcast.internal.cluster.impl.operations.JoinRequestOp;
 import com.hazelcast.internal.cluster.impl.operations.LockClusterStateOp;
@@ -100,8 +101,9 @@ public final class ClusterDataSerializerHook implements DataSerializerHook {
     public static final int MEMBERS_VIEW = 38;
     public static final int TRIGGER_EXPLICIT_SUSPICION = 39;
     public static final int MEMBERS_VIEW_METADATA = 40;
+    public static final int HEARTBEAT_COMPLAINT = 41;
 
-    public static final int LEN = MEMBERS_VIEW_METADATA + 1;
+    public static final int LEN = HEARTBEAT_COMPLAINT + 1;
 
     @Override
     public int getFactoryId() {
@@ -321,6 +323,12 @@ public final class ClusterDataSerializerHook implements DataSerializerHook {
             @Override
             public IdentifiedDataSerializable createNew(Integer arg) {
                 return new MembersViewMetadata();
+            }
+        };
+        constructors[HEARTBEAT_COMPLAINT] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new HeartbeatComplaintOp();
             }
         };
 

@@ -309,7 +309,7 @@ public class MembershipManager {
         }
     }
 
-    void triggerExplicitSuspicion(Address caller, int callerMemberListVersion, MembersViewMetadata suspectedMembersViewMetadata) {
+    void handleExplicitSuspicionTrigger(Address caller, int callerMemberListVersion, MembersViewMetadata suspectedMembersViewMetadata) {
         clusterServiceLock.lock();
         try {
             Address masterAddress = clusterService.getMasterAddress();
@@ -615,7 +615,8 @@ public class MembershipManager {
             if (isMemberSuspected(address)) {
                 logger.fine(memberInfo + " is excluded because suspected");
                 continue;
-            } else if (!future.isDone()) {
+            } else if (future == null || !future.isDone()) {
+                // TODO [basri] 'future = null' is possible if suspicion is removed while member lists are being collected
                 logger.fine(memberInfo + " is excluded because I don't know its response");
                 continue;
             }

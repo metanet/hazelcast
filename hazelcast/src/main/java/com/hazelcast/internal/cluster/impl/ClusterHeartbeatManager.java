@@ -448,8 +448,8 @@ public class ClusterHeartbeatManager {
             return;
         }
         try {
-            int memberListVersion = clusterService.getMembershipManager().getMemberListVersion();
-            Operation op = new HeartbeatOp(target.getUuid(), memberListVersion, clusterClock.getClusterTime());
+            MembersViewMetadata membersViewMetadata = clusterService.getMembershipManager().createLocalMembersViewMetadata();
+            Operation op = new HeartbeatOp(membersViewMetadata, target.getUuid(), clusterClock.getClusterTime());
             op.setCallerUuid(node.getThisUuid());
             node.nodeEngine.getOperationService().send(op, target.getAddress());
         } catch (Exception e) {

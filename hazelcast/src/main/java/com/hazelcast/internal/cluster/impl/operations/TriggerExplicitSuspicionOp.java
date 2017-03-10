@@ -28,7 +28,7 @@ public class TriggerExplicitSuspicionOp extends AbstractClusterOperation {
     @Override
     public void run() throws Exception {
         ClusterServiceImpl clusterService = getService();
-        clusterService.triggerExplicitSuspicion(getCallerAddress(), callerMemberListVersion, suspectedMembersViewMetadata);
+        clusterService.handleExplicitSuspicionTrigger(getCallerAddress(), callerMemberListVersion, suspectedMembersViewMetadata);
     }
 
     @Override

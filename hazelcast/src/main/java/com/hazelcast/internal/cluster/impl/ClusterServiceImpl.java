@@ -34,6 +34,7 @@ import com.hazelcast.internal.cluster.ClusterService;
 import com.hazelcast.internal.cluster.MemberInfo;
 import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOp;
+import com.hazelcast.internal.cluster.impl.operations.HeartbeatComplaintOp;
 import com.hazelcast.internal.cluster.impl.operations.MemberRemoveOperation;
 import com.hazelcast.internal.cluster.impl.operations.ShutdownNodeOp;
 import com.hazelcast.internal.cluster.impl.operations.TriggerExplicitSuspicionOp;
@@ -174,13 +175,106 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManager.sendMembershipEvents(Collections.<MemberImpl>emptySet(), Collections.singleton(node.getLocalMember()));
     }
 
+    public void handleHeartbeat(MembersViewMetadata senderMembersViewMetadata, String receiverUuid, long timestamp) {
+        lock.lock();
+        try {
+            MemberImpl member = membershipManager.getMember(senderMembersViewMetadata.getMemberAddress(),
+                    senderMembersViewMetadata.getMemberUuid());
+            if (member != null) {
+                if (!validateHeartbeat(senderMembersViewMetadata, receiverUuid)) {
+                    if (isMaster()) {
+                        if (!clusterJoinManager.isMastershipClaimInProgress()) {
+                            sendExplicitSuspicion(senderMembersViewMetadata);
+                        }
+                        return;
+                    } else {
+                        Address masterAddress = node.getMasterAddress();
+                        if (membershipManager.isMemberSuspected(masterAddress)){
+                            logger.fine("Not sending heartbeat complaint for " + senderMembersViewMetadata
+                                    + " to suspected master: " + masterAddress);
+                            return;
+                        }
+
+                        sendHeartbeatComplaintToMaster(senderMembersViewMetadata);
+                        return;
+                    }
+                }
+
+                clusterHeartbeatManager.onHeartbeat(member, timestamp);
+            } else if (isMaster()) {
+                sendExplicitSuspicion(senderMembersViewMetadata);
+            } else if (!node.getThisUuid().equals(receiverUuid)) {
+                sendHeartbeatComplaintToMaster(senderMembersViewMetadata);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private boolean validateHeartbeat(MembersViewMetadata senderMembersViewMetadata, String receiverUuid) {
+        if (!node.getThisUuid().equals(receiverUuid)) {
+            logger.warning("local uuid mismatch on received heartbeat. local uuid: " + node.getThisUuid()
+                    + " received uuid: " + receiverUuid + " with " + senderMembersViewMetadata);
+            return false;
+        } else if (!node.getMasterAddress().equals(senderMembersViewMetadata.getMasterAddress())) {
+            logger.warning("master address mismatch on received heartbeat. master address: "
+                    + node.getMasterAddress() + " received heartbeat: " + senderMembersViewMetadata);
+            return false;
+        }
+
+        return true;
+    }
+
+    public void handleHeartbeatComplaint(MembersViewMetadata receiverMembersViewMetadata,
+                                         MembersViewMetadata senderMembersViewMetadata) {
+        lock.lock();
+        try {
+            if (!isMaster()) {
+                logger.warning("Ignoring heartbeat complaint of receiver: " + receiverMembersViewMetadata
+                        + " for sender: " + senderMembersViewMetadata + " because this node is not master");
+                return;
+            } else if (clusterJoinManager.isMastershipClaimInProgress()) {
+                logger.fine("Ignoring heartbeat complaint of receiver: " + receiverMembersViewMetadata
+                        + " for sender: " + senderMembersViewMetadata + " because mastership claim process is ongoing");
+                return;
+            } else if (senderMembersViewMetadata.getMemberAddress().equals(receiverMembersViewMetadata.getMemberAddress())) {
+                logger.warning("Ignoring heartbeat complaint of receiver: " + receiverMembersViewMetadata
+                        + " for sender: " + senderMembersViewMetadata + " because they are same member");
+                return;
+            }
+
+            if (validateMembersViewMetadata(senderMembersViewMetadata)) {
+                if (validateMembersViewMetadata(receiverMembersViewMetadata)) {
+                    membershipManager.sendMemberListToMember(senderMembersViewMetadata.getMemberAddress());
+                    membershipManager.sendMemberListToMember(receiverMembersViewMetadata.getMemberAddress());
+                } else {
+                    sendExplicitSuspicion(receiverMembersViewMetadata);
+                    sendExplicitSuspicionTrigger(senderMembersViewMetadata.getMemberAddress(), receiverMembersViewMetadata);
+                }
+            } else if (validateMembersViewMetadata(receiverMembersViewMetadata)) {
+                sendExplicitSuspicion(senderMembersViewMetadata);
+                sendExplicitSuspicionTrigger(receiverMembersViewMetadata.getMemberAddress(), senderMembersViewMetadata);
+            } else {
+                sendExplicitSuspicion(senderMembersViewMetadata);
+                sendExplicitSuspicion(receiverMembersViewMetadata);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private boolean validateMembersViewMetadata(MembersViewMetadata membersViewMetadata) {
+        MemberImpl sender = membershipManager.getMember(membersViewMetadata.getMemberAddress(), membersViewMetadata.getMemberUuid());
+        return sender != null && node.getThisAddress().equals(membersViewMetadata.getMasterAddress());
+    }
+
     public void handleExplicitSuspicion(MembersViewMetadata expectedMembersViewMetadata, Address suspectedAddress) {
         membershipManager.handleExplicitSuspicion(expectedMembersViewMetadata, suspectedAddress);
     }
 
-    public void triggerExplicitSuspicion(Address caller, int callerMemberListVersion,
-                                         MembersViewMetadata suspectedMembersViewMetadata) {
-        membershipManager.triggerExplicitSuspicion(caller, callerMemberListVersion, suspectedMembersViewMetadata);
+    public void handleExplicitSuspicionTrigger(Address caller, int callerMemberListVersion,
+                                               MembersViewMetadata suspectedMembersViewMetadata) {
+        membershipManager.handleExplicitSuspicionTrigger(caller, callerMemberListVersion, suspectedMembersViewMetadata);
     }
 
     public void suspectMember(Address suspectedAddress, String reason, boolean destroyConnection) {
@@ -199,7 +293,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         lock.lock();
         try {
             Address endpoint = membersViewMetadata.getMemberAddress();
-            final MemberImpl member = getMember(endpoint);
+            final MemberImpl member = membershipManager.getMember(endpoint, membersViewMetadata.getMemberUuid());
             if (member == null) {
                 if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
                     if (!isMaster()) {
@@ -209,7 +303,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     }
 
                     if (clusterJoinManager.isMastershipClaimInProgress()) {
-                        // this is a new member I have discovered...
+                        // this can be a new member I have discovered...
                         return;
                     }
 
@@ -221,11 +315,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
 
                     sendExplicitSuspicion(membersViewMetadata);
 
-                    OperationService operationService = nodeEngine.getOperationService();
-                    int memberListVersion = membershipManager.getMemberListVersion();
                     for (Member m : getMembers(NON_LOCAL_MEMBER_SELECTOR)) {
-                        Operation op = new TriggerExplicitSuspicionOp(memberListVersion, membersViewMetadata);
-                        operationService.send(op, m.getAddress());
+                        sendExplicitSuspicionTrigger(m.getAddress(), membersViewMetadata);
                     }
                 } else {
                     // to make it 3.8 compatible
@@ -244,9 +335,13 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     void sendExplicitSuspicion(MembersViewMetadata endpointMembersViewMetadata) {
-        OperationService operationService = nodeEngine.getOperationService();
-
         Address endpoint = endpointMembersViewMetadata.getMemberAddress();
+        if (endpoint.equals(node.getThisAddress())) {
+            logger.warning("Cannot send explicit suspicion for " + endpointMembersViewMetadata + " to itself.");
+            return;
+        }
+
+        OperationService operationService = nodeEngine.getOperationService();
 
         if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
             Operation op = new ExplicitSuspicionOp(endpointMembersViewMetadata, getThisAddress());
@@ -255,6 +350,30 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             // TODO: we can completely get rid of this member remove part
             operationService.send(new MemberRemoveOperation(getThisAddress()), endpoint);
         }
+    }
+
+    private void sendExplicitSuspicionTrigger(Address triggerTo, MembersViewMetadata endpointMembersViewMetadata) {
+        if (triggerTo.equals(node.getThisAddress())) {
+            logger.warning("Cannot send explicit suspicion trigger for " + endpointMembersViewMetadata + " to itself.");
+            return;
+        }
+
+        int memberListVersion = membershipManager.getMemberListVersion();
+        Operation op = new TriggerExplicitSuspicionOp(memberListVersion, endpointMembersViewMetadata);
+        OperationService operationService = nodeEngine.getOperationService();
+        operationService.send(op, triggerTo);
+    }
+
+    private void sendHeartbeatComplaintToMaster(MembersViewMetadata senderMembersViewMetadata) {
+        if (isMaster()) {
+            logger.warning("Cannot send heartbeat complaint for " + senderMembersViewMetadata + " to itself.");
+            return;
+        }
+
+        MembersViewMetadata localMembersViewMetadata = membershipManager.createLocalMembersViewMetadata();
+        Operation op = new HeartbeatComplaintOp(localMembersViewMetadata, senderMembersViewMetadata);
+        OperationService operationService = nodeEngine.getOperationService();
+        operationService.send(op, node.getMasterAddress());
     }
 
     public MembersView handleMastershipClaim(Address candidateAddress, String candidateUuid) {
