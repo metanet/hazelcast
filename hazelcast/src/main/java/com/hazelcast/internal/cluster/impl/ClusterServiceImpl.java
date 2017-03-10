@@ -174,13 +174,13 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         membershipManager.sendMembershipEvents(Collections.<MemberImpl>emptySet(), Collections.singleton(node.getLocalMember()));
     }
 
-    public void handleExplicitSuspicion(Address expectedMasterAddress, int expectedMemberListVersion, Address suspectedAddress) {
-        membershipManager.handleExplicitSuspicion(expectedMasterAddress, expectedMemberListVersion, suspectedAddress);
+    public void handleExplicitSuspicion(MembersViewMetadata expectedMembersViewMetadata, Address suspectedAddress) {
+        membershipManager.handleExplicitSuspicion(expectedMembersViewMetadata, suspectedAddress);
     }
 
     public void triggerExplicitSuspicion(Address caller, int callerMemberListVersion,
-                                         Address endpoint, Address endpointMasterAddress, int endpointMemberListVersion) {
-        membershipManager.triggerExplicitSuspicion(caller, callerMemberListVersion, endpoint, endpointMasterAddress, endpointMemberListVersion);
+                                         MembersViewMetadata suspectedMembersViewMetadata) {
+        membershipManager.triggerExplicitSuspicion(caller, callerMemberListVersion, suspectedMembersViewMetadata);
     }
 
     public void suspectMember(Address suspectedAddress, String reason, boolean destroyConnection) {
@@ -195,15 +195,16 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public void handleMasterConfirmation(Address endpoint, int endpointMemberListVersion, long timestamp) {
+    public void handleMasterConfirmation(MembersViewMetadata membersViewMetadata, long timestamp) {
         lock.lock();
         try {
+            Address endpoint = membersViewMetadata.getMemberAddress();
             final MemberImpl member = getMember(endpoint);
             if (member == null) {
                 if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
                     if (!isMaster()) {
-                        logger.warning(endpoint + " has sent MasterConfirmation with member list version: "
-                                + endpointMemberListVersion + ", but this node is not master!");
+                        logger.warning(endpoint + " has sent MasterConfirmation with " + membersViewMetadata
+                                + ", but this node is not master!");
                         return;
                     }
 
@@ -212,29 +213,29 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                         return;
                     }
 
-                    logger.warning("MasterConfirmation has been received from " + endpoint
+                    logger.warning(endpoint + " has sent MasterConfirmation with " + membersViewMetadata
                             + ", but it is not a member of this cluster!");
                     // This guy knows me as its master but I am not. I should explicitly tell it to remove me from its cluster.
                     // It should suspect me so that it can move on.
                     // IMPORTANT: I should not tell it to remove me from cluster while I am trying to claim my mastership.
 
-                    sendExplicitSuspicion(endpoint, getThisAddress(), endpointMemberListVersion);
+                    sendExplicitSuspicion(membersViewMetadata);
 
                     OperationService operationService = nodeEngine.getOperationService();
                     int memberListVersion = membershipManager.getMemberListVersion();
                     for (Member m : getMembers(NON_LOCAL_MEMBER_SELECTOR)) {
-                        Operation op = new TriggerExplicitSuspicionOp(memberListVersion, endpoint, getThisAddress(), endpointMemberListVersion);
+                        Operation op = new TriggerExplicitSuspicionOp(memberListVersion, membersViewMetadata);
                         operationService.send(op, m.getAddress());
                     }
                 } else {
                     // to make it 3.8 compatible
-                    sendExplicitSuspicion(endpoint, getThisAddress(), endpointMemberListVersion);
+                    sendExplicitSuspicion(membersViewMetadata);
                 }
             } else if (isMaster()) {
                 clusterHeartbeatManager.acceptMasterConfirmation(member, timestamp);
             } else {
-                logger.warning(endpoint + " has sent MasterConfirmation with member list version: "
-                        + endpointMemberListVersion + ", but this node is not master!");
+                logger.warning(endpoint + " has sent MasterConfirmation with "
+                        + membersViewMetadata + ", but this node is not master!");
                 // it will be kicked from the cluster by the correct master because of master confirmation timeout
             }
         } finally {
@@ -242,11 +243,13 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    void sendExplicitSuspicion(Address endpoint, Address endpointMasterAddress, int endpointMemberListVersion) {
+    void sendExplicitSuspicion(MembersViewMetadata endpointMembersViewMetadata) {
         OperationService operationService = nodeEngine.getOperationService();
 
+        Address endpoint = endpointMembersViewMetadata.getMemberAddress();
+
         if (getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            Operation op = new ExplicitSuspicionOp(endpointMasterAddress, endpointMemberListVersion, getThisAddress());
+            Operation op = new ExplicitSuspicionOp(endpointMembersViewMetadata, getThisAddress());
             operationService.send(op, endpoint);
         } else {
             // TODO: we can completely get rid of this member remove part
@@ -329,8 +332,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public boolean finalizeJoin(MembersView membersView, Address callerAddress, String clusterId,
-                                ClusterState clusterState, Version clusterVersion,
+    public boolean finalizeJoin(MembersView membersView, Address callerAddress, String callerUuid,
+                                String clusterId, ClusterState clusterState, Version clusterVersion,
                                 long clusterStartTime, long masterTime) {
         lock.lock();
         try {
@@ -339,7 +342,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                     logger.fine("Not finalizing join because caller: " + callerAddress + " is not known master: "
                             + getMasterAddress());
                 }
-                sendExplicitSuspicion(callerAddress, callerAddress, membersView.getVersion());
+                MembersViewMetadata membersViewMetadata = new MembersViewMetadata(callerAddress, callerUuid,
+                        callerAddress, membersView.getVersion());
+                sendExplicitSuspicion(membersViewMetadata);
                 return false;
             }
 
@@ -369,7 +374,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         }
     }
 
-    public boolean updateMembers(MembersView membersView, Address callerAddress) {
+    public boolean updateMembers(MembersView membersView, Address callerAddress, String callerUuid) {
         lock.lock();
         try {
             if (!node.joined()) {
@@ -380,7 +385,9 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             if (!checkValidMaster(callerAddress)) {
                 logger.warning("Not updating members because caller: " + callerAddress  + " is not known master: "
                         + getMasterAddress());
-                sendExplicitSuspicion(callerAddress, callerAddress, membersView.getVersion());
+                MembersViewMetadata callerMembersViewMetadata = new MembersViewMetadata(callerAddress, callerUuid,
+                        callerAddress, membersView.getVersion());
+                sendExplicitSuspicion(callerMembersViewMetadata);
                 return false;
             }
 

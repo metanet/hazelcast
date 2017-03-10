@@ -20,7 +20,6 @@ import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.instance.NodeState;
-import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.cluster.impl.operations.HeartbeatOp;
 import com.hazelcast.internal.cluster.impl.operations.MasterConfirmationOp;
 import com.hazelcast.internal.metrics.Probe;
@@ -494,7 +493,9 @@ public class ClusterHeartbeatManager {
             return;
         }
 
-        MemberMap memberMap = clusterService.getMembershipManager().getMemberMap();
+        MembershipManager membershipManager = clusterService.getMembershipManager();
+
+        MemberMap memberMap = membershipManager.getMemberMap();
         MemberImpl masterMember = memberMap.getMember(masterAddress);
         if (masterMember == null) {
             logger.fine("Could not send MasterConfirmation, master member is null! master address: " + masterAddress);
@@ -505,12 +506,8 @@ public class ClusterHeartbeatManager {
             logger.fine("Sending MasterConfirmation to " + masterMember);
         }
 
-        int memberListVersion = 0;
-        if (clusterService.getClusterVersion().isGreaterOrEqual(Versions.V3_9)) {
-            memberListVersion = memberMap.getVersion();
-        }
-
-        Operation op = new MasterConfirmationOp(memberListVersion, clusterClock.getClusterTime());
+        MembersViewMetadata membersViewMetadata = membershipManager.createLocalMembersViewMetadata();
+        Operation op = new MasterConfirmationOp(membersViewMetadata, clusterClock.getClusterTime());
         nodeEngine.getOperationService().send(op, masterAddress);
     }
 

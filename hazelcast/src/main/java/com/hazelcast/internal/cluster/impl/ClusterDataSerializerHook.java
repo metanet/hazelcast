@@ -99,8 +99,9 @@ public final class ClusterDataSerializerHook implements DataSerializerHook {
     public static final int EXPLICIT_SUSPICION = 37;
     public static final int MEMBERS_VIEW = 38;
     public static final int TRIGGER_EXPLICIT_SUSPICION = 39;
+    public static final int MEMBERS_VIEW_METADATA = 40;
 
-    public static final int LEN = TRIGGER_EXPLICIT_SUSPICION + 1;
+    public static final int LEN = MEMBERS_VIEW_METADATA + 1;
 
     @Override
     public int getFactoryId() {
@@ -314,6 +315,12 @@ public final class ClusterDataSerializerHook implements DataSerializerHook {
             @Override
             public IdentifiedDataSerializable createNew(Integer arg) {
                 return new TriggerExplicitSuspicionOp();
+            }
+        };
+        constructors[MEMBERS_VIEW_METADATA] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            @Override
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new MembersViewMetadata();
             }
         };
 

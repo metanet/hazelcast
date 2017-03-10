@@ -648,12 +648,13 @@ public class ClusterJoinManager {
                 PostJoinOp postJoinOp = isPostJoinOperation ? new PostJoinOp(postJoinOps) : null;
                 PartitionRuntimeState partitionRuntimeState = node.getPartitionService().createPartitionState();
 
-                Operation operation = new FinalizeJoinOp(member.getUuid(),
+                Operation op = new FinalizeJoinOp(member.getUuid(),
                         clusterService.getMembershipManager().createMembersView(), postJoinOp,
                         clusterClock.getClusterTime(), clusterService.getClusterId(),
                         clusterClock.getClusterStartTime(), clusterStateManager.getState(),
                         clusterService.getClusterVersion(), partitionRuntimeState, false);
-                nodeEngine.getOperationService().send(operation, target);
+                op.setCallerUuid(node.getThisUuid());
+                nodeEngine.getOperationService().send(op, target);
             }
             return true;
         }
@@ -730,7 +731,7 @@ public class ClusterJoinManager {
                 boolean createPostJoinOperation = (postJoinOps != null && postJoinOps.length > 0);
                 PostJoinOp postJoinOp = (createPostJoinOperation ? new PostJoinOp(postJoinOps) : null);
 
-                clusterService.updateMembers(newMembersView, node.getThisAddress());
+                clusterService.updateMembers(newMembersView, node.getThisAddress(), node.getThisUuid());
 
                 int count = newMembersView.size() - 1;
                 List<Future> calls = new ArrayList<Future>(count);
@@ -740,6 +741,7 @@ public class ClusterJoinManager {
                     Operation op = new FinalizeJoinOp(member.getUuid(), newMembersView, postJoinOp, time,
                             clusterService.getClusterId(), startTime, clusterStateManager.getState(),
                             clusterService.getClusterVersion(), partitionRuntimeState, true);
+                    op.setCallerUuid(node.getThisUuid());
                     calls.add(invokeClusterOp(op, member.getAddress()));
                 }
                 for (MemberImpl member : memberMap.getMembers()) {
@@ -748,6 +750,7 @@ public class ClusterJoinManager {
                     }
                     Operation op = new MembersUpdateOp(member.getUuid(), newMembersView, time,
                             partitionRuntimeState, true);
+                    op.setCallerUuid(node.getThisUuid());
                     calls.add(invokeClusterOp(op, member.getAddress()));
                 }
 

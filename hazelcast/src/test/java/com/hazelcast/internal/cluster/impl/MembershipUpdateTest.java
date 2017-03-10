@@ -454,6 +454,7 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
 
         Operation memberUpdate = new MembersUpdateOp(membershipManager.getMember(getAddress(hz3)).getUuid(),
                 membersView, clusterService.getClusterTime(), null, true);
+        memberUpdate.setCallerUuid(node.getThisUuid());
 
         Future<Object> future =
                 node.getNodeEngine().getOperationService().invokeOnTarget(null, memberUpdate, getAddress(hz3));
@@ -486,8 +487,8 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
 
         Operation memberUpdate = new MembersUpdateOp(membershipManager.getMember(getAddress(hz3)).getUuid(),
                 membersView, clusterService.getClusterTime(), null, true);
-
         NodeEngineImpl nonMasterNodeEngine = getNodeEngineImpl(hz2);
+        memberUpdate.setCallerUuid(nonMasterNodeEngine.getNode().getThisUuid());
         Future<Object> future =
                 nonMasterNodeEngine.getOperationService().invokeOnTarget(null, memberUpdate, getAddress(hz3));
         future.get();

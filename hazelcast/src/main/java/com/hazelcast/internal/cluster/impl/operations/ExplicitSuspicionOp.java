@@ -1,6 +1,7 @@
 package com.hazelcast.internal.cluster.impl.operations;
 
 import com.hazelcast.internal.cluster.impl.ClusterServiceImpl;
+import com.hazelcast.internal.cluster.impl.MembersViewMetadata;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.ObjectDataInput;
@@ -13,18 +14,15 @@ import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.EXPL
 // TODO [basri] ADD JAVADOC
 public class ExplicitSuspicionOp extends AbstractClusterOperation {
 
-    private Address masterAddress;
-
-    private int memberListVersion;
+    private MembersViewMetadata membersViewMetadata;
 
     private Address suspectedAddress;
 
     public ExplicitSuspicionOp() {
     }
 
-    public ExplicitSuspicionOp(Address masterAddress, int memberListVersion, Address suspectedAddress) {
-        this.masterAddress = masterAddress;
-        this.memberListVersion = memberListVersion;
+    public ExplicitSuspicionOp(MembersViewMetadata membersViewMetadata, Address suspectedAddress) {
+        this.membersViewMetadata = membersViewMetadata;
         this.suspectedAddress = suspectedAddress;
     }
 
@@ -37,7 +35,7 @@ public class ExplicitSuspicionOp extends AbstractClusterOperation {
         }
         
         final ClusterServiceImpl clusterService = getService();
-        clusterService.handleExplicitSuspicion(masterAddress, memberListVersion, suspectedAddress);
+        clusterService.handleExplicitSuspicion(membersViewMetadata, suspectedAddress);
     }
 
     private boolean isCallerValid(Address caller) {
@@ -69,8 +67,7 @@ public class ExplicitSuspicionOp extends AbstractClusterOperation {
     protected void writeInternal(ObjectDataOutput out)
             throws IOException {
         super.writeInternal(out);
-        out.writeObject(masterAddress);
-        out.writeInt(memberListVersion);
+        out.writeObject(membersViewMetadata);
         out.writeObject(suspectedAddress);
     }
 
@@ -78,8 +75,7 @@ public class ExplicitSuspicionOp extends AbstractClusterOperation {
     protected void readInternal(ObjectDataInput in)
             throws IOException {
         super.readInternal(in);
-        masterAddress = in.readObject();
-        memberListVersion = in.readInt();
+        membersViewMetadata = in.readObject();
         suspectedAddress = in.readObject();
     }
 

@@ -172,6 +172,7 @@ public class MembershipManager {
 
         MembersUpdateOp op = new MembersUpdateOp(memberUuid, memberMap.toMembersView(),
                 clusterService.getClusterTime(), null, false);
+        op.setCallerUuid(node.getThisUuid());
         nodeEngine.getOperationService().send(op, target);
     }
 
@@ -202,6 +203,7 @@ public class MembershipManager {
 
             MembersUpdateOp op = new MembersUpdateOp(member.getUuid(), membersView,
                     clusterService.getClusterTime(), null, false);
+            op.setCallerUuid(node.getThisUuid());
             nodeEngine.getOperationService().send(op, member.getAddress());
         }
     }
@@ -307,36 +309,32 @@ public class MembershipManager {
         }
     }
 
-    void triggerExplicitSuspicion(Address caller, int callerMemberListVersion,
-                                  Address endpoint, Address endpointMasterAddress, int endpointMemberListVersion) {
+    void triggerExplicitSuspicion(Address caller, int callerMemberListVersion, MembersViewMetadata suspectedMembersViewMetadata) {
         clusterServiceLock.lock();
         try {
             Address masterAddress = clusterService.getMasterAddress();
             int memberListVersion = getMemberListVersion();
 
             if (!(masterAddress.equals(caller) && memberListVersion == callerMemberListVersion)) {
-                logger.fine("Ignoring explicit suspicion trigger for endpoint: " + endpoint + " with endpoint master address: "
-                        + endpointMasterAddress + " and endpoint member list version: " + endpointMemberListVersion + "."
-                        + " caller: " + caller + " caller member list version: " + callerMemberListVersion
+                logger.fine("Ignoring explicit suspicion trigger for " + suspectedMembersViewMetadata
+                        + " " + " caller: " + caller + " caller member list version: " + callerMemberListVersion
                         + " current master: " + masterAddress + " current member list version: " + memberListVersion);
                 return;
             }
 
-            clusterService.sendExplicitSuspicion(endpoint, endpointMasterAddress, endpointMemberListVersion);
+            clusterService.sendExplicitSuspicion(suspectedMembersViewMetadata);
         } finally {
             clusterServiceLock.unlock();
         }
     }
 
-    void handleExplicitSuspicion(Address expectedMasterAddress, int expectedMemberListVersion, Address suspectedAddress) {
+    void handleExplicitSuspicion(MembersViewMetadata expectedMembersViewMetadata, Address suspectedAddress) {
         clusterServiceLock.lock();
         try {
-            Address masterAddress = clusterService.getMasterAddress();
-            int memberListVersion = getMemberListVersion();
-            if (!(masterAddress.equals(expectedMasterAddress) && memberListVersion == expectedMemberListVersion)) {
-                logger.fine("Ignoring explicit suspicion of " + suspectedAddress + ". expected master address: "
-                        + expectedMasterAddress + ", expected member list version: " + expectedMemberListVersion
-                        + ", current master address: " + masterAddress + ", current member list version: " + memberListVersion);
+            MembersViewMetadata localMembersViewMetadata = createLocalMembersViewMetadata();
+            if (!localMembersViewMetadata.equals(expectedMembersViewMetadata)) {
+                logger.fine("Ignoring explicit suspicion of " + suspectedAddress
+                        + ". Expected: " + expectedMembersViewMetadata + ", Local: " + localMembersViewMetadata);
                 return;
             }
 
@@ -344,6 +342,11 @@ public class MembershipManager {
         } finally {
             clusterServiceLock.unlock();
         }
+    }
+
+    // TODO [basri] is this safe to call without cluster service lock?
+    MembersViewMetadata createLocalMembersViewMetadata() {
+        return new MembersViewMetadata(node.getThisAddress(), node.getThisUuid(), node.getMasterAddress(), getMemberListVersion());
     }
 
     void suspectMember(Address suspectedAddress, String suspectedUuid, String reason, boolean shouldCloseConn) {
