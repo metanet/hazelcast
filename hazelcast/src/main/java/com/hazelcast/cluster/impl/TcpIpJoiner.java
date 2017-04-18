@@ -487,6 +487,9 @@ public class TcpIpJoiner extends AbstractJoiner {
         final Collection<String> configMembers = tcpIpConfig.getMembers();
         final Set<String> possibleMembers = new HashSet<String>();
         for (String member : configMembers) {
+            if (member == null) {
+                System.out.println("ERROR CONFIG: " + tcpIpConfig);
+            }
             // split members defined in tcp-ip configuration by comma(,) semi-colon(;) space( ).
             String[] members = member.split("[,; ]");
             Collections.addAll(possibleMembers, members);
