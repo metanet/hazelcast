@@ -159,7 +159,11 @@ public class QueryRunner {
     }
 
     Result runPartitionScanQueryOnGivenOwnedPartition(Query query, int partitionId) {
-        assert nodeEngine.getPartitionService().isPartitionOwner(partitionId);
+        final boolean partitionOwner = nodeEngine.getPartitionService().isPartitionOwner(partitionId);
+        if (!partitionOwner) {
+            System.out.println("ERROR PARTITION NOT LOCAL! " + partitionId);
+            throw new IllegalStateException("PARTITION NOT LOCAL! " + partitionId);
+        }
 
         MapContainer mapContainer = mapServiceContext.getMapContainer(query.getMapName());
         Predicate predicate = queryOptimizer.optimize(query.getPredicate(), mapContainer.getIndexes(partitionId));
