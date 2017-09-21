@@ -22,17 +22,20 @@ import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.partition.InternalPartition;
 import com.hazelcast.internal.partition.NonFragmentedServiceNamespace;
 import com.hazelcast.internal.partition.PartitionReplicaVersionManager;
+import com.hazelcast.internal.partition.operation.CheckNamespaceReplicaVersionsOperation;
 import com.hazelcast.internal.partition.operation.PartitionReplicaSyncRequest;
 import com.hazelcast.internal.util.counters.MwCounter;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.nio.Address;
 import com.hazelcast.spi.ExecutionService;
+import com.hazelcast.spi.InternalCompletableFuture;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.ServiceNamespace;
 import com.hazelcast.spi.ServiceNamespaceAware;
 import com.hazelcast.spi.TaskScheduler;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.PartitionSpecificRunnable;
+import com.hazelcast.spi.partition.IPartitionService;
 import com.hazelcast.spi.properties.GroupProperty;
 import com.hazelcast.spi.properties.HazelcastProperties;
 import com.hazelcast.util.scheduler.EntryTaskScheduler;
@@ -424,6 +427,15 @@ public class PartitionReplicaManager implements PartitionReplicaVersionManager {
 
     void setClusterVersion(Version newVersion) {
         this.clusterVersion = newVersion;
+    }
+
+    public InternalCompletableFuture<Void> invokeNamespaceReplicaVersionCheck(int partitionId, int maxReplicaIndex,
+                                                                              ServiceNamespace namespace) {
+        Operation op = new CheckNamespaceReplicaVersionsOperation(namespace, maxReplicaIndex);
+        return nodeEngine.getOperationService()
+                         .createInvocationBuilder(IPartitionService.SERVICE_NAME, op, partitionId)
+                         .setFailOnIndeterminateOperationState(true)
+                         .invoke();
     }
 
     private class ReplicaSyncTimeoutProcessor implements ScheduledEntryProcessor<ReplicaFragmentSyncInfo, Void> {

@@ -20,6 +20,8 @@ import com.hazelcast.internal.partition.NonFragmentedServiceNamespace;
 import com.hazelcast.internal.partition.PartitionRuntimeState;
 import com.hazelcast.internal.partition.ReplicaFragmentMigrationState;
 import com.hazelcast.internal.partition.operation.AssignPartitions;
+import com.hazelcast.internal.partition.operation.CheckNamespaceReplicaVersionsBackupOperation;
+import com.hazelcast.internal.partition.operation.CheckNamespaceReplicaVersionsOperation;
 import com.hazelcast.internal.partition.operation.PartitionBackupReplicaAntiEntropyOperation;
 import com.hazelcast.internal.partition.operation.FetchPartitionStateOperation;
 import com.hazelcast.internal.partition.operation.MigrationOperation;
@@ -70,8 +72,10 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
     public static final int MIGRATION = 18;
     public static final int MIGRATION_REQUEST = 19;
     public static final int NONFRAGMENTED_SERVICE_NAMESPACE = 20;
+    public static final int CHECK_NAMESPACE_REPLICA_VERSIONS = 21;
+    public static final int CHECK_NAMESPACE_REPLICA_VERSIONS_BACKUP = 22;
 
-    private static final int LEN = NONFRAGMENTED_SERVICE_NAMESPACE + 1;
+    private static final int LEN = CHECK_NAMESPACE_REPLICA_VERSIONS_BACKUP + 1;
 
     @Override
     public int getFactoryId() {
@@ -183,6 +187,16 @@ public final class PartitionDataSerializerHook implements DataSerializerHook {
         constructors[NONFRAGMENTED_SERVICE_NAMESPACE] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
             public IdentifiedDataSerializable createNew(Integer arg) {
                 return NonFragmentedServiceNamespace.INSTANCE;
+            }
+        };
+        constructors[CHECK_NAMESPACE_REPLICA_VERSIONS] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new CheckNamespaceReplicaVersionsOperation();
+            }
+        };
+        constructors[CHECK_NAMESPACE_REPLICA_VERSIONS_BACKUP] = new ConstructorFunction<Integer, IdentifiedDataSerializable>() {
+            public IdentifiedDataSerializable createNew(Integer arg) {
+                return new CheckNamespaceReplicaVersionsBackupOperation();
             }
         };
         return new ArrayDataSerializableFactory(constructors);
