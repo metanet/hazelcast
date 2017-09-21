@@ -14,12 +14,13 @@ import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.ReadonlyOperation;
 import com.hazelcast.spi.impl.SpiDataSerializerHook;
 import com.hazelcast.spi.impl.operationservice.InternalOperationService;
-import com.hazelcast.test.HazelcastParallelClassRunner;
+import com.hazelcast.test.AssertTask;
+import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
-import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.transaction.TransactionContext;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -37,13 +38,19 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-@RunWith(HazelcastParallelClassRunner.class)
-@Category({QuickTest.class, ParallelTest.class})
+@RunWith(HazelcastSerialClassRunner.class)
+@Category(QuickTest.class)
 public class IndeterminateOperationStateExceptionTest extends HazelcastTestSupport {
 
     private HazelcastInstance instance1;
 
     private HazelcastInstance instance2;
+
+    @Before
+    public void init() {
+        SilentOperation.executionStarted = false;
+        DummyReadOperation.lastInvocationAddress = null;
+    }
 
     private void setup(boolean enableFailOnIndeterminateOperationState) {
         Config config = new Config();
@@ -104,6 +111,15 @@ public class IndeterminateOperationStateExceptionTest extends HazelcastTestSuppo
         InternalOperationService operationService = getNodeEngineImpl(instance1).getOperationService();
         InternalCompletableFuture<Object> future = operationService
                 .createInvocationBuilder(InternalPartitionService.SERVICE_NAME, new SilentOperation(), partitionId).invoke();
+
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertTrue(SilentOperation.executionStarted);
+            }
+        });
+
         spawn(new Runnable() {
             @Override
             public void run() {
@@ -179,6 +195,14 @@ public class IndeterminateOperationStateExceptionTest extends HazelcastTestSuppo
         InternalCompletableFuture<Object> future = operationService
                 .createInvocationBuilder(InternalPartitionService.SERVICE_NAME, new SilentOperation(), target).invoke();
 
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run()
+                    throws Exception {
+                assertTrue(SilentOperation.executionStarted);
+            }
+        });
+
         spawn(new Runnable() {
             @Override
             public void run() {
@@ -233,8 +257,11 @@ public class IndeterminateOperationStateExceptionTest extends HazelcastTestSuppo
 
     public static class SilentOperation extends Operation {
 
+        static volatile boolean executionStarted;
+
         @Override
         public void run() throws Exception {
+            executionStarted = true;
         }
 
         @Override
