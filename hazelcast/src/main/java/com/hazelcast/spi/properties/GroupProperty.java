@@ -408,6 +408,11 @@ public final class GroupProperty {
     public static final HazelcastProperty HEARTBEAT_FAILURE_DETECTOR_TYPE
             = new HazelcastProperty("hazelcast.heartbeat.failuredetector.type", "deadline");
 
+
+    // TODO basri missing javadoc
+    public static final HazelcastProperty MASTERSHIP_CLAIM_VERSION_JUMP
+            = new HazelcastProperty("hazelcast.mastership.claim.version.jump", 20);
+
     /**
      * The interval at which the master sends the member lists are sent to other non-master members
      */

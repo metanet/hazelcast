@@ -26,11 +26,20 @@ import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
-import static java.util.Collections.unmodifiableList;
+import static com.hazelcast.internal.cluster.Versions.V3_10;
+import static com.hazelcast.util.Preconditions.checkFalse;
+import static com.hazelcast.util.Preconditions.checkTrue;
+import static java.util.Collections.sort;
+import static java.util.Collections.unmodifiableMap;
 
 /**
  * MembersView is a container object to carry member list and version together.
@@ -38,16 +47,44 @@ import static java.util.Collections.unmodifiableList;
 public final class MembersView implements IdentifiedDataSerializable {
 
     private int version;
-    private List<MemberInfo> members;
+    private Map<MemberInfo, Integer> memberJoinVersions;
 
     public MembersView() {
     }
 
-    public MembersView(int version, List<MemberInfo> members) {
+    // MembersUpdateOp ve decideNewMembersView()'ta cagriliyor, versions olacak burada da
+    public MembersView(int version, Map<MemberInfo, Integer> memberJoinVersions) {
+        checkTrue(memberJoinVersions.size() == new HashSet<Integer>(memberJoinVersions.values()).size(),
+                "JoinVersionMap: " + memberJoinVersions + " has duplicate join versions!");
+
+        for (Entry<MemberInfo, Integer> e : memberJoinVersions.entrySet()) {
+            int memberJoinVersion = e.getValue();
+            checkFalse(version < memberJoinVersion, "Version: " + version
+                    + " cannot be smaller than join version: " + e.getValue() + " of " + e.getKey());
+        }
+
         this.version = version;
-        this.members = members;
+        this.memberJoinVersions = unmodifiableMap(sortMembersByJoinOrder(memberJoinVersions));
     }
 
+    private Map<MemberInfo, Integer> sortMembersByJoinOrder(final Map<MemberInfo, Integer> memberJoinVersions) {
+        List<MemberInfo> sorted = new ArrayList<MemberInfo>(memberJoinVersions.keySet());
+        sort(sorted, new Comparator<MemberInfo>() {
+            @Override
+            public int compare(MemberInfo m1, MemberInfo m2) {
+                return memberJoinVersions.get(m1).compareTo(memberJoinVersions.get(m2));
+            }
+        });
+
+        LinkedHashMap<MemberInfo, Integer> joinVersions = new LinkedHashMap<MemberInfo, Integer>(memberJoinVersions.size());
+        for (MemberInfo member : sorted) {
+            joinVersions.put(member, memberJoinVersions.get(member));
+        }
+
+        return joinVersions;
+    }
+
+    // join'de yeni member'lar eklenirken cagriliyor. burada version'lari ayarlayacagiz.
     /**
      * Creates clone of source {@link MembersView} additionally including new members.
      *
@@ -56,53 +93,68 @@ public final class MembersView implements IdentifiedDataSerializable {
      * @return clone map
      */
     static MembersView cloneAdding(MembersView source, Collection<MemberInfo> newMembers) {
-        List<MemberInfo> list = new ArrayList<MemberInfo>(source.size() + newMembers.size());
-        list.addAll(source.getMembers());
-        list.addAll(newMembers);
+        Map<MemberInfo, Integer> joinVersions = new HashMap<MemberInfo, Integer>(source.memberJoinVersions);
+        int version = source.version;
+        for (MemberInfo member : newMembers) {
+            joinVersions.put(member, ++version);
+        }
 
-        return new MembersView(source.version + 1, unmodifiableList(list));
+        return new MembersView(version, joinVersions);
     }
 
+    // handleMastershipClaim()'de cagriliyor, burada version'lar da gelecek
     /**
      * Creates a new {@code MemberMap} including given members.
      *
      * @param version version
-     * @param members members
+     * @param memberJoinVersions memberJoinVersions
      * @return a new {@code MemberMap}
      */
-    public static MembersView createNew(int version, Collection<MemberImpl> members) {
-        List<MemberInfo> list = new ArrayList<MemberInfo>(members.size());
-
-        for (MemberImpl member : members) {
-            list.add(new MemberInfo(member));
+    public static MembersView createNew(int version, Map<MemberImpl, Integer> memberJoinVersions) {
+        Map<MemberInfo, Integer> versions = new HashMap<MemberInfo, Integer>();
+        for (Entry<MemberImpl, Integer> e : memberJoinVersions.entrySet()) {
+            versions.put(new MemberInfo(e.getKey()), e.getValue());
         }
 
-        return new MembersView(version, unmodifiableList(list));
+        return new MembersView(version, versions);
     }
 
     public List<MemberInfo> getMembers() {
-        return members;
+        return new ArrayList<MemberInfo>(memberJoinVersions.keySet());
+    }
+
+    public int getMemberJoinVersion(MemberInfo memberInfo) {
+        Integer version = memberJoinVersions.get(memberInfo);
+        if (version == null) {
+            throw new IllegalArgumentException(memberInfo + " is not present in " + this);
+        }
+
+        return version;
+    }
+
+    public Map<MemberInfo, Integer> getMemberJoinVersions() {
+        return memberJoinVersions;
     }
 
     public int size() {
-        return members.size();
+        return memberJoinVersions.size();
     }
 
     public int getVersion() {
         return version;
     }
 
+    // updateMembers()'ta cagriliyor
     MemberMap toMemberMap() {
-        MemberImpl[] m = new MemberImpl[size()];
-        int ix = 0;
-        for (MemberInfo memberInfo : members) {
-            m[ix++] = memberInfo.toMember();
+        Map<MemberImpl, Integer> joinVersionMap = new LinkedHashMap<MemberImpl, Integer>(memberJoinVersions.size());
+        for (Entry<MemberInfo, Integer> e : memberJoinVersions.entrySet()) {
+            joinVersionMap.put(e.getKey().toMember(), e.getValue());
         }
-        return MemberMap.createNew(version, m);
+        return MemberMap.createNew(version, joinVersionMap);
     }
 
     public boolean containsAddress(Address address) {
-        for (MemberInfo member : members) {
+        for (MemberInfo member : memberJoinVersions.keySet()) {
             if (member.getAddress().equals(address)) {
                 return true;
             }
@@ -112,7 +164,7 @@ public final class MembersView implements IdentifiedDataSerializable {
     }
 
     public boolean containsMember(Address address, String uuid) {
-        for (MemberInfo member : members) {
+        for (MemberInfo member : memberJoinVersions.keySet()) {
             if (member.getAddress().equals(address)) {
                 return member.getUuid().equals(uuid);
             }
@@ -122,15 +174,15 @@ public final class MembersView implements IdentifiedDataSerializable {
     }
 
     public Set<Address> getAddresses() {
-        Set<Address> addresses = new HashSet<Address>(members.size());
-        for (MemberInfo member : members) {
+        Set<Address> addresses = new HashSet<Address>(memberJoinVersions.size());
+        for (MemberInfo member : memberJoinVersions.keySet()) {
             addresses.add(member.getAddress());
         }
         return addresses;
     }
 
     public MemberInfo getMember(Address address) {
-        for (MemberInfo member : members) {
+        for (MemberInfo member : memberJoinVersions.keySet()) {
             if (member.getAddress().equals(address)) {
                 return member;
             }
@@ -157,9 +209,17 @@ public final class MembersView implements IdentifiedDataSerializable {
     public void writeData(ObjectDataOutput out)
             throws IOException {
         out.writeInt(version);
-        out.writeInt(members.size());
-        for (MemberInfo member : members) {
-            member.writeData(out);
+        out.writeInt(memberJoinVersions.size());
+        if (out.getVersion().isGreaterOrEqual(V3_10)) {
+            for (Entry<MemberInfo, Integer> e : memberJoinVersions.entrySet()) {
+                e.getKey().writeData(out);
+                out.writeInt(e.getValue());
+            }
+        } else {
+            // TODO basri this is broken.
+            for (MemberInfo member : memberJoinVersions.keySet()) {
+                member.writeData(out);
+            }
         }
     }
 
@@ -168,19 +228,22 @@ public final class MembersView implements IdentifiedDataSerializable {
             throws IOException {
         version = in.readInt();
         int size = in.readInt();
-        List<MemberInfo> members = new ArrayList<MemberInfo>(size);
+        Map<MemberInfo, Integer> memberJoinVersions = new LinkedHashMap<MemberInfo, Integer>();
+        boolean readJoinVersions = in.getVersion().isGreaterOrEqual(V3_10);
         for (int i = 0; i < size; i++) {
             MemberInfo member = new MemberInfo();
             member.readData(in);
-            members.add(member);
+            // TODO basri this is broken.
+            int joinVersion = readJoinVersions ? in.readInt() : 0;
+            memberJoinVersions.put(member, joinVersion);
         }
 
-        this.members = unmodifiableList(members);
+        this.memberJoinVersions = unmodifiableMap(memberJoinVersions);
     }
 
     @Override
     public String toString() {
-        return "MembersView{" + "version=" + version + ", members=" + members + '}';
+        return "MembersView{" + "version=" + version + ", members=" + memberJoinVersions.keySet() + '}';
     }
 
 }

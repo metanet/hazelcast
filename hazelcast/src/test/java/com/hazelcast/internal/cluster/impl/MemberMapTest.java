@@ -20,7 +20,6 @@ import com.hazelcast.instance.BuildInfoProvider;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.nio.Address;
 import com.hazelcast.test.HazelcastParallelClassRunner;
-import com.hazelcast.test.RequireAssertEnabled;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.version.MemberVersion;
@@ -31,10 +30,13 @@ import org.junit.runner.RunWith;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
 import static com.hazelcast.util.UuidUtil.newUnsecureUuidString;
+import static java.util.Arrays.asList;
+import static java.util.Collections.singleton;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -48,9 +50,8 @@ public class MemberMapTest {
 
     private static final MemberVersion VERSION = MemberVersion.of(BuildInfoProvider.getBuildInfo().getVersion());
 
-    @Test(expected = AssertionError.class)
-    @RequireAssertEnabled
-    public void testConstructor_whenMapsHaveDifferentMembers_thenThrowAssertionError() {
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructor_whenAddressAndUuidMapsHaveDifferentMembers_thenThrowAssertionError() {
         Map<Address, MemberImpl> addressMap = new HashMap<Address, MemberImpl>();
         Map<String, MemberImpl> uuidMap = new HashMap<String, MemberImpl>();
 
@@ -60,7 +61,69 @@ public class MemberMapTest {
         addressMap.put(addressMember.getAddress(), addressMember);
         uuidMap.put(uuidMember.getUuid(), uuidMember);
 
-        new MemberMap(0, addressMap, uuidMap);
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        joinVersions.put(addressMember, 1);
+        joinVersions.put(uuidMember, 2);
+
+        new MemberMap(2, addressMap, uuidMap, joinVersions);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructor_whenAddressAndJoinVersionsMapsHaveDifferentMembers_thenThrowAssertionError() {
+        Map<Address, MemberImpl> addressMap = new HashMap<Address, MemberImpl>();
+        Map<String, MemberImpl> uuidMap = new HashMap<String, MemberImpl>();
+
+        MemberImpl addressMember = newMember(5701);
+        MemberImpl versionMember = newMember(5702);
+
+        addressMap.put(addressMember.getAddress(), addressMember);
+        uuidMap.put(addressMember.getUuid(), addressMember);
+
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        joinVersions.put(versionMember, 1);
+
+        new MemberMap(2, addressMap, uuidMap, joinVersions);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructor_whenJoinVersionsMapHaveDuplicateVersions_thenThrowAssertionError() {
+        Map<Address, MemberImpl> addressMap = new HashMap<Address, MemberImpl>();
+        Map<String, MemberImpl> uuidMap = new HashMap<String, MemberImpl>();
+
+        MemberImpl member1 = newMember(5701);
+        MemberImpl member2 = newMember(5702);
+
+        addressMap.put(member1.getAddress(), member1);
+        addressMap.put(member2.getAddress(), member2);
+        uuidMap.put(member1.getUuid(), member1);
+        uuidMap.put(member2.getUuid(), member2);
+
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        joinVersions.put(member1, 1);
+        joinVersions.put(member2, 1);
+
+        new MemberMap(2, addressMap, uuidMap, joinVersions);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructor_whenVersionIsSmallerThanMemberCount_thenThrowAssertionError() {
+        Map<Address, MemberImpl> addressMap = new HashMap<Address, MemberImpl>();
+        Map<String, MemberImpl> uuidMap = new HashMap<String, MemberImpl>();
+
+        MemberImpl member1 = newMember(5701);
+        MemberImpl member2 = newMember(5702);
+
+        addressMap.put(member1.getAddress(), member1);
+        addressMap.put(member2.getAddress(), member2);
+        uuidMap.put(member1.getUuid(), member1);
+        uuidMap.put(member2.getUuid(), member2);
+
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        joinVersions.put(member1, 1);
+        joinVersions.put(member2, 2);
+
+        int version = joinVersions.size() - 1;
+        new MemberMap(version, addressMap, uuidMap, joinVersions);
     }
 
     @Test
@@ -95,11 +158,17 @@ public class MemberMapTest {
         assertEquals(members.length, map.getAddresses().size());
         assertEquals(members.length, map.size());
 
+        int version = 1;
+        int idx = 0;
         for (MemberImpl member : members) {
             assertContains(map, member.getAddress());
             assertContains(map, member.getUuid());
             assertSame(member, map.getMember(member.getAddress()));
             assertSame(member, map.getMember(member.getUuid()));
+            assertEquals(version, map.getMemberJoinVersion(member));
+            assertEquals(idx, map.getMemberIndex(member));
+            version++;
+            idx++;
         }
 
         assertMemberSet(map);
@@ -127,7 +196,7 @@ public class MemberMapTest {
         MemberImpl exclude1 = new MemberImpl(newAddress(6000), VERSION, false, members[1].getUuid());
         MemberImpl exclude2 = new MemberImpl(members[2].getAddress(), VERSION, false, newUnsecureUuidString());
 
-        MemberMap map = MemberMap.cloneExcluding(MemberMap.createNew(members), exclude0, exclude1, exclude2);
+        MemberMap map = MemberMap.cloneExcluding(MemberMap.createNew(members), asList(exclude0, exclude1, exclude2));
 
         int numOfExcludedMembers = 3;
         assertEquals(members.length - numOfExcludedMembers, map.getMembers().size());
@@ -156,7 +225,7 @@ public class MemberMapTest {
     @Test
     public void cloneExcluding_emptyMap() {
         MemberMap empty = MemberMap.empty();
-        MemberMap map = MemberMap.cloneExcluding(empty, newMember(5000));
+        MemberMap map = MemberMap.cloneExcluding(empty, singleton(newMember(5000)));
 
         assertEquals(0, map.size());
         assertSame(empty, map);
@@ -166,10 +235,12 @@ public class MemberMapTest {
     public void cloneAdding() {
         MemberImpl[] members = newMembers(5);
 
-        MemberMap map = MemberMap.cloneAdding(MemberMap.createNew(members[0], members[1], members[2]), members[3], members[4]);
+        MemberMap map = MemberMap.cloneAdding(MemberMap.createNew(members[0], members[1], members[2]), asList(members[3], members[4]));
         assertEquals(members.length, map.getMembers().size());
         assertEquals(members.length, map.getAddresses().size());
         assertEquals(members.length, map.size());
+        assertEquals(4, map.getMemberJoinVersion(members[3]));
+        assertEquals(5, map.getMemberJoinVersion(members[4]));
 
         for (MemberImpl member : members) {
             assertContains(map, member.getAddress());
@@ -186,7 +257,7 @@ public class MemberMapTest {
         MemberImpl[] members = newMembers(3);
 
         MemberImpl member = newMember(5000);
-        MemberMap.cloneAdding(MemberMap.createNew(members), member);
+        MemberMap.cloneAdding(MemberMap.createNew(members), singleton(member));
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -194,7 +265,7 @@ public class MemberMapTest {
         MemberImpl[] members = newMembers(3);
 
         MemberImpl member = new MemberImpl(newAddress(6000), VERSION, false, members[1].getUuid());
-        MemberMap.cloneAdding(MemberMap.createNew(members), member);
+        MemberMap.cloneAdding(MemberMap.createNew(members), singleton(member));
     }
 
     @Test

@@ -27,10 +27,14 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.hazelcast.internal.cluster.impl.MemberMapTest.newMember;
+import static com.hazelcast.internal.cluster.impl.MemberMapTest.newMembers;
+import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -43,25 +47,59 @@ public class MembersViewTest {
 
     @Test
     public void createNew() throws Exception {
-        int version = 7;
-        MemberImpl[] members = MemberMapTest.newMembers(5);
-        MembersView view = MembersView.createNew(version, Arrays.asList(members));
+        int version = 5;
+        MemberImpl[] members = newMembers(3);
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        joinVersions.put(members[2], version);
+        joinVersions.put(members[1], version - 1);
+        joinVersions.put(members[0], version - 2);
+
+        MembersView view = MembersView.createNew(version, joinVersions);
 
         assertEquals(version, view.getVersion());
+
+        Map<MemberInfo, Integer> expectedVersions = new LinkedHashMap<MemberInfo, Integer>();
+        expectedVersions.put(new MemberInfo(members[0]), version - 2);
+        expectedVersions.put(new MemberInfo(members[1]), version - 1);
+        expectedVersions.put(new MemberInfo(members[2]), version);
+        assertEquals(expectedVersions, view.getMemberJoinVersions());
+
         assertMembersViewEquals(members, view);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cannotCreateMembersViewIfVersionIsSmallerThanMemberCount() {
+        int version = 1;
+        MemberImpl[] members = newMembers(3);
+
+        createNew(version, members);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void cannotCreateMembersViewIfDuplicateJoinVersionsArePresent() {
+        int version = 5;
+        MemberImpl[] members = newMembers(3);
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        joinVersions.put(members[2], version);
+        joinVersions.put(members[1], version - 1);
+        joinVersions.put(members[0], version);
+
+        MembersView.createNew(version, joinVersions);
     }
 
     @Test
     public void cloneAdding() throws Exception {
         int version = 6;
-        MemberImpl[] members = MemberMapTest.newMembers(4);
-        List<MemberInfo> additionalMembers
-                = Arrays.asList(new MemberInfo(newMember(6000)), new MemberInfo(newMember(7000)));
+        MemberImpl[] members = newMembers(4);
+        MemberInfo newMember1 = new MemberInfo(newMember(6000));
+        MemberInfo newMember2 = new MemberInfo(newMember(7000));
+        List<MemberInfo> additionalMembers = asList(newMember1, newMember2);
 
-        MembersView view =
-                MembersView.cloneAdding(MembersView.createNew(version, Arrays.asList(members)), additionalMembers);
+        MembersView view = MembersView.cloneAdding(createNew(version, members), additionalMembers);
 
-        assertEquals(version + 1, view.getVersion());
+        assertEquals(version + additionalMembers.size(), view.getVersion());
+        assertEquals(version + 1, view.getMemberJoinVersion(newMember1));
+        assertEquals(version + 2, view.getMemberJoinVersion(newMember2));
 
         MemberImpl[] newMembers = Arrays.copyOf(members, members.length + additionalMembers.size());
         for (int i = 0; i < additionalMembers.size(); i++) {
@@ -74,8 +112,8 @@ public class MembersViewTest {
     @Test
     public void toMemberMap() throws Exception {
         int version = 5;
-        MemberImpl[] members = MemberMapTest.newMembers(3);
-        MembersView view = MembersView.createNew(version, Arrays.asList(members));
+        MemberImpl[] members = newMembers(3);
+        MembersView view = createNew(version, members);
 
         MemberMap memberMap = view.toMemberMap();
 
@@ -85,8 +123,9 @@ public class MembersViewTest {
 
     @Test
     public void containsAddress() throws Exception {
-        MemberImpl[] members = MemberMapTest.newMembers(3);
-        MembersView view = MembersView.createNew(1, Arrays.asList(members));
+        int version = 3;
+        MemberImpl[] members = newMembers(3);
+        MembersView view = createNew(version, members);
 
         for (MemberImpl member : members) {
             assertTrue(view.containsAddress(member.getAddress()));
@@ -95,8 +134,9 @@ public class MembersViewTest {
 
     @Test
     public void containsMember() throws Exception {
-        MemberImpl[] members = MemberMapTest.newMembers(3);
-        MembersView view = MembersView.createNew(1, Arrays.asList(members));
+        int version = 3;
+        MemberImpl[] members = newMembers(3);
+        MembersView view = createNew(version, members);
 
         for (MemberImpl member : members) {
             assertTrue(view.containsMember(member.getAddress(), member.getUuid()));
@@ -105,8 +145,9 @@ public class MembersViewTest {
 
     @Test
     public void getAddresses() throws Exception {
-        MemberImpl[] members = MemberMapTest.newMembers(3);
-        MembersView view = MembersView.createNew(1, Arrays.asList(members));
+        int version = 3;
+        MemberImpl[] members = newMembers(3);
+        MembersView view = createNew(version, members);
 
         Set<Address> addresses = view.getAddresses();
         assertEquals(members.length, addresses.size());
@@ -118,8 +159,8 @@ public class MembersViewTest {
 
     @Test
     public void getMember() throws Exception {
-        MemberImpl[] members = MemberMapTest.newMembers(3);
-        MembersView view = MembersView.createNew(1, Arrays.asList(members));
+        MemberImpl[] members = newMembers(3);
+        MembersView view = createNew(3, members);
 
         MemberInfo member = view.getMember(members[0].getAddress());
         assertNotNull(member);
@@ -128,9 +169,9 @@ public class MembersViewTest {
 
     @Test
     public void isLaterThan() throws Exception {
-        MembersView view1 = MembersView.createNew(1, Arrays.asList(MemberMapTest.newMembers(5)));
-        MembersView view2 = MembersView.createNew(3, Arrays.asList(MemberMapTest.newMembers(5)));
-        MembersView view3 = MembersView.createNew(5, Arrays.asList(MemberMapTest.newMembers(5)));
+        MembersView view1 = createNew(5, newMembers(5));
+        MembersView view2 = createNew(7, newMembers(5));
+        MembersView view3 = createNew(9, newMembers(5));
 
         assertTrue(view2.isLaterThan(view1));
         assertTrue(view3.isLaterThan(view1));
@@ -144,6 +185,26 @@ public class MembersViewTest {
         assertFalse(view2.isLaterThan(view3));
 
         assertFalse(view3.isLaterThan(view3));
+    }
+
+    private MembersView createNew(int version, MemberImpl[] members) {
+        Map<MemberImpl, Integer> memberJoinVersions = generateJoinVersions(version, members);
+        return MembersView.createNew(version, memberJoinVersions);
+    }
+
+    private Map<MemberImpl, Integer> generateJoinVersions(int version, MemberImpl[] members) {
+        if (version < members.length) {
+            throw new IllegalArgumentException("cannot generate join versions for member list version " + version
+                    + " and " + members.length + " members");
+        }
+
+        version -= members.length;
+        Map<MemberImpl, Integer> joinVersions = new LinkedHashMap<MemberImpl, Integer>();
+        for (MemberImpl member : members) {
+            joinVersions.put(member, ++version);
+        }
+
+        return joinVersions;
     }
 
     private static void assertMembersViewEquals(MemberImpl[] members, MembersView view) {

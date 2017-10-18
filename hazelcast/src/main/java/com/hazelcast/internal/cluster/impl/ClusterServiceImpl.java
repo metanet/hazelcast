@@ -241,12 +241,6 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public MembersView handleMastershipClaim(Address candidateAddress, String candidateUuid) {
-        // verify candidateAddress is not me DONE
-        // verify I am not master DONE
-        // verify candidateAddress is a valid member with its uuid
-        // verify I suspect everyone before the candidateAddress
-        // verify candidateAddress is not suspected.
-
         checkNotNull(candidateAddress);
         checkNotNull(candidateUuid);
         checkFalse(getThisAddress().equals(candidateAddress), "cannot accept my own mastership claim!");
@@ -277,8 +271,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             }
 
             setMasterAddress(masterCandidate.getAddress());
-            Set<MemberImpl> members = memberMap.tailMemberSet(masterCandidate, true);
-            MembersView response = MembersView.createNew(memberMap.getVersion(), members);
+
+            MembersView response = memberMap.toTailMembersView(masterCandidate, true);
 
             logger.warning("Mastership of " + candidateAddress + " is accepted. Response: " + response);
 

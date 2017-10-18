@@ -45,9 +45,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -64,6 +64,9 @@ import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.MEMBERSHIP_
 import static com.hazelcast.internal.cluster.impl.ClusterServiceImpl.SERVICE_NAME;
 import static com.hazelcast.spi.ExecutionService.SYSTEM_EXECUTOR;
 import static com.hazelcast.spi.properties.GroupProperty.MASTERSHIP_CLAIM_TIMEOUT_SECONDS;
+import static com.hazelcast.spi.properties.GroupProperty.MASTERSHIP_CLAIM_VERSION_JUMP;
+import static java.lang.Math.max;
+import static java.util.Collections.singleton;
 import static java.util.Collections.unmodifiableSet;
 
 /**
@@ -242,9 +245,10 @@ public class MembershipManager {
         Collection<MemberImpl> removedMembers = new LinkedList<MemberImpl>();
         ClusterHeartbeatManager clusterHeartbeatManager = clusterService.getClusterHeartbeatManager();
 
-        MemberImpl[] members = new MemberImpl[membersView.size()];
-        int memberIndex = 0;
-        for (MemberInfo memberInfo : membersView.getMembers()) {
+        Map<MemberImpl, Integer> members = new LinkedHashMap<MemberImpl, Integer>();
+        for (Map.Entry<MemberInfo, Integer> e : membersView.getMemberJoinVersions().entrySet()) {
+            MemberInfo memberInfo = e.getKey();
+            int memberJoinVersion = e.getValue();
             Address address = memberInfo.getAddress();
             MemberImpl member = currentMemberMap.getMember(address);
 
@@ -254,7 +258,7 @@ public class MembershipManager {
                     logger.info(member + " is promoted to normal member.");
                     member = createMember(memberInfo);
                 }
-                members[memberIndex++] = member;
+                members.put(member, memberJoinVersion);
                 continue;
             }
 
@@ -273,7 +277,7 @@ public class MembershipManager {
             clusterHeartbeatManager.onHeartbeat(member, now);
 
             clusterService.repairPartitionTableIfReturningMember(member);
-            members[memberIndex++] = member;
+            members.put(member, memberJoinVersion);
         }
 
         MemberMap newMemberMap = membersView.toMemberMap();
@@ -292,7 +296,7 @@ public class MembershipManager {
         sendMembershipEvents(currentMemberMap.getMembers(), addedMembers);
 
         MemberMap membersRemovedInNotJoinableState = membersRemovedInNotJoinableStateRef.get();
-        membersRemovedInNotJoinableStateRef.set(MemberMap.cloneExcluding(membersRemovedInNotJoinableState, members));
+        membersRemovedInNotJoinableStateRef.set(MemberMap.cloneExcluding(membersRemovedInNotJoinableState, members.keySet()));
 
         clusterHeartbeatManager.heartbeat();
         clusterService.printMemberList();
@@ -420,7 +424,7 @@ public class MembershipManager {
         assert !suspectedMember.equals(clusterService.getLocalMember()) : "Cannot suspect from myself!";
         assert !suspectedMember.localMember() : "Cannot be local member";
 
-        final MembersView localMemberView;
+        final MemberMap localMemberMap;
         final Set<Member> membersToAsk;
 
         clusterServiceLock.lock();
@@ -444,24 +448,23 @@ public class MembershipManager {
                 return;
             }
 
-            MemberMap memberMap = getMemberMap();
-            localMemberView = memberMap.toMembersView();
+            localMemberMap = getMemberMap();
             membersToAsk = new HashSet<Member>();
-            for (MemberImpl member : memberMap.getMembers()) {
+            for (MemberImpl member : localMemberMap.getMembers()) {
                 if (member.localMember() || suspectedMembers.contains(member.getAddress())) {
                     continue;
                 }
 
                 membersToAsk.add(member);
             }
-            logger.info("Local " + localMemberView + " with suspected members: "  + suspectedMembers
+            logger.info("Local " + localMemberMap.toMembersView() + " with suspected members: "  + suspectedMembers
                     + " and initial addresses to ask: " + membersToAsk);
         } finally {
             clusterServiceLock.unlock();
         }
 
         ExecutorService executor = nodeEngine.getExecutionService().getExecutor(SYSTEM_EXECUTOR);
-        executor.submit(new DecideNewMembersViewTask(localMemberView, membersToAsk));
+        executor.submit(new DecideNewMembersViewTask(localMemberMap, membersToAsk));
     }
 
     private boolean tryStartMastershipClaim() {
@@ -530,7 +533,7 @@ public class MembershipManager {
             clusterService.getClusterJoinManager().removeJoin(member.getAddress());
             clusterService.getClusterHeartbeatManager().removeMember(member);
 
-            MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, member);
+            MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, singleton(member));
             setMembers(newMembers);
 
             if (logger.isFineEnabled()) {
@@ -563,7 +566,7 @@ public class MembershipManager {
             if (!hotRestartService.isMemberExcluded(removedMember.getAddress(), removedMember.getUuid())) {
                 MemberMap membersRemovedInNotJoinableState = membersRemovedInNotJoinableStateRef.get();
                 membersRemovedInNotJoinableStateRef
-                        .set(MemberMap.cloneAdding(membersRemovedInNotJoinableState, removedMember));
+                        .set(MemberMap.cloneAdding(membersRemovedInNotJoinableState, singleton(removedMember)));
             }
         }
 
@@ -635,19 +638,21 @@ public class MembershipManager {
         return true;
     }
 
-    private MembersView decideNewMembersView(MembersView localMembersView, Set<Member> members) {
+    private MembersView decideNewMembersView(MemberMap localMemberMap, Set<Member> members) {
         Map<Address, Future<MembersView>> futures = new HashMap<Address, Future<MembersView>>();
-        MembersView latestMembersView = fetchLatestMembersView(localMembersView, members, futures);
+        MembersView latestMembersView = fetchLatestMembersView(localMemberMap, members, futures);
 
         logger.fine("Latest " + latestMembersView + " before final decision...");
 
         // within the most recent members view, select the members that have reported their members view successfully
-        int finalVersion = latestMembersView.getVersion() + 1;
-        List<MemberInfo> finalMembers = new ArrayList<MemberInfo>();
-        for (MemberInfo memberInfo : latestMembersView.getMembers()) {
+        int finalVersion = getMemberListVersionAfterMastershipClaim(localMemberMap, latestMembersView);
+        Map<MemberInfo, Integer> finalMembers = new LinkedHashMap<MemberInfo, Integer>();
+        for (Map.Entry<MemberInfo, Integer> entry : latestMembersView.getMemberJoinVersions().entrySet()) {
+            MemberInfo memberInfo = entry.getKey();
+            Integer memberJoinVersion = entry.getValue();
             Address address = memberInfo.getAddress();
             if (node.getThisAddress().equals(address)) {
-                finalMembers.add(memberInfo);
+                finalMembers.put(memberInfo, memberJoinVersion);
                 continue;
             }
 
@@ -664,7 +669,7 @@ public class MembershipManager {
 
             try {
                 future.get();
-                finalMembers.add(memberInfo);
+                finalMembers.put(memberInfo, memberJoinVersion);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             } catch (ExecutionException e) {
@@ -675,10 +680,16 @@ public class MembershipManager {
         return new MembersView(finalVersion, finalMembers);
     }
 
-    private MembersView fetchLatestMembersView(MembersView localMembersView,
+    private int getMemberListVersionAfterMastershipClaim(MemberMap localMemberMap, MembersView latestMembersView) {
+        int localMemberIndex = localMemberMap.getMemberIndex(nodeEngine.getLocalMember());
+        int versionJumpPerMember = max(node.getProperties().getInteger(MASTERSHIP_CLAIM_VERSION_JUMP), localMemberMap.size());
+        return latestMembersView.getVersion() + localMemberIndex * versionJumpPerMember;
+    }
+
+    private MembersView fetchLatestMembersView(MemberMap localMemberMap,
                                                Set<Member> members,
                                                Map<Address, Future<MembersView>> futures) {
-        MembersView latestMembersView = localMembersView;
+        MembersView latestMembersView = localMemberMap.toTailMembersView(node.getLocalMember(), true);
 
         // once an address is put into the futures map,
         // we wait until either we suspect of that address or find its result in the futures.
@@ -799,8 +810,7 @@ public class MembershipManager {
         try {
             members.remove(clusterService.getLocalMember());
             MemberMap membersRemovedInNotJoinableState = membersRemovedInNotJoinableStateRef.get();
-            membersRemovedInNotJoinableStateRef.set(MemberMap.cloneAdding(membersRemovedInNotJoinableState,
-                    members.toArray(new MemberImpl[0])));
+            membersRemovedInNotJoinableStateRef.set(MemberMap.cloneAdding(membersRemovedInNotJoinableState, members));
         } finally {
             clusterServiceLock.unlock();
         }
@@ -858,14 +868,16 @@ public class MembershipManager {
             }
 
             logger.info("Promoting " + member + " to normal member.");
-            MemberImpl[] members = memberMap.getMembers().toArray(new MemberImpl[0]);
-            for (int i = 0; i < members.length; i++) {
-                if (member.equals(members[i])) {
+            Map<MemberImpl, Integer> members = new LinkedHashMap<MemberImpl, Integer>();
+            for (MemberImpl m : memberMap.getMembers()) {
+                int memberJoinVersion = memberMap.getMemberJoinVersion(m);
+
+                if (member.equals(m)) {
                     member = new MemberImpl(member.getAddress(), member.getVersion(), member.localMember(),
                             member.getUuid(), member.getAttributes(), false, node.hazelcastInstance);
-                    members[i] = member;
-                    break;
                 }
+
+                members.put(member, memberJoinVersion);
             }
 
             MemberMap newMemberMap = MemberMap.createNew(memberMap.getVersion() + 1, members);
@@ -905,17 +917,17 @@ public class MembershipManager {
 
     private class DecideNewMembersViewTask implements Runnable {
 
-        final MembersView localMemberView;
+        final MemberMap localMemberMap;
         final Set<Member> membersToAsk;
 
-        DecideNewMembersViewTask(MembersView localMemberView, Set<Member> membersToAsk) {
-            this.localMemberView = localMemberView;
+        DecideNewMembersViewTask(MemberMap localMemberMap, Set<Member> membersToAsk) {
+            this.localMemberMap = localMemberMap;
             this.membersToAsk = membersToAsk;
         }
 
         @Override
         public void run() {
-            MembersView newMembersView = decideNewMembersView(localMemberView, membersToAsk);
+            MembersView newMembersView = decideNewMembersView(localMemberMap, membersToAsk);
             clusterServiceLock.lock();
             try {
                 if (!clusterService.isJoined()) {

@@ -31,17 +31,17 @@ import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.Clock;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-import static java.util.Collections.emptyList;
-import static java.util.Collections.unmodifiableList;
+import static com.hazelcast.internal.cluster.Versions.V3_10;
+import static java.util.Collections.emptyMap;
 
 public class MembersUpdateOp extends AbstractClusterOperation implements Versioned {
     /** The master cluster clock time. */
     long masterTime = Clock.currentTimeMillis();
     /** The updated member info collection. */
-    private List<MemberInfo> memberInfos;
+    private Map<MemberInfo, Integer> memberInfos;
     /** The UUID of the receiving member. */
     private String targetUuid;
     private boolean returnResponse;
@@ -49,14 +49,14 @@ public class MembersUpdateOp extends AbstractClusterOperation implements Version
     private int memberListVersion;
 
     public MembersUpdateOp() {
-        memberInfos = emptyList();
+        memberInfos = emptyMap();
     }
 
     public MembersUpdateOp(String targetUuid, MembersView membersView, long masterTime,
                            PartitionRuntimeState partitionRuntimeState, boolean returnResponse) {
         this.targetUuid = targetUuid;
         this.masterTime = masterTime;
-        this.memberInfos = membersView.getMembers();
+        this.memberInfos = membersView.getMemberJoinVersions();
         this.returnResponse = returnResponse;
         this.partitionRuntimeState = partitionRuntimeState;
         this.memberListVersion = membersView.getVersion();
@@ -79,7 +79,7 @@ public class MembersUpdateOp extends AbstractClusterOperation implements Version
     }
 
     final MembersView getMembersView() {
-        return new MembersView(getMemberListVersion(), unmodifiableList(memberInfos));
+        return new MembersView(getMemberListVersion(), memberInfos);
     }
 
     final Address getConnectionEndpointOrThisAddress() {
@@ -118,11 +118,13 @@ public class MembersUpdateOp extends AbstractClusterOperation implements Version
         targetUuid = in.readUTF();
         masterTime = in.readLong();
         int size = in.readInt();
-        memberInfos = new ArrayList<MemberInfo>(size);
+        memberInfos = new LinkedHashMap<MemberInfo, Integer>();
+        boolean readMemberJoinVersions = in.getVersion().isGreaterOrEqual(V3_10);
         while (size-- > 0) {
             MemberInfo memberInfo = new MemberInfo();
             memberInfo.readData(in);
-            memberInfos.add(memberInfo);
+            int memberJoinVersion = readMemberJoinVersions ? in.readInt() : 0;
+            memberInfos.put(memberInfo, memberJoinVersion);
         }
 
         partitionRuntimeState = in.readObject();
@@ -139,8 +141,13 @@ public class MembersUpdateOp extends AbstractClusterOperation implements Version
         out.writeUTF(targetUuid);
         out.writeLong(masterTime);
         out.writeInt(memberInfos.size());
-        for (MemberInfo memberInfo : memberInfos) {
+        boolean writeMemberJoinVersions = out.getVersion().isGreaterOrEqual(V3_10);
+        for (Map.Entry<MemberInfo, Integer> e : memberInfos.entrySet()) {
+            MemberInfo memberInfo = e.getKey();
             memberInfo.writeData(out);
+            if (writeMemberJoinVersions) {
+                out.writeInt(e.getValue());
+            }
         }
         out.writeObject(partitionRuntimeState);
         out.writeBoolean(returnResponse);
@@ -158,7 +165,7 @@ public class MembersUpdateOp extends AbstractClusterOperation implements Version
 
         sb.append(", targetUuid=").append(targetUuid);
         sb.append(", members=");
-        for (MemberInfo address : memberInfos) {
+        for (MemberInfo address : memberInfos.keySet()) {
             sb.append(address).append(' ');
         }
     }

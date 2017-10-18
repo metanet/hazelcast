@@ -53,7 +53,9 @@ import java.io.IOException;
 import java.nio.channels.ServerSocketChannel;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -521,9 +523,11 @@ public class MembershipUpdateTest extends HazelcastTestSupport {
         Node node = getNode(hz1);
         ClusterServiceImpl clusterService = node.getClusterService();
         MembershipManager membershipManager = clusterService.getMembershipManager();
-        
-        MembersView membersView = MembersView.createNew(membershipManager.getMemberListVersion() + 1, 
-                asList(membershipManager.getMember(getAddress(hz1)), membershipManager.getMember(getAddress(hz2))));
+
+        Map<MemberImpl, Integer> joinVersions = new HashMap<MemberImpl, Integer>();
+        joinVersions.put(membershipManager.getMember(getAddress(hz1)), membershipManager.getMemberListVersion());
+        joinVersions.put(membershipManager.getMember(getAddress(hz2)), membershipManager.getMemberListVersion() - 1);
+        MembersView membersView = MembersView.createNew(membershipManager.getMemberListVersion() + 1, joinVersions);
 
         Operation memberUpdate = new MembersUpdateOp(membershipManager.getMember(getAddress(hz3)).getUuid(),
                 membersView, clusterService.getClusterTime(), null, true);

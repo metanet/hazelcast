@@ -138,6 +138,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSize(3, master, slave2);
         assertClusterSizeEventually(3, slave1);
 
+        int masterVersion = getMemberListVersion(master);
+
         if (terminate) {
             terminateInstance(master);
         } else {
@@ -148,6 +150,9 @@ public class MembershipFailureTest extends HazelcastTestSupport {
 
         assertMasterAddress(getAddress(slave1), slave1, slave2);
         assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
+
+        int newMasterVersion = getMemberListVersion(slave1);
+        assertEquals(masterVersion + getMastershipClaimVersionJump(), newMasterVersion);
     }
 
     @Test
@@ -169,6 +174,8 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSize(4, master, slave2);
         assertClusterSizeEventually(4, masterCandidate, slave1);
 
+        int masterVersion = getMemberListVersion(master);
+
         if (simultaneousCrash) {
             terminateInstanceAsync(master);
             terminateInstanceAsync(masterCandidate);
@@ -181,6 +188,9 @@ public class MembershipFailureTest extends HazelcastTestSupport {
 
         assertMasterAddress(getAddress(slave1), slave1, slave2);
         assertMemberViewsAreSame(getMemberMap(slave1), getMemberMap(slave2));
+
+        int newMasterVersion = getMemberListVersion(slave1);
+        assertEquals(masterVersion + getMastershipClaimVersionJump() * 2, newMasterVersion);
     }
 
     private static void terminateInstanceAsync(final HazelcastInstance master) {
@@ -688,6 +698,15 @@ public class MembershipFailureTest extends HazelcastTestSupport {
             }.start();
         }
         assertTrue(latch.await(2, TimeUnit.MINUTES));
+    }
+
+    private int getMemberListVersion(HazelcastInstance instance) {
+        ClusterServiceImpl clusterService = (ClusterServiceImpl) getClusterService(instance);
+        return clusterService.getMembershipManager().getMemberListVersion();
+    }
+
+    private int getMastershipClaimVersionJump() {
+        return Integer.valueOf(GroupProperty.MASTERSHIP_CLAIM_VERSION_JUMP.getDefaultValue());
     }
 
     HazelcastInstance newHazelcastInstance() {

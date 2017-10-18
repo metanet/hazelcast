@@ -195,14 +195,14 @@ public abstract class AbstractMember implements Member {
     }
 
     @Override
-    public int hashCode() {
+    public final int hashCode() {
         int result = address.hashCode();
         result = 31 * result + uuid.hashCode();
         return result;
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public final boolean equals(Object obj) {
         if (this == obj) {
             return true;
         }
