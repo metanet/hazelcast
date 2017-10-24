@@ -31,7 +31,7 @@ import com.hazelcast.instance.LifecycleServiceImpl;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.instance.Node;
 import com.hazelcast.internal.cluster.ClusterService;
-import com.hazelcast.internal.cluster.MemberInfo;
+import com.hazelcast.internal.cluster.impl.SplitBrainJoinMessage.SplitBrainMergeCheckResult;
 import com.hazelcast.internal.cluster.impl.operations.ExplicitSuspicionOp;
 import com.hazelcast.internal.cluster.impl.operations.OnJoinOp;
 import com.hazelcast.internal.cluster.impl.operations.PromoteLiteMemberOp;
@@ -69,7 +69,6 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -77,7 +76,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static com.hazelcast.cluster.memberselector.MemberSelectors.DATA_MEMBER_SELECTOR;
 import static com.hazelcast.cluster.memberselector.MemberSelectors.NON_LOCAL_MEMBER_SELECTOR;
+import static com.hazelcast.instance.MemberImpl.NA_MEMBER_LIST_JOIN_VERSION;
+import static com.hazelcast.internal.cluster.Versions.V3_10;
+import static com.hazelcast.internal.cluster.impl.SplitBrainJoinMessage.SplitBrainMergeCheckResult.CANNOT_MERGE;
+import static com.hazelcast.internal.cluster.impl.SplitBrainJoinMessage.SplitBrainMergeCheckResult.REMOTE_NODE_SHOULD_MERGE;
+import static com.hazelcast.internal.cluster.impl.SplitBrainJoinMessage.SplitBrainMergeCheckResult.THIS_NODE_SHOULD_MERGE;
 import static com.hazelcast.spi.ExecutionService.SYSTEM_EXECUTOR;
 import static com.hazelcast.util.Preconditions.checkFalse;
 import static com.hazelcast.util.Preconditions.checkNotNull;
@@ -241,12 +246,6 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
     }
 
     public MembersView handleMastershipClaim(Address candidateAddress, String candidateUuid) {
-        // verify candidateAddress is not me DONE
-        // verify I am not master DONE
-        // verify candidateAddress is a valid member with its uuid
-        // verify I suspect everyone before the candidateAddress
-        // verify candidateAddress is not suspected.
-
         checkNotNull(candidateAddress);
         checkNotNull(candidateUuid);
         checkFalse(getThisAddress().equals(candidateAddress), "cannot accept my own mastership claim!");
@@ -277,8 +276,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             }
 
             setMasterAddress(masterCandidate.getAddress());
-            Set<MemberImpl> members = memberMap.tailMemberSet(masterCandidate, true);
-            MembersView response = MembersView.createNew(memberMap.getVersion(), members);
+
+            MembersView response = memberMap.toTailMembersView(masterCandidate, true);
 
             logger.warning("Mastership of " + candidateAddress + " is accepted. Response: " + response);
 
@@ -330,7 +329,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         boolean liteMember = localMember.isLiteMember();
         Map<String, Object> memberAttributes = localMember.getAttributes();
         localMember = new MemberImpl(address, localMember.getVersion(), true, newUuid, memberAttributes,
-                liteMember, node.hazelcastInstance);
+                liteMember, localMember.getMemberListJoinVersion(), node.hazelcastInstance);
         node.loggingService.setThisMember(localMember);
     }
 
@@ -338,7 +337,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         lock.lock();
         try {
             setMasterAddress(null);
-            setJoined(false);
+            setJoinedFlag(false);
         } finally {
             lock.unlock();
         }
@@ -385,7 +384,8 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             membershipManager.updateMembers(membersView);
             clusterHeartbeatManager.heartbeat();
 
-            setJoined(true);
+            int memberListJoinVersion = membersView.getMember(localMember.getAddress()).getMemberListJoinVersion();
+            setJoinedWithMemberListVersion(memberListJoinVersion);
 
             return true;
         } finally {
@@ -497,12 +497,162 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return true;
     }
 
-    private static Set<MemberInfo> createMemberInfoSet(Collection<MemberImpl> members) {
-        Set<MemberInfo> memberInfos = new HashSet<MemberInfo>();
-        for (MemberImpl member : members) {
-            memberInfos.add(new MemberInfo(member));
+    @SuppressWarnings({"checkstyle:returncount", "checkstyle:npathcomplexity"})
+    public SplitBrainMergeCheckResult shouldMerge(SplitBrainJoinMessage joinMessage) {
+        if (logger.isFineEnabled()) {
+            logger.fine("Checking if we should merge to: " + joinMessage);
         }
-        return memberInfos;
+
+        if (joinMessage == null) {
+            return CANNOT_MERGE;
+        }
+
+        if (!checkValidSplitBrainJoinMessage(joinMessage)) {
+            return CANNOT_MERGE;
+        }
+
+        if (!checkCompatibleSplitBrainJoinMessage(joinMessage)) {
+            return CANNOT_MERGE;
+        }
+
+        if (!checkMergeTargetIsNotMember(joinMessage)) {
+            return CANNOT_MERGE;
+        }
+
+        if (!checkClusterStateAllowsJoinBeforeMerge(joinMessage)) {
+            return CANNOT_MERGE;
+        }
+
+        if (!checkMembershipIntersectionSetEmpty(joinMessage)) {
+            return CANNOT_MERGE;
+        }
+
+        int targetDataMemberCount = joinMessage.getDataMemberCount();
+        int currentDataMemberCount = getSize(DATA_MEMBER_SELECTOR);
+
+        if (targetDataMemberCount > currentDataMemberCount) {
+            logger.info("We should merge to " + joinMessage.getAddress()
+                    + ", because their data member count is bigger than ours ["
+                    + (targetDataMemberCount + " > " + currentDataMemberCount) + ']');
+            return THIS_NODE_SHOULD_MERGE;
+        }
+
+        if (targetDataMemberCount < currentDataMemberCount) {
+            logger.info(joinMessage.getAddress() + " should merge to us "
+                    + ", because our data member count is bigger than theirs ["
+                    + (currentDataMemberCount + " > " + targetDataMemberCount) + ']');
+            return REMOTE_NODE_SHOULD_MERGE;
+        }
+
+        // targetDataMemberCount == currentDataMemberCount
+        if (shouldMergeTo(node.getThisAddress(), joinMessage.getAddress())) {
+            logger.info("We should merge to " + joinMessage.getAddress()
+                    + ", both have the same data member count: " + currentDataMemberCount);
+            return THIS_NODE_SHOULD_MERGE;
+        }
+
+        logger.info(joinMessage.getAddress() + " should merge to us "
+                + ", both have the same data member count: " + currentDataMemberCount);
+        return REMOTE_NODE_SHOULD_MERGE;
+    }
+
+    private boolean checkValidSplitBrainJoinMessage(SplitBrainJoinMessage joinMessage) {
+        try {
+            if (!clusterJoinManager.validateJoinMessage(joinMessage)) {
+                logger.fine("Cannot process split brain merge message from " + joinMessage.getAddress()
+                        + ", since join-message could not be validated.");
+                return false;
+            }
+        } catch (Exception e) {
+            logger.fine("failure during validating join message", e);
+            return false;
+        }
+        return true;
+    }
+
+    private boolean checkCompatibleSplitBrainJoinMessage(SplitBrainJoinMessage joinMessage) {
+        Version clusterVersion = getClusterVersion();
+        if (!clusterVersion.isEqualTo(joinMessage.getClusterVersion())) {
+            if (logger.isFineEnabled()) {
+                logger.fine("Should not merge to " + joinMessage.getAddress() + " because other cluster version is "
+                        + joinMessage.getClusterVersion() + " while this cluster version is "
+                        + clusterVersion);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private boolean checkMergeTargetIsNotMember(SplitBrainJoinMessage joinMessage) {
+        if (getMember(joinMessage.getAddress()) != null) {
+            if (logger.isFineEnabled()) {
+                logger.fine("Should not merge to " + joinMessage.getAddress()
+                        + ", because it is already member of this cluster.");
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private boolean checkClusterStateAllowsJoinBeforeMerge(SplitBrainJoinMessage joinMessage) {
+        ClusterState clusterState = getClusterState();
+        if (!clusterState.isJoinAllowed()) {
+            if (logger.isFineEnabled()) {
+                logger.fine("Should not merge to " + joinMessage.getAddress() + ", because this cluster is in "
+                        + clusterState + " state.");
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private boolean checkMembershipIntersectionSetEmpty(SplitBrainJoinMessage joinMessage) {
+        Collection<Address> targetMemberAddresses = joinMessage.getMemberAddresses();
+        Address joinMessageAddress = joinMessage.getAddress();
+        if (targetMemberAddresses.contains(node.getThisAddress())) {
+            // Join request is coming from master of the split and it thinks that I am its member.
+            // This is partial split case and we want to convert it to a full split.
+            // So it should remove me from its cluster.
+            MembersViewMetadata membersViewMetadata = new MembersViewMetadata(joinMessageAddress, joinMessage.getUuid(),
+                    joinMessageAddress, joinMessage.getMemberListVersion());
+            sendExplicitSuspicion(membersViewMetadata);
+            logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessageAddress
+                    + ", because it thinks this-node as its member.");
+            return false;
+        }
+
+        for (Address address : getMemberAddresses()) {
+            if (targetMemberAddresses.contains(address)) {
+                logger.info(node.getThisAddress() + " CANNOT merge to " + joinMessageAddress
+                        + ", because it thinks " + address + " as its member. "
+                        + "But " + address + " is member of this cluster.");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Determines whether this address should merge to target address and called when two sides are equal on all aspects.
+     * This is a pure function that must produce always the same output when called with the same parameters.
+     * This logic should not be changed, otherwise compatibility will be broken.
+     *
+     * @param thisAddress this address
+     * @param targetAddress target address
+     * @return true if this address should merge to target, false otherwise
+     */
+    private boolean shouldMergeTo(Address thisAddress, Address targetAddress) {
+        String thisAddressStr = "[" + thisAddress.getHost() + "]:" + thisAddress.getPort();
+        String targetAddressStr = "[" + targetAddress.getHost() + "]:" + targetAddress.getPort();
+
+        if (thisAddressStr.equals(targetAddressStr)) {
+            throw new IllegalArgumentException("Addresses should be different! This: "
+                    + thisAddress + ", Target: " + targetAddress);
+        }
+
+        // Since strings are guaranteed to be different, result will always be non-zero.
+        int result = thisAddressStr.compareTo(targetAddressStr);
+        return result > 0;
     }
 
     public void updateMemberAttribute(String uuid, MemberAttributeOperationType operationType, String key, Object value) {
@@ -700,8 +850,20 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
         return localMember.getUuid();
     }
 
+    void setJoinedWithMemberListVersion(int memberListJoinVersion) {
+        if (memberListJoinVersion != NA_MEMBER_LIST_JOIN_VERSION) {
+            localMember.setMemberListJoinVersion(memberListJoinVersion);
+            logger.fine("Local member list join version is set to " + memberListJoinVersion);
+        } else {
+            logger.warning("No member list join version is available during join. Local member list join version: "
+            + localMember.getMemberListJoinVersion());
+        }
+
+        setJoinedFlag(true);
+    }
+
     // should be called under lock
-    void setJoined(boolean val) {
+    private void setJoinedFlag(boolean val) {
         assert lock.isHeldByCurrentThread() : "Called without holding cluster service lock!";
         joined.set(val);
     }
@@ -899,6 +1061,23 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
                 options, partitionStateVersion, false);
     }
 
+    @Override
+    public int getMemberListJoinVersion() {
+        lock.lock();
+        try {
+            if (!isJoined()) {
+                throw new IllegalStateException("Member list join version is not available when not joined");
+            } else if (getClusterVersion().isLessThan(V3_10)) {
+                String msg = "Member list join version is not available with the cluster version less than 3.10";
+                throw new IllegalStateException(msg);
+            }
+
+            return localMember.getMemberListJoinVersion();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     void addMembersRemovedInNotJoinableState(Collection<MemberImpl> members) {
         membershipManager.addMembersRemovedInNotJoinableState(members);
     }
@@ -1009,7 +1188,7 @@ public class ClusterServiceImpl implements ClusterService, ConnectionListener, M
             }
 
             localMember = new MemberImpl(member.getAddress(), member.getVersion(), true, member.getUuid(),
-                    member.getAttributes(), false, node.hazelcastInstance);
+                    member.getAttributes(), false, member.getMemberListJoinVersion(), node.hazelcastInstance);
         } finally {
             lock.unlock();
         }

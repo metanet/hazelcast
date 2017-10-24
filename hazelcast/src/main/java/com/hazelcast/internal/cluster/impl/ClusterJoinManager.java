@@ -58,6 +58,7 @@ import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.Lock;
 
+import static com.hazelcast.internal.cluster.impl.MemberMap.SINGLETON_MEMBER_LIST_VERSION;
 import static com.hazelcast.util.Preconditions.checkNotNull;
 import static java.lang.String.format;
 
@@ -481,13 +482,12 @@ public class ClusterJoinManager {
 
             clusterService.getClusterClock().setClusterStartTime(Clock.currentTimeMillis());
             clusterService.setClusterId(UuidUtil.createClusterUuid());
-            clusterService.setJoined(true);
+            clusterService.setJoinedWithMemberListVersion(SINGLETON_MEMBER_LIST_VERSION);
 
             return true;
         } finally {
             clusterServiceLock.unlock();
         }
-
     }
 
     /**

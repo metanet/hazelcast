@@ -32,6 +32,10 @@ import java.util.Collection;
  */
 public class SplitBrainJoinMessage extends JoinMessage implements Versioned {
 
+    public enum SplitBrainMergeCheckResult {
+        CANNOT_MERGE, THIS_NODE_SHOULD_MERGE, REMOTE_NODE_SHOULD_MERGE
+    }
+
     private Version clusterVersion;
 
     private int memberListVersion;

@@ -40,7 +40,10 @@ import static com.hazelcast.util.Preconditions.isNotNull;
 @PrivateApi
 public final class MemberImpl extends AbstractMember implements Member, HazelcastInstanceAware, IdentifiedDataSerializable {
 
+    public static final int NA_MEMBER_LIST_JOIN_VERSION = -1;
+
     private boolean localMember;
+    private volatile int memberListJoinVersion = NA_MEMBER_LIST_JOIN_VERSION;
     private volatile HazelcastInstanceImpl instance;
     private volatile ILogger logger;
 
@@ -62,16 +65,19 @@ public final class MemberImpl extends AbstractMember implements Member, Hazelcas
     }
 
     public MemberImpl(Address address, MemberVersion version, boolean localMember, String uuid,
-            Map<String, Object> attributes, boolean liteMember, HazelcastInstanceImpl instance) {
+                      Map<String, Object> attributes, boolean liteMember,
+                      int memberListJoinVersion, HazelcastInstanceImpl instance) {
         super(address, version, uuid, attributes, liteMember);
         this.localMember = localMember;
         this.instance = instance;
+        this.memberListJoinVersion = memberListJoinVersion;
     }
 
     public MemberImpl(MemberImpl member) {
         super(member);
         this.localMember = member.localMember;
         this.instance = member.instance;
+        this.memberListJoinVersion = member.memberListJoinVersion;
     }
 
     @Override
@@ -187,6 +193,14 @@ public final class MemberImpl extends AbstractMember implements Member, Hazelcas
             MemberAttributeChangedOp op = new MemberAttributeChangedOp(REMOVE, key, null);
             invokeOnAllMembers(op);
         }
+    }
+
+    public void setMemberListJoinVersion(int memberListJoinVersion) {
+        this.memberListJoinVersion = memberListJoinVersion;
+    }
+
+    public int getMemberListJoinVersion() {
+        return memberListJoinVersion;
     }
 
     private void ensureLocalMember() {
