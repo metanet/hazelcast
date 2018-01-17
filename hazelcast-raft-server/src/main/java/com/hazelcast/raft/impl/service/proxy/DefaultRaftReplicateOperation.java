@@ -8,6 +8,9 @@ import com.hazelcast.raft.impl.service.RaftServiceDataSerializerHook;
 
 import java.io.IOException;
 
+/**
+ * The default implementation to
+ */
 public class DefaultRaftReplicateOperation extends RaftReplicateOperation {
 
     private RaftOperation raftOperation;

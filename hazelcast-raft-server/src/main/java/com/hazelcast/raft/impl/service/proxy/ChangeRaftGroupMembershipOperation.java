@@ -14,17 +14,13 @@ import java.io.IOException;
 
 public class ChangeRaftGroupMembershipOperation extends RaftReplicateOperation {
 
-    private static final int NAN_MEMBERS_COMMIT_INDEX = -1;
+    public static final int NAN_MEMBERS_COMMIT_INDEX = -1;
 
     private int membersCommitIndex;
     private RaftEndpoint endpoint;
     private MembershipChangeType changeType;
 
     public ChangeRaftGroupMembershipOperation() {
-    }
-
-    public ChangeRaftGroupMembershipOperation(RaftGroupId groupId, RaftEndpoint endpoint, MembershipChangeType changeType) {
-        this(groupId, NAN_MEMBERS_COMMIT_INDEX, endpoint, changeType);
     }
 
     public ChangeRaftGroupMembershipOperation(RaftGroupId groupId, int membersCommitIndex, RaftEndpoint endpoint,

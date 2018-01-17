@@ -13,16 +13,11 @@ import com.hazelcast.raft.impl.service.RaftGroupInfo.RaftGroupStatus;
 import com.hazelcast.raft.impl.service.operation.metadata.CreateRaftGroupOp;
 import com.hazelcast.raft.impl.service.operation.metadata.GetActiveEndpointsOp;
 import com.hazelcast.raft.impl.service.operation.metadata.GetRaftGroupOp;
-import com.hazelcast.raft.impl.service.proxy.DefaultRaftQueryOperation;
-import com.hazelcast.raft.impl.service.proxy.DefaultRaftReplicateOperation;
-import com.hazelcast.raft.impl.service.proxy.RaftQueryOperation;
-import com.hazelcast.raft.impl.service.proxy.RaftReplicateOperation;
 import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.util.ExceptionUtil;
-import com.hazelcast.util.function.Supplier;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -236,12 +231,8 @@ public class MetadataRaftClusterTest extends HazelcastRaftTestSupport {
         assertTrueEventually(new AssertTask() {
             @Override
             public void run() throws Exception {
-                Future<RaftGroupInfo> f = invocationService.query(new Supplier<RaftQueryOperation>() {
-                    @Override
-                    public RaftQueryOperation get() {
-                        return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetRaftGroupOp(groupId));
-                    }
-                }, QueryPolicy.LEADER_LOCAL);
+                Future<RaftGroupInfo> f = invocationService.query(METADATA_GROUP_ID, new GetRaftGroupOp(groupId),
+                        QueryPolicy.LEADER_LOCAL);
 
                 RaftGroupInfo groupInfo = f.get();
                 assertEquals(RaftGroupStatus.DESTROYED, groupInfo.status());
@@ -368,13 +359,7 @@ public class MetadataRaftClusterTest extends HazelcastRaftTestSupport {
         assertEquals(otherRaftGroupSize, endpoints.size());
 
         ICompletableFuture<RaftGroupId> f = raftService.getInvocationManager()
-                .invoke(new Supplier<RaftReplicateOperation>() {
-            @Override
-            public RaftReplicateOperation get() {
-                return new DefaultRaftReplicateOperation(METADATA_GROUP_ID,
-                        new CreateRaftGroupOp(RaftService.SERVICE_NAME, "test", endpoints));
-            }
-        });
+                .invoke(METADATA_GROUP_ID, new CreateRaftGroupOp(RaftService.SERVICE_NAME, "test", endpoints));
 
         final RaftGroupId groupId = f.get();
 
@@ -441,36 +426,20 @@ public class MetadataRaftClusterTest extends HazelcastRaftTestSupport {
 
         factory.getInstance(endpoint.getAddress()).shutdown();
 
-        ICompletableFuture<List<RaftEndpoint>> f1 = invocationService.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetActiveEndpointsOp());
-            }
-        }, QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<List<RaftEndpoint>> f1 = invocationService.query(METADATA_GROUP_ID, new GetActiveEndpointsOp(),
+                QueryPolicy.LEADER_LOCAL);
 
         List<RaftEndpoint> activeEndpoints = f1.get();
         assertThat(activeEndpoints, not(hasItem(endpoint)));
 
-        ICompletableFuture<RaftGroupInfo> f2 = invocationService.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetRaftGroupOp(METADATA_GROUP_ID));
-            }
-        }, QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<RaftGroupInfo> f2 = invocationService.query(METADATA_GROUP_ID, new GetRaftGroupOp(METADATA_GROUP_ID),
+                QueryPolicy.LEADER_LOCAL);
 
-        ICompletableFuture<RaftGroupInfo> f3 = invocationService.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetRaftGroupOp(groupId1));
-            }
-        }, QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<RaftGroupInfo> f3 = invocationService.query(METADATA_GROUP_ID, new GetRaftGroupOp(groupId1),
+                QueryPolicy.LEADER_LOCAL);
 
-        ICompletableFuture<RaftGroupInfo> f4 = invocationService.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetRaftGroupOp(groupId2));
-            }
-        }, QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<RaftGroupInfo> f4 = invocationService.query(METADATA_GROUP_ID, new GetRaftGroupOp(groupId2),
+                QueryPolicy.LEADER_LOCAL);
 
         RaftGroupInfo metadataGroup = f2.get();
         assertFalse(metadataGroup.containsMember(endpoint));
@@ -504,18 +473,10 @@ public class MetadataRaftClusterTest extends HazelcastRaftTestSupport {
     private RaftEndpoint findCommonEndpoint(HazelcastInstance instance, final RaftGroupId groupId1, final RaftGroupId groupId2)
             throws ExecutionException, InterruptedException {
         RaftInvocationManager invocationService = getRaftInvocationService(instance);
-        ICompletableFuture<RaftGroupInfo> f1 = invocationService.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetRaftGroupOp(groupId1));
-            }
-        }, QueryPolicy.LEADER_LOCAL);
-        ICompletableFuture<RaftGroupInfo> f2 = invocationService.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new GetRaftGroupOp(groupId2));
-            }
-        }, QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<RaftGroupInfo> f1 = invocationService.query(METADATA_GROUP_ID, new GetRaftGroupOp(groupId1),
+                QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<RaftGroupInfo> f2 = invocationService.query(METADATA_GROUP_ID, new GetRaftGroupOp(groupId2),
+                QueryPolicy.LEADER_LOCAL);
         RaftGroupInfo group1 = f1.get();
         RaftGroupInfo group2 = f2.get();
 

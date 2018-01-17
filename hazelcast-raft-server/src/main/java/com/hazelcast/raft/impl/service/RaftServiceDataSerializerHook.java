@@ -25,7 +25,7 @@ import com.hazelcast.raft.impl.service.operation.metadata.GetRaftGroupOp;
 import com.hazelcast.raft.impl.service.operation.metadata.TriggerDestroyRaftGroupOp;
 import com.hazelcast.raft.impl.service.operation.metadata.TriggerRemoveEndpointOp;
 import com.hazelcast.raft.impl.service.proxy.ChangeRaftGroupMembershipOperation;
-import com.hazelcast.raft.impl.service.proxy.DefaultRaftQueryOperation;
+import com.hazelcast.raft.impl.service.proxy.RaftQueryOperation;
 import com.hazelcast.raft.impl.service.proxy.DefaultRaftReplicateOperation;
 
 public final class RaftServiceDataSerializerHook implements DataSerializerHook {
@@ -110,7 +110,7 @@ public final class RaftServiceDataSerializerHook implements DataSerializerHook {
                     case LEAVING_RAFT_ENDPOINT_CTX:
                         return new LeavingRaftEndpointContext();
                     case DEFAULT_RAFT_GROUP_QUERY_OP:
-                        return new DefaultRaftQueryOperation();
+                        return new RaftQueryOperation();
                     case CHECK_REMOVED_ENDPOINT_OP:
                         return new CheckRemovedEndpointOp();
                     case DESTROY_RAFT_NODES_OP:

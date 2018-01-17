@@ -8,12 +8,9 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.exception.NotLeaderException;
 import com.hazelcast.raft.impl.RaftNodeImpl;
-import com.hazelcast.raft.impl.service.proxy.DefaultRaftQueryOperation;
-import com.hazelcast.raft.impl.service.proxy.RaftQueryOperation;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
-import com.hazelcast.util.function.Supplier;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -23,7 +20,6 @@ import java.util.concurrent.ExecutionException;
 import static com.hazelcast.raft.QueryPolicy.ANY_LOCAL;
 import static com.hazelcast.raft.QueryPolicy.LEADER_LOCAL;
 import static com.hazelcast.raft.impl.RaftUtil.getCommitIndex;
-import static com.hazelcast.raft.impl.service.RaftInvocationManagerTest.createRaftApplyOperationSupplier;
 import static com.hazelcast.raft.impl.service.RaftServiceUtil.getRaftNode;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -43,7 +39,7 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftInvocationManager invocationService = getRaftInvocationService(instances[0]);
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
-        ICompletableFuture<Object> future = invocationService.query(createRaftQueryOperationSupplier(groupId), LEADER_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
 
         assertNull(future.get());
 
@@ -60,7 +56,7 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftInvocationManager invocationService = getRaftInvocationService(instances[0]);
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
-        ICompletableFuture<Object> future = invocationService.query(createRaftQueryOperationSupplier(groupId), ANY_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), ANY_LOCAL);
 
         assertNull(future.get());
 
@@ -78,9 +74,9 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(createRaftApplyOperationSupplier(groupId, value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
 
-        ICompletableFuture<Object> future = invocationService.query(createRaftQueryOperationSupplier(groupId), LEADER_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
 
         assertEquals(value, future.get());
     }
@@ -95,9 +91,9 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(createRaftApplyOperationSupplier(groupId, value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
 
-        ICompletableFuture<Object> future = invocationService.query(createRaftQueryOperationSupplier(groupId), ANY_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), ANY_LOCAL);
         assertEquals(value, future.get());
     }
 
@@ -111,13 +107,13 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(createRaftApplyOperationSupplier(groupId, value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
 
         RaftNodeImpl leader = getLeaderNode(instances, groupId);
         HazelcastInstance followerInstance = getRandomFollowerInstance(instances, leader);
         RaftInvocationManager followerInvManager = getRaftInvocationService(followerInstance);
 
-        ICompletableFuture<Object> future = followerInvManager.queryOnLocal(getRaftQueryOperation(groupId), LEADER_LOCAL);
+        ICompletableFuture<Object> future = followerInvManager.queryOnLocal(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
         try {
             future.get();
         } catch (ExecutionException e) {
@@ -135,26 +131,13 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(createRaftApplyOperationSupplier(groupId, value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
 
         HazelcastInstance leaderInstance = getLeaderInstance(instances, groupId);
         RaftInvocationManager leaderInvManager = getRaftInvocationService(leaderInstance);
 
-        ICompletableFuture<Object> future = leaderInvManager.queryOnLocal(getRaftQueryOperation(groupId), LEADER_LOCAL);
+        ICompletableFuture<Object> future = leaderInvManager.queryOnLocal(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
         assertEquals(value, future.get());
-    }
-
-    private Supplier<RaftQueryOperation> createRaftQueryOperationSupplier(final RaftGroupId groupId) {
-        return new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return getRaftQueryOperation(groupId);
-            }
-        };
-    }
-
-    private DefaultRaftQueryOperation getRaftQueryOperation(RaftGroupId groupId) {
-        return new DefaultRaftQueryOperation(groupId, new RaftTestQueryOperation());
     }
 
     @Override

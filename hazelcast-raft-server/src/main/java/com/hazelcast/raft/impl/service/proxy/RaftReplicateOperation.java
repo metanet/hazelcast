@@ -21,8 +21,7 @@ import com.hazelcast.spi.impl.AllowedDuringPassiveState;
 import java.io.IOException;
 
 /**
- * TODO: Javadoc Pending...
- *
+ * The base class that replicates the given {@link RaftOperation} to the target raft group
  */
 public abstract class RaftReplicateOperation extends Operation implements IdentifiedDataSerializable, AllowedDuringPassiveState {
 
@@ -70,11 +69,11 @@ public abstract class RaftReplicateOperation extends Operation implements Identi
         return raftNode.replicate(op);
     }
 
-    public RaftGroupId getRaftGroupId() {
+    protected abstract RaftOperation getRaftOperation();
+
+    public final RaftGroupId getRaftGroupId() {
         return raftGroupId;
     }
-
-    protected abstract RaftOperation getRaftOperation();
 
     @Override
     public final boolean returnsResponse() {

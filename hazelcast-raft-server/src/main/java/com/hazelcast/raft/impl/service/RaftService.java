@@ -24,17 +24,12 @@ import com.hazelcast.raft.impl.service.exception.CannotRemoveEndpointException;
 import com.hazelcast.raft.impl.service.operation.metadata.CheckRemovedEndpointOp;
 import com.hazelcast.raft.impl.service.operation.metadata.GetRaftGroupOp;
 import com.hazelcast.raft.impl.service.operation.metadata.TriggerRemoveEndpointOp;
-import com.hazelcast.raft.impl.service.proxy.DefaultRaftQueryOperation;
-import com.hazelcast.raft.impl.service.proxy.DefaultRaftReplicateOperation;
-import com.hazelcast.raft.impl.service.proxy.RaftQueryOperation;
-import com.hazelcast.raft.impl.service.proxy.RaftReplicateOperation;
 import com.hazelcast.spi.ConfigurableService;
 import com.hazelcast.spi.GracefulShutdownAwareService;
 import com.hazelcast.spi.ManagedService;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.util.ExceptionUtil;
-import com.hazelcast.util.function.Supplier;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -262,13 +257,8 @@ public class RaftService implements ManagedService, ConfigurableService<RaftConf
         RaftNode node = nodes.get(groupId);
         if (node == null && !destroyedGroupIds.contains(groupId)) {
             logger.fine("There is no RaftNode for " + groupId + ". Asking to the metadata group...");
-            ICompletableFuture<RaftGroupInfo> f = invocationManager.query(new Supplier<RaftQueryOperation>() {
-                @Override
-                public RaftQueryOperation get() {
-                    return new DefaultRaftQueryOperation(METADATA_GROUP_ID,
-                            new GetRaftGroupOp(groupId));
-                }
-            }, QueryPolicy.LEADER_LOCAL);
+            ICompletableFuture<RaftGroupInfo> f = invocationManager.query(METADATA_GROUP_ID, new GetRaftGroupOp(groupId),
+                    QueryPolicy.LEADER_LOCAL);
             f.andThen(new ExecutionCallback<RaftGroupInfo>() {
                 @Override
                 public void onResponse(RaftGroupInfo groupInfo) {
@@ -359,21 +349,12 @@ public class RaftService implements ManagedService, ConfigurableService<RaftConf
     }
 
     private ICompletableFuture<RaftGroupId> triggerRemoveEndpointAsync(final RaftEndpoint endpoint) {
-        return invocationManager.invoke(new Supplier<RaftReplicateOperation>() {
-            @Override
-            public RaftReplicateOperation get() {
-                return new DefaultRaftReplicateOperation(METADATA_GROUP_ID, new TriggerRemoveEndpointOp(endpoint));
-            }
-        });
+        return invocationManager.invoke(METADATA_GROUP_ID, new TriggerRemoveEndpointOp(endpoint));
     }
 
     private boolean isRemoved(final RaftEndpoint endpoint) {
-        ICompletableFuture<Boolean> f = invocationManager.query(new Supplier<RaftQueryOperation>() {
-            @Override
-            public RaftQueryOperation get() {
-                return new DefaultRaftQueryOperation(METADATA_GROUP_ID, new CheckRemovedEndpointOp(endpoint));
-            }
-        }, QueryPolicy.LEADER_LOCAL);
+        ICompletableFuture<Boolean> f = invocationManager.query(METADATA_GROUP_ID, new CheckRemovedEndpointOp(endpoint),
+                QueryPolicy.LEADER_LOCAL);
         try {
             return f.get();
         } catch (Exception e) {
