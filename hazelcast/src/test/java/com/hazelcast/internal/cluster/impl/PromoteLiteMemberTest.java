@@ -264,7 +264,7 @@ public class PromoteLiteMemberTest extends HazelcastTestSupport {
 
         assertClusterSizeEventually(3, hz2);
 
-        dropOperationsBetween(hz3, hz1, F_ID, singletonList(PROMOTE_LITE_MEMBER));
+        rejectOperationsBetween(hz3, hz1, F_ID, singletonList(PROMOTE_LITE_MEMBER));
         final Cluster cluster = hz3.getCluster();
         Future<Exception> future = spawn(new Callable<Exception>() {
             @Override

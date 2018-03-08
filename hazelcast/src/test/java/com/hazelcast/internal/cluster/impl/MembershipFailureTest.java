@@ -205,7 +205,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(4, masterCandidate, slave1);
 
         // drop FETCH_MEMBER_LIST_STATE packets to block mastership claim process
-        dropOperationsBetween(masterCandidate, slave1, F_ID, singletonList(FETCH_MEMBER_LIST_STATE));
+        rejectOperationsBetween(masterCandidate, slave1, F_ID, singletonList(FETCH_MEMBER_LIST_STATE));
 
         terminateInstance(master);
 
@@ -238,7 +238,7 @@ public class MembershipFailureTest extends HazelcastTestSupport {
         assertClusterSizeEventually(4, masterCandidate, slave1);
 
         // drop FETCH_MEMBER_LIST_STATE packets to block mastership claim process
-        dropOperationsBetween(masterCandidate, slave1, F_ID, singletonList(FETCH_MEMBER_LIST_STATE));
+        rejectOperationsBetween(masterCandidate, slave1, F_ID, singletonList(FETCH_MEMBER_LIST_STATE));
 
         terminateInstance(master);
 
