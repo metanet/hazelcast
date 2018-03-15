@@ -1,12 +1,6 @@
 package com.hazelcast.raft.impl.dto;
 
-import com.hazelcast.nio.ObjectDataInput;
-import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.raft.impl.RaftDataSerializerHook;
 import com.hazelcast.raft.impl.RaftEndpoint;
-
-import java.io.IOException;
 
 /**
  * Struct for PreVoteRequest RPC.
@@ -15,7 +9,7 @@ import java.io.IOException;
  *
  * @see VoteRequest
  */
-public class PreVoteRequest implements IdentifiedDataSerializable {
+public class PreVoteRequest {
 
     private RaftEndpoint candidate;
     private int nextTerm;
@@ -46,32 +40,6 @@ public class PreVoteRequest implements IdentifiedDataSerializable {
 
     public long lastLogIndex() {
         return lastLogIndex;
-    }
-
-    @Override
-    public int getFactoryId() {
-        return RaftDataSerializerHook.F_ID;
-    }
-
-    @Override
-    public int getId() {
-        return RaftDataSerializerHook.PRE_VOTE_REQUEST;
-    }
-
-    @Override
-    public void writeData(ObjectDataOutput out) throws IOException {
-        out.writeInt(nextTerm);
-        out.writeObject(candidate);
-        out.writeInt(lastLogTerm);
-        out.writeLong(lastLogIndex);
-    }
-
-    @Override
-    public void readData(ObjectDataInput in) throws IOException {
-        nextTerm = in.readInt();
-        candidate = in.readObject();
-        lastLogTerm = in.readInt();
-        lastLogIndex = in.readLong();
     }
 
     @Override

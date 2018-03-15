@@ -1,12 +1,6 @@
 package com.hazelcast.raft.impl.dto;
 
-import com.hazelcast.nio.ObjectDataInput;
-import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.raft.impl.RaftDataSerializerHook;
 import com.hazelcast.raft.impl.RaftEndpoint;
-
-import java.io.IOException;
 
 /**
  * Struct for failure response to AppendEntries RPC.
@@ -17,7 +11,7 @@ import java.io.IOException;
  * @see AppendRequest
  * @see AppendSuccessResponse
  */
-public class AppendFailureResponse implements IdentifiedDataSerializable {
+public class AppendFailureResponse {
 
     private RaftEndpoint follower;
     private int term;
@@ -42,30 +36,6 @@ public class AppendFailureResponse implements IdentifiedDataSerializable {
 
     public long expectedNextIndex() {
         return expectedNextIndex;
-    }
-
-    @Override
-    public int getFactoryId() {
-        return RaftDataSerializerHook.F_ID;
-    }
-
-    @Override
-    public int getId() {
-        return RaftDataSerializerHook.APPEND_FAILURE_RESPONSE;
-    }
-
-    @Override
-    public void writeData(ObjectDataOutput out) throws IOException {
-        out.writeInt(term);
-        out.writeObject(follower);
-        out.writeLong(expectedNextIndex);
-    }
-
-    @Override
-    public void readData(ObjectDataInput in) throws IOException {
-        term = in.readInt();
-        follower = in.readObject();
-        expectedNextIndex = in.readLong();
     }
 
     @Override

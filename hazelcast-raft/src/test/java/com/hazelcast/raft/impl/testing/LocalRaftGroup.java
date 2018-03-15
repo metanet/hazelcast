@@ -4,7 +4,6 @@ import com.hazelcast.raft.RaftConfig;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.SnapshotAwareService;
 import com.hazelcast.raft.impl.RaftEndpoint;
-import com.hazelcast.raft.impl.RaftGroupIdImpl;
 import com.hazelcast.raft.impl.RaftNodeImpl;
 import com.hazelcast.raft.impl.RaftUtil;
 import com.hazelcast.test.AssertTask;
@@ -51,6 +50,7 @@ public class LocalRaftGroup {
     public LocalRaftGroup(int size, RaftConfig raftConfig, String serviceName, Class<? extends SnapshotAwareService> serviceClazz) {
         endpoints = new RaftEndpoint[size];
         integrations = new LocalRaftIntegration[size];
+        groupId = new TestRaftGroupId("test");
         this.raftConfig = raftConfig;
         this.serviceName = serviceName;
         this.serviceClazz = serviceClazz;
@@ -62,7 +62,6 @@ public class LocalRaftGroup {
         }
 
         nodes = new RaftNodeImpl[size];
-        groupId = new RaftGroupIdImpl("test", 1);
         for (int i = 0; i < size; i++) {
             LocalRaftIntegration integration = integrations[i];
             nodes[i] = new RaftNodeImpl(serviceName, groupId, endpoints[i], asList(endpoints), raftConfig, integration);
@@ -70,7 +69,7 @@ public class LocalRaftGroup {
     }
 
     private LocalRaftIntegration createNewLocalRaftIntegration() {
-        return new LocalRaftIntegration(newRaftEndpoint(5000 + createdNodeCount), raftConfig, createServiceInstance());
+        return new LocalRaftIntegration(newRaftEndpoint(5000 + createdNodeCount), groupId, createServiceInstance());
     }
 
     private SnapshotAwareService createServiceInstance() {

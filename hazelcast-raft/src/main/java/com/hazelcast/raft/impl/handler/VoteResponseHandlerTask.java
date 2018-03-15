@@ -6,7 +6,7 @@ import com.hazelcast.raft.impl.RaftRole;
 import com.hazelcast.raft.impl.dto.VoteResponse;
 import com.hazelcast.raft.impl.log.LogEntry;
 import com.hazelcast.raft.impl.log.RaftLog;
-import com.hazelcast.raft.impl.operation.NopEntryOp;
+import com.hazelcast.raft.impl.log.NopEntry;
 import com.hazelcast.raft.impl.state.CandidateState;
 import com.hazelcast.raft.impl.state.RaftState;
 
@@ -73,7 +73,7 @@ public class VoteResponseHandlerTask extends AbstractResponseHandlerTask {
         if (raftNode.shouldAppendNopEntryOnLeaderElection()) {
             RaftState state = raftNode.state();
             RaftLog log = state.log();
-            log.appendEntries(new LogEntry(state.term(), log.lastLogOrSnapshotIndex() + 1, new NopEntryOp()));
+            log.appendEntries(new LogEntry(state.term(), log.lastLogOrSnapshotIndex() + 1, new NopEntry()));
         }
     }
 

@@ -1,13 +1,7 @@
 package com.hazelcast.raft.impl.dto;
 
-import com.hazelcast.nio.ObjectDataInput;
-import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.raft.impl.RaftDataSerializerHook;
 import com.hazelcast.raft.impl.RaftEndpoint;
 import com.hazelcast.raft.impl.log.SnapshotEntry;
-
-import java.io.IOException;
 
 /**
  * Struct for InstallSnapshot RPC.
@@ -17,7 +11,7 @@ import java.io.IOException;
  * <p>
  * Invoked by leader to send chunks of a snapshot to a follower. Leaders always send chunks in order.
  */
-public class InstallSnapshot implements IdentifiedDataSerializable {
+public class InstallSnapshot {
 
     private RaftEndpoint leader;
 
@@ -44,30 +38,6 @@ public class InstallSnapshot implements IdentifiedDataSerializable {
 
     public SnapshotEntry snapshot() {
         return snapshot;
-    }
-
-    @Override
-    public int getFactoryId() {
-        return RaftDataSerializerHook.F_ID;
-    }
-
-    @Override
-    public int getId() {
-        return RaftDataSerializerHook.INSTALL_SNAPSHOT;
-    }
-
-    @Override
-    public void writeData(ObjectDataOutput out) throws IOException {
-        out.writeObject(leader);
-        out.writeInt(term);
-        out.writeObject(snapshot);
-    }
-
-    @Override
-    public void readData(ObjectDataInput in) throws IOException {
-        leader = in.readObject();
-        term = in.readInt();
-        snapshot = in.readObject();
     }
 
     @Override

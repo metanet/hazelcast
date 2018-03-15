@@ -116,6 +116,9 @@ public final class SerializationConstants {
     public static final int JET_SERIALIZER_FIRST = -300;
     public static final int JET_SERIALIZER_LAST = -399;
 
+    public static final int RAFT_SERIALIZER_FIRST = -400;
+    public static final int RAFT_SERIALIZER_LAST = -499;
+
     private SerializationConstants() {
     }
 }

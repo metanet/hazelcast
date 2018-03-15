@@ -39,7 +39,7 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftInvocationManager invocationService = getRaftInvocationService(instances[0]);
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
-        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOp(), LEADER_LOCAL);
 
         assertNull(future.get());
 
@@ -56,7 +56,7 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftInvocationManager invocationService = getRaftInvocationService(instances[0]);
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
-        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), ANY_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOp(), ANY_LOCAL);
 
         assertNull(future.get());
 
@@ -74,9 +74,9 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOp(value)).get();
 
-        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOp(), LEADER_LOCAL);
 
         assertEquals(value, future.get());
     }
@@ -91,9 +91,9 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOp(value)).get();
 
-        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOperation(), ANY_LOCAL);
+        ICompletableFuture<Object> future = invocationService.query(groupId, new RaftTestQueryOp(), ANY_LOCAL);
         assertEquals(value, future.get());
     }
 
@@ -107,13 +107,13 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOp(value)).get();
 
         RaftNodeImpl leader = getLeaderNode(instances, groupId);
         HazelcastInstance followerInstance = getRandomFollowerInstance(instances, leader);
         RaftInvocationManager followerInvManager = getRaftInvocationService(followerInstance);
 
-        ICompletableFuture<Object> future = followerInvManager.queryOnLocal(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
+        ICompletableFuture<Object> future = followerInvManager.queryOnLocal(groupId, new RaftTestQueryOp(), LEADER_LOCAL);
         try {
             future.get();
         } catch (ExecutionException e) {
@@ -131,12 +131,12 @@ public class RaftInvocationManagerQueryTest extends HazelcastRaftTestSupport {
         RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         String value = "value";
-        invocationService.invoke(groupId, new RaftTestApplyOperation(value)).get();
+        invocationService.invoke(groupId, new RaftTestApplyOp(value)).get();
 
         HazelcastInstance leaderInstance = getLeaderInstance(instances, groupId);
         RaftInvocationManager leaderInvManager = getRaftInvocationService(leaderInstance);
 
-        ICompletableFuture<Object> future = leaderInvManager.queryOnLocal(groupId, new RaftTestQueryOperation(), LEADER_LOCAL);
+        ICompletableFuture<Object> future = leaderInvManager.queryOnLocal(groupId, new RaftTestQueryOp(), LEADER_LOCAL);
         assertEquals(value, future.get());
     }
 

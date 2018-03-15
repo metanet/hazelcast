@@ -28,9 +28,8 @@ import com.hazelcast.raft.impl.handler.VoteResponseHandlerTask;
 import com.hazelcast.raft.impl.log.LogEntry;
 import com.hazelcast.raft.impl.log.RaftLog;
 import com.hazelcast.raft.impl.log.SnapshotEntry;
-import com.hazelcast.raft.impl.operation.ApplyRaftGroupMembersOp;
-import com.hazelcast.raft.impl.operation.RestoreSnapshotOp;
-import com.hazelcast.raft.impl.operation.TakeSnapshotOp;
+import com.hazelcast.raft.impl.command.ApplyRaftGroupMembersCommand;
+import com.hazelcast.raft.impl.log.NopEntry;
 import com.hazelcast.raft.impl.state.LeaderState;
 import com.hazelcast.raft.impl.state.RaftState;
 import com.hazelcast.raft.impl.task.MembershipChangeTask;
@@ -38,9 +37,8 @@ import com.hazelcast.raft.impl.task.PreVoteTask;
 import com.hazelcast.raft.impl.task.QueryTask;
 import com.hazelcast.raft.impl.task.ReplicateTask;
 import com.hazelcast.raft.impl.util.SimpleCompletableFuture;
-import com.hazelcast.raft.operation.RaftCommandOperation;
-import com.hazelcast.raft.operation.RaftOperation;
-import com.hazelcast.raft.operation.TerminateRaftGroupOp;
+import com.hazelcast.raft.command.RaftCommand;
+import com.hazelcast.raft.command.TerminateRaftGroupCommand;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.RandomPicker;
 import com.hazelcast.util.collection.Long2ObjectHashMap;
@@ -203,7 +201,7 @@ public class RaftNodeImpl implements RaftNode {
     }
 
     @Override
-    public ICompletableFuture replicate(RaftOperation operation) {
+    public ICompletableFuture replicate(Object operation) {
         SimpleCompletableFuture resultFuture = raftIntegration.newCompletableFuture();
         raftIntegration.execute(new ReplicateTask(this, operation, resultFuture));
         return resultFuture;
@@ -218,14 +216,14 @@ public class RaftNodeImpl implements RaftNode {
 
     @Override
     public ICompletableFuture replicateMembershipChange(RaftEndpoint member, MembershipChangeType change,
-            long groupMembersCommitIndex) {
+                                                        long groupMembersCommitIndex) {
         SimpleCompletableFuture resultFuture = raftIntegration.newCompletableFuture();
         raftIntegration.execute(new MembershipChangeTask(this, resultFuture, member, change, groupMembersCommitIndex));
         return resultFuture;
     }
 
     @Override
-    public ICompletableFuture query(RaftOperation operation, QueryPolicy queryPolicy) {
+    public ICompletableFuture query(Object operation, QueryPolicy queryPolicy) {
         SimpleCompletableFuture resultFuture = raftIntegration.newCompletableFuture();
         raftIntegration.execute(new QueryTask(this, operation, queryPolicy, resultFuture));
         return resultFuture;
@@ -280,12 +278,12 @@ public class RaftNodeImpl implements RaftNode {
      * <li>Node is terminating, terminated or stepped down. See {@link RaftNodeStatus}.</li>
      * <li>Raft log contains max allowed uncommitted entry count.
      * See {@link RaftConfig#uncommittedEntryCountToRejectNewAppends}.</li>
-     * <li>The operation is a {@link RaftCommandOperation} and there's an ongoing membership change in group.</li>
+     * <li>The operation is a {@link RaftCommand} and there's an ongoing membership change in group.</li>
      * <li>The operation is a membership change operation and there's no committed entry in this term yet.
      * See {@link #shouldAppendNopEntryOnLeaderElection()}.</li>
      * </ul>
      */
-    public boolean canReplicateNewEntry(RaftOperation operation) {
+    public boolean canReplicateNewEntry(Object operation) {
         if (isTerminatedOrSteppedDown()) {
             return false;
         }
@@ -297,13 +295,13 @@ public class RaftNodeImpl implements RaftNode {
             return false;
         }
 
-        if (status == RaftNodeStatus.TERMINATING) {
+        if (status == TERMINATING) {
             return false;
         } else if (status == CHANGING_MEMBERSHIP) {
-            return !(operation instanceof RaftCommandOperation);
+            return !(operation instanceof RaftCommand);
         }
 
-        if (operation instanceof ApplyRaftGroupMembersOp) {
+        if (operation instanceof ApplyRaftGroupMembersCommand) {
             // the leader must have committed an entry in its term to make a membership change
             // https://groups.google.com/forum/#!msg/raft-dev/t4xj6dJTP6E/d2D9LrWRza8J
 
@@ -461,7 +459,7 @@ public class RaftNodeImpl implements RaftNode {
         boolean found = false;
         for (int i = 0; i < entries.length; i++) {
             LogEntry entry = entries[i];
-            if (entry.operation() instanceof ApplyRaftGroupMembersOp) {
+            if (entry.operation() instanceof ApplyRaftGroupMembersCommand) {
                 if (found) {
                     trim = i;
                     break;
@@ -479,13 +477,13 @@ public class RaftNodeImpl implements RaftNode {
     }
 
     /**
-     * Processes committed log entries between {@code lastApplied} and {@code commitIndex}, if there's any available.
-     * If new entries are processed, {@link RaftState}'s {@code lastApplied} field is updated.
+     * Applies committed log entries between {@code lastApplied} and {@code commitIndex}, if there's any available.
+     * If new entries are applied, {@link RaftState}'s {@code lastApplied} field is updated.
      *
      * @see RaftState#lastApplied()
      * @see RaftState#commitIndex()
      */
-    public void processLogEntries() {
+    public void applyLogEntries() {
         // Reject logs we've applied already
         long commitIndex = state.commitIndex();
         long lastApplied = state.lastApplied();
@@ -507,7 +505,7 @@ public class RaftNodeImpl implements RaftNode {
                 throw new AssertionError(msg);
             }
 
-            processLog(entry);
+            applyLogEntry(entry);
 
             // Update the lastApplied index
             state.lastApplied(idx);
@@ -518,20 +516,20 @@ public class RaftNodeImpl implements RaftNode {
     }
 
     /**
-     * Process the log entry by executing operation attached and set execution result to
+     * Applies the log entry by executing operation attached and set execution result to
      * the related future if any available.
      */
-    private void processLog(LogEntry entry) {
+    private void applyLogEntry(LogEntry entry) {
         if (logger.isFineEnabled()) {
             logger.fine("Processing " + entry);
         }
 
         Object response = null;
-        RaftOperation operation = entry.operation();
-        if (operation instanceof TerminateRaftGroupOp) {
+        Object operation = entry.operation();
+        if (operation instanceof TerminateRaftGroupCommand) {
             assert status == TERMINATING;
             setStatus(TERMINATED);
-        } else if (operation instanceof ApplyRaftGroupMembersOp) {
+        } else if (operation instanceof ApplyRaftGroupMembersCommand) {
             assert status == CHANGING_MEMBERSHIP : "STATUS: " + status;
             state.commitGroupMembers();
             if (state.members().contains(localEndpoint)) {
@@ -540,7 +538,7 @@ public class RaftNodeImpl implements RaftNode {
                 setStatus(STEPPED_DOWN);
             }
             response = entry.index();
-        } else {
+        } else if (!(operation instanceof NopEntry)) {
             response = raftIntegration.runOperation(operation, entry.index());
         }
 
@@ -566,7 +564,7 @@ public class RaftNodeImpl implements RaftNode {
      * Executes query operation sets execution result to the future. If there's no commit in Raft log yet,
      * then {@link CannotRunLocalQueryException} is set as result.
      */
-    public void runQueryOperation(RaftOperation operation, SimpleCompletableFuture resultFuture) {
+    public void runQueryOperation(Object operation, SimpleCompletableFuture resultFuture) {
         long commitIndex = state.commitIndex();
         Object result = (commitIndex > 0) ? raftIntegration.runOperation(operation, commitIndex)
                 : new CannotRunLocalQueryException(state.leader());
@@ -657,15 +655,15 @@ public class RaftNodeImpl implements RaftNode {
         }
 
         RaftLog log = state.log();
-        Object snapshot = raftIntegration.runOperation(new TakeSnapshotOp(serviceName, state.groupId()), commitIndex);
+        Object snapshot = raftIntegration.takeSnapshot(commitIndex);
         if (snapshot instanceof Throwable) {
             Throwable t = (Throwable) snapshot;
             logger.severe("Could not take snapshot from service '" + serviceName + "', commit index: " + commitIndex, t);
             return;
         }
-        RaftOperation snapshotOp = new RestoreSnapshotOp(serviceName, state.groupId(), commitIndex, snapshot);
+
         LogEntry committedEntry = log.getLogEntry(commitIndex);
-        SnapshotEntry snapshotEntry = new SnapshotEntry(committedEntry.term(), commitIndex, snapshotOp,
+        SnapshotEntry snapshotEntry = new SnapshotEntry(committedEntry.term(), commitIndex, snapshot,
                 state.membersLogIndex(), state.members());
         log.setSnapshot(snapshotEntry);
 
@@ -721,7 +719,7 @@ public class RaftNodeImpl implements RaftNode {
                 .append("} [");
 
         for (RaftEndpoint endpoint : state.members()) {
-            sb.append("\n\t").append(endpoint.getAddress()).append(" - ").append(endpoint.getUid());
+            sb.append("\n\t").append(endpoint);
             if (localEndpoint.equals(endpoint)) {
                 sb.append(" - ").append(state.role()).append(" this");
             } else if (endpoint.equals(state.leader())) {

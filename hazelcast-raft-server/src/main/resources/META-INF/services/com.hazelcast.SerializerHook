@@ -1,0 +1,13 @@
+com.hazelcast.raft.impl.serialization.AppendFailureResponseHook
+com.hazelcast.raft.impl.serialization.AppendRequestHook
+com.hazelcast.raft.impl.serialization.AppendSuccessResponseHook
+com.hazelcast.raft.impl.serialization.ApplyRaftGroupMembersCommandHook
+com.hazelcast.raft.impl.serialization.InstallSnapshotHook
+com.hazelcast.raft.impl.serialization.LogEntryHook
+com.hazelcast.raft.impl.serialization.NopEntryHook
+com.hazelcast.raft.impl.serialization.PreVoteRequestHook
+com.hazelcast.raft.impl.serialization.PreVoteResponseHook
+com.hazelcast.raft.impl.serialization.SnapshotEntryHook
+com.hazelcast.raft.impl.serialization.TerminateRaftGroupCommandHook
+com.hazelcast.raft.impl.serialization.VoteRequestHook
+com.hazelcast.raft.impl.serialization.VoteResponseHook

@@ -1,12 +1,6 @@
 package com.hazelcast.raft.impl.dto;
 
-import com.hazelcast.nio.ObjectDataInput;
-import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.raft.impl.RaftDataSerializerHook;
 import com.hazelcast.raft.impl.RaftEndpoint;
-
-import java.io.IOException;
 
 /**
  * Struct for response to VoteRequest RPC.
@@ -16,7 +10,7 @@ import java.io.IOException;
  *
  * @see VoteRequest
  */
-public class VoteResponse implements IdentifiedDataSerializable {
+public class VoteResponse {
 
     private RaftEndpoint voter;
     private int term;
@@ -41,30 +35,6 @@ public class VoteResponse implements IdentifiedDataSerializable {
 
     public boolean granted() {
         return granted;
-    }
-
-    @Override
-    public int getFactoryId() {
-        return RaftDataSerializerHook.F_ID;
-    }
-
-    @Override
-    public int getId() {
-        return RaftDataSerializerHook.VOTE_RESPONSE;
-    }
-
-    @Override
-    public void writeData(ObjectDataOutput out) throws IOException {
-        out.writeInt(term);
-        out.writeBoolean(granted);
-        out.writeObject(voter);
-    }
-
-    @Override
-    public void readData(ObjectDataInput in) throws IOException {
-        term = in.readInt();
-        granted = in.readBoolean();
-        voter = in.readObject();
     }
 
     @Override
