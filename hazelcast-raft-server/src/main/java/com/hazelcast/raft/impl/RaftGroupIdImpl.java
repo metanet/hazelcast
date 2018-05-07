@@ -7,6 +7,7 @@ import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.RaftGroupId;
+import com.hazelcast.raft.impl.service.RaftServiceDataSerializerHook;
 
 import java.io.IOException;
 
@@ -51,12 +52,12 @@ public final class RaftGroupIdImpl implements RaftGroupId, IdentifiedDataSeriali
 
     @Override
     public int getFactoryId() {
-        return RaftDataSerializerHook.F_ID;
+        return RaftServiceDataSerializerHook.F_ID;
     }
 
     @Override
     public int getId() {
-        return RaftDataSerializerHook.GROUP_ID;
+        return RaftServiceDataSerializerHook.GROUP_ID;
     }
 
     @Override

@@ -7,7 +7,7 @@ import com.hazelcast.nio.Address;
 import com.hazelcast.raft.RaftConfig;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.RaftMember;
-import com.hazelcast.raft.impl.RaftEndpoint;
+import com.hazelcast.raft.impl.RaftEndpointImpl;
 import com.hazelcast.raft.impl.RaftNodeImpl;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.test.AssertTask;
@@ -55,7 +55,7 @@ public abstract class HazelcastRaftTestSupport extends HazelcastTestSupport {
     }
 
     protected HazelcastInstance getRandomFollowerInstance(HazelcastInstance[] instances, RaftNodeImpl leader) {
-        Address address = leader.getLocalEndpoint().getAddress();
+        Address address = ((RaftEndpointImpl) leader.getLocalEndpoint()).getAddress();
         for (HazelcastInstance instance : instances) {
             if (!getAddress(instance).equals(address)) {
                 return instance;
@@ -140,7 +140,7 @@ public abstract class HazelcastRaftTestSupport extends HazelcastTestSupport {
 
         RaftNodeImpl raftNode = getRaftNode(instances[0], groupId);
         waitUntilLeaderElected(raftNode);
-        RaftEndpoint leaderEndpoint = getLeaderEndpoint(raftNode);
+        RaftEndpointImpl leaderEndpoint = (RaftEndpointImpl) getLeaderEndpoint(raftNode);
 
         for (HazelcastInstance instance : instances) {
             if (getAddress(instance).equals(leaderEndpoint.getAddress())) {

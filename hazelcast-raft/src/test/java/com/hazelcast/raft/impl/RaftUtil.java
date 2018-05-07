@@ -7,6 +7,7 @@ import com.hazelcast.raft.impl.service.RaftDataService;
 import com.hazelcast.raft.impl.state.LeaderState;
 import com.hazelcast.raft.impl.state.RaftGroupMembers;
 import com.hazelcast.raft.impl.testing.LocalRaftGroup;
+import com.hazelcast.raft.impl.testing.TestRaftEndpoint;
 import com.hazelcast.util.ExceptionUtil;
 
 import java.net.InetAddress;
@@ -158,8 +159,8 @@ public class RaftUtil {
         }
     }
 
-    public static RaftEndpoint newRaftEndpoint(int port) {
-        return new RaftEndpoint(randomString(), newAddress(port));
+    public static TestRaftEndpoint newRaftEndpoint(int port) {
+        return new TestRaftEndpoint(randomString(), port);
     }
 
     public static Address newAddress(int port) {

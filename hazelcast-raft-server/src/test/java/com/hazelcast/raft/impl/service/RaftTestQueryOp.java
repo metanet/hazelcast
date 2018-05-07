@@ -1,8 +1,8 @@
 package com.hazelcast.raft.impl.service;
 
-import com.hazelcast.raft.operation.RaftOperation;
+import com.hazelcast.raft.impl.RaftOp;
 
-public class RaftTestQueryOperation extends RaftOperation {
+public class RaftTestQueryOp extends RaftOp {
 
     @Override
     public Object doRun(long commitIndex) {

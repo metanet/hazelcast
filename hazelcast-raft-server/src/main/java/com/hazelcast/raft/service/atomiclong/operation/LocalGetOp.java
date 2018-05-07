@@ -7,13 +7,13 @@ import com.hazelcast.raft.service.atomiclong.RaftAtomicLong;
 /**
  * TODO: Javadoc Pending...
  */
-public class LocalGetOperation extends AbstractAtomicLongOperation {
+public class LocalGetOp extends AbstractAtomicLongOp {
 
-    public LocalGetOperation() {
+    public LocalGetOp() {
         super();
     }
 
-    public LocalGetOperation(RaftGroupId groupId) {
+    public LocalGetOp(RaftGroupId groupId) {
         super(groupId);
     }
 

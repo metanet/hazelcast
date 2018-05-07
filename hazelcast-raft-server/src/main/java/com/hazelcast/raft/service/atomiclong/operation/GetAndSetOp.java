@@ -11,38 +11,38 @@ import java.io.IOException;
 /**
  * TODO: Javadoc Pending...
  */
-public class GetAndAddOperation extends AbstractAtomicLongOperation {
+public class GetAndSetOp extends AbstractAtomicLongOp {
 
-    private long delta;
+    private long value;
 
-    public GetAndAddOperation() {
+    public GetAndSetOp() {
     }
 
-    public GetAndAddOperation(RaftGroupId groupId, long delta) {
+    public GetAndSetOp(RaftGroupId groupId, long value) {
         super(groupId);
-        this.delta = delta;
+        this.value = value;
     }
 
     @Override
     public Object doRun(long commitIndex) {
         RaftAtomicLong atomic = getAtomicLong();
-        return atomic.getAndAdd(delta, commitIndex);
+        return atomic.getAndSet(value, commitIndex);
     }
 
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
         super.writeInternal(out);
-        out.writeLong(delta);
+        out.writeLong(value);
     }
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
         super.readInternal(in);
-        delta = in.readLong();
+        value = in.readLong();
     }
 
     @Override
     public int getId() {
-        return AtomicLongDataSerializerHook.GET_AND_ADD_OP;
+        return AtomicLongDataSerializerHook.GET_AND_SET_OP;
     }
 }

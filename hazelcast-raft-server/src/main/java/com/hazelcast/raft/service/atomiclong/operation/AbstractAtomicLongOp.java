@@ -3,7 +3,7 @@ package com.hazelcast.raft.service.atomiclong.operation;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
-import com.hazelcast.raft.operation.RaftOperation;
+import com.hazelcast.raft.impl.RaftOp;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.service.atomiclong.AtomicLongDataSerializerHook;
 import com.hazelcast.raft.service.atomiclong.RaftAtomicLong;
@@ -14,14 +14,14 @@ import java.io.IOException;
 /**
  * TODO: Javadoc Pending...
  */
-public abstract class AbstractAtomicLongOperation extends RaftOperation implements IdentifiedDataSerializable {
+public abstract class AbstractAtomicLongOp extends RaftOp implements IdentifiedDataSerializable {
 
     private RaftGroupId groupId;
 
-    public AbstractAtomicLongOperation() {
+    public AbstractAtomicLongOp() {
     }
 
-    public AbstractAtomicLongOperation(RaftGroupId groupId) {
+    public AbstractAtomicLongOp(RaftGroupId groupId) {
         this.groupId = groupId;
     }
 

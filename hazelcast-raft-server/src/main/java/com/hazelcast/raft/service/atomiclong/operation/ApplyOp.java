@@ -1,5 +1,6 @@
 package com.hazelcast.raft.service.atomiclong.operation;
 
+import com.hazelcast.core.IFunction;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.raft.RaftGroupId;
@@ -8,41 +9,40 @@ import com.hazelcast.raft.service.atomiclong.RaftAtomicLong;
 
 import java.io.IOException;
 
-/**
- * TODO: Javadoc Pending...
- */
-public class AddAndGetOperation extends AbstractAtomicLongOperation {
+public class ApplyOp<R> extends AbstractAtomicLongOp {
 
-    private long delta;
+    private IFunction<Long, R> function;
 
-    public AddAndGetOperation() {
+    public ApplyOp() {
     }
 
-    public AddAndGetOperation(RaftGroupId groupId, long delta) {
+    public ApplyOp(RaftGroupId groupId, IFunction<Long, R> function) {
         super(groupId);
-        this.delta = delta;
+        this.function = function;
     }
 
     @Override
-    public Object doRun(long commitIndex) {
+    public int getId() {
+        return AtomicLongDataSerializerHook.APPLY_OP;
+    }
+
+    @Override
+    protected Object doRun(long commitIndex) {
         RaftAtomicLong atomic = getAtomicLong();
-        return atomic.addAndGet(delta, commitIndex);
+        long val = atomic.getAndAdd(0, commitIndex);
+        return function.apply(val);
     }
 
     @Override
     protected void writeInternal(ObjectDataOutput out) throws IOException {
         super.writeInternal(out);
-        out.writeLong(delta);
+        out.writeObject(function);
     }
 
     @Override
     protected void readInternal(ObjectDataInput in) throws IOException {
         super.readInternal(in);
-        delta = in.readLong();
+        function = in.readObject();
     }
 
-    @Override
-    public int getId() {
-        return AtomicLongDataSerializerHook.ADD_AND_GET_OP;
-    }
 }

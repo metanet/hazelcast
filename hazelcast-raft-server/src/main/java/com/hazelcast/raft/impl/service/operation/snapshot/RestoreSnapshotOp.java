@@ -1,22 +1,22 @@
-package com.hazelcast.raft.impl.operation;
+package com.hazelcast.raft.impl.service.operation.snapshot;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.SnapshotAwareService;
-import com.hazelcast.raft.impl.RaftDataSerializerHook;
-import com.hazelcast.raft.operation.RaftOperation;
+import com.hazelcast.raft.impl.service.RaftServiceDataSerializerHook;
+import com.hazelcast.raft.impl.RaftOp;
 
 import java.io.IOException;
 
 /**
- * {@code RaftOperation} to restore snapshot using related {@link SnapshotAwareService#takeSnapshot(RaftGroupId, long)}.
+ * {@code RaftOp} to restore snapshot using related {@link SnapshotAwareService#takeSnapshot(RaftGroupId, long)}.
  * <p>
  * This operation is appended to Raft log in {@link com.hazelcast.raft.impl.log.SnapshotEntry} and send to followers
  * via {@link com.hazelcast.raft.impl.dto.InstallSnapshot} RPC.
  */
-public class RestoreSnapshotOp extends RaftOperation implements IdentifiedDataSerializable {
+public class RestoreSnapshotOp extends RaftOp implements IdentifiedDataSerializable {
 
     private RaftGroupId groupId;
     private long commitIndex;
@@ -60,12 +60,12 @@ public class RestoreSnapshotOp extends RaftOperation implements IdentifiedDataSe
 
     @Override
     public int getFactoryId() {
-        return RaftDataSerializerHook.F_ID;
+        return RaftServiceDataSerializerHook.F_ID;
     }
 
     @Override
     public int getId() {
-        return RaftDataSerializerHook.RESTORE_SNAPSHOT_OP;
+        return RaftServiceDataSerializerHook.RESTORE_SNAPSHOT_OP;
     }
 
     @Override

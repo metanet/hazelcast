@@ -9,10 +9,10 @@ import com.hazelcast.raft.service.atomiclong.RaftAtomicLong;
 
 import java.io.IOException;
 
-import static com.hazelcast.raft.service.atomiclong.operation.AlterOperation.AlterResultType.BEFORE_VALUE;
+import static com.hazelcast.raft.service.atomiclong.operation.AlterOp.AlterResultType.BEFORE_VALUE;
 import static com.hazelcast.util.Preconditions.checkNotNull;
 
-public class AlterOperation extends AbstractAtomicLongOperation {
+public class AlterOp extends AbstractAtomicLongOp {
 
     public enum AlterResultType {
         BEFORE_VALUE,
@@ -23,10 +23,10 @@ public class AlterOperation extends AbstractAtomicLongOperation {
 
     private AlterResultType alterResultType;
 
-    public AlterOperation() {
+    public AlterOp() {
     }
 
-    public AlterOperation(RaftGroupId groupId, IFunction<Long, Long> function, AlterResultType alterResultType) {
+    public AlterOp(RaftGroupId groupId, IFunction<Long, Long> function, AlterResultType alterResultType) {
         super(groupId);
         checkNotNull(alterResultType);
         this.function = function;

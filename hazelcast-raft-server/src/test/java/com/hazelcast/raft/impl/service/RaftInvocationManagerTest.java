@@ -34,7 +34,7 @@ public class RaftInvocationManagerTest extends HazelcastRaftTestSupport {
         final RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
         for (int i = 0; i < 100; i++) {
-            invocationService.invoke(groupId, new RaftTestApplyOperation("val" + i)).get();
+            invocationService.invoke(groupId, new RaftTestApplyOp("val" + i)).get();
         }
     }
 
@@ -48,7 +48,7 @@ public class RaftInvocationManagerTest extends HazelcastRaftTestSupport {
         final RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", cpNodeCount);
 
         for (int i = 0; i < 100; i++) {
-            invocationService.invoke(groupId, new RaftTestApplyOperation("val" + i)).get();
+            invocationService.invoke(groupId, new RaftTestApplyOp("val" + i)).get();
         }
     }
 
@@ -61,7 +61,7 @@ public class RaftInvocationManagerTest extends HazelcastRaftTestSupport {
         final RaftInvocationManager invocationService = getRaftInvocationService(instances[0]);
         final RaftGroupId groupId = invocationService.createRaftGroup(RaftDataService.SERVICE_NAME, "test", nodeCount);
 
-        invocationService.invoke(groupId, new RaftTestApplyOperation("val")).get();
+        invocationService.invoke(groupId, new RaftTestApplyOp("val")).get();
 
         invocationService.triggerDestroyRaftGroup(groupId);
 
@@ -69,7 +69,7 @@ public class RaftInvocationManagerTest extends HazelcastRaftTestSupport {
             @Override
             public void run() throws Exception {
                 try {
-                    invocationService.invoke(groupId, new RaftTestApplyOperation("val")).get();
+                    invocationService.invoke(groupId, new RaftTestApplyOp("val")).get();
                     fail();
                 } catch (RaftGroupTerminatedException ignored) {
                 }

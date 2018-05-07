@@ -1,4 +1,4 @@
-package com.hazelcast.raft.operation;
+package com.hazelcast.raft.impl;
 
 import com.hazelcast.spi.Operation;
 
@@ -8,17 +8,17 @@ import static com.hazelcast.util.Preconditions.checkTrue;
  * Base operation class for operations to be replicated to and executed on
  * Raft group members.
  * <p>
- * {@code RaftOperation} is stored in Raft log by leader and replicated to followers.
+ * {@code RaftOp} is stored in Raft log by leader and replicated to followers.
  * When at least majority of the members append it to their logs,
- * the log entry which it belongs is committed and {@code RaftOperation} is executed eventually on each member.
+ * the log entry which it belongs is committed and {@code RaftOp} is executed eventually on each member.
  * <p>
- * Note that, implementations of {@code RaftOperation} must be deterministic.
+ * Note that, implementations of {@code RaftOp} must be deterministic.
  * They should perform the same action and produce the same result always,
  * independent of where and when they are executed.
  * <p>
  * {@link #doRun(long)} method must be implemented by subclasses.
  */
-public abstract class RaftOperation extends Operation {
+public abstract class RaftOp extends Operation {
 
     private static final int NA_COMMIT_INDEX = 0;
 
@@ -33,9 +33,9 @@ public abstract class RaftOperation extends Operation {
      * @param commitIndex commitIndex of the log entry containing this operation
      * @return result of the operation execution
      */
-    protected abstract Object doRun(long commitIndex);
+    protected abstract Object doRun(long commitIndex) throws Exception;
 
-    public final RaftOperation setCommitIndex(long commitIndex) {
+    public final RaftOp setCommitIndex(long commitIndex) {
         checkTrue(commitIndex > NA_COMMIT_INDEX, "Cannot set commit index:" + commitIndex);
         checkTrue(this.commitIndex == NA_COMMIT_INDEX,
                 "cannot set commit index: " + commitIndex + " because it is already set to: " + this.commitIndex

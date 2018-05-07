@@ -2,18 +2,18 @@ package com.hazelcast.raft.impl.service;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
-import com.hazelcast.raft.operation.RaftOperation;
+import com.hazelcast.raft.impl.RaftOp;
 
 import java.io.IOException;
 
-public class RaftTestApplyOperation extends RaftOperation {
+public class RaftTestApplyOp extends RaftOp {
 
     private Object val;
 
-    public RaftTestApplyOperation() {
+    public RaftTestApplyOp() {
     }
 
-    public RaftTestApplyOperation(Object val) {
+    public RaftTestApplyOp(Object val) {
         this.val = val;
     }
 
@@ -42,6 +42,6 @@ public class RaftTestApplyOperation extends RaftOperation {
 
     @Override
     public String toString() {
-        return "TestRaftAddOperation{" + "val=" + val + '}';
+        return "RaftTestApplyOperation{" + "val=" + val + '}';
     }
 }
