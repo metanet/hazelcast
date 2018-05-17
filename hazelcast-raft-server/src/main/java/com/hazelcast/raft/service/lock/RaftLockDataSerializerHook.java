@@ -20,6 +20,7 @@ import com.hazelcast.internal.serialization.DataSerializerHook;
 import com.hazelcast.internal.serialization.impl.FactoryIdHelper;
 import com.hazelcast.nio.serialization.DataSerializableFactory;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.raft.service.lock.RaftLock.LockOwner;
 import com.hazelcast.raft.service.lock.operation.GetLockCountOp;
 import com.hazelcast.raft.service.lock.operation.InvalidateWaitEntriesOp;
 import com.hazelcast.raft.service.lock.operation.LockOp;
@@ -36,11 +37,12 @@ public class RaftLockDataSerializerHook implements DataSerializerHook {
     public static final int RAFT_LOCK_SNAPSHOT = 2;
     public static final int LOCK_ENDPOINT = 3;
     public static final int LOCK_INVOCATION_KEY = 4;
-    public static final int LOCK_OP = 5;
-    public static final int TRY_LOCK_OP = 6;
-    public static final int UNLOCK_OP = 7;
-    public static final int INVALIDATE_WAI_ENTRIES_OP = 8;
-    public static final int GET_LOCK_COUNT_OP = 9;
+    public static final int LOCK_OWNER = 5;
+    public static final int LOCK_OP = 6;
+    public static final int TRY_LOCK_OP = 7;
+    public static final int UNLOCK_OP = 8;
+    public static final int INVALIDATE_WAI_ENTRIES_OP = 9;
+    public static final int GET_LOCK_COUNT_OP = 10;
 
 
     @Override
@@ -62,6 +64,8 @@ public class RaftLockDataSerializerHook implements DataSerializerHook {
                         return new LockEndpoint();
                     case LOCK_INVOCATION_KEY:
                         return new LockInvocationKey();
+                    case LOCK_OWNER:
+                        return new LockOwner();
                     case LOCK_OP:
                         return new LockOp();
                     case TRY_LOCK_OP:

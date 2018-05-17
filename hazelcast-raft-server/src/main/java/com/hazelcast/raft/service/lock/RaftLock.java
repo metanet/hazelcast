@@ -16,15 +16,20 @@
 
 package com.hazelcast.raft.service.lock;
 
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.RaftGroupId;
-import com.hazelcast.raft.impl.util.Tuple2;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -34,10 +39,7 @@ class RaftLock {
 
     private final RaftGroupId groupId;
     private final String name;
-
-    private LockEndpoint owner;
-    private int lockCount;
-    private UUID refUid;
+    private LockOwner owner;
     private LinkedList<LockInvocationKey> waiters = new LinkedList<LockInvocationKey>();
 
     RaftLock(RaftGroupId groupId, String name) {
@@ -49,25 +51,23 @@ class RaftLock {
         this.groupId = snapshot.getGroupId();
         this.name = snapshot.getName();
         this.owner = snapshot.getOwner();
-        this.lockCount = snapshot.getLockCount();
-        this.refUid = snapshot.getRefUid();
         this.waiters.addAll(snapshot.getWaiters());
     }
 
     boolean acquire(LockEndpoint endpoint, long commitIndex, UUID invocationUid, boolean wait) {
-        // if acquire() is being retried
-        if (invocationUid.equals(refUid)) {
+        if (owner == null) {
+            owner = new LockOwner(endpoint);
+        }
+
+        if (owner.endpoint.equals(endpoint)) {
+            owner.acquire(invocationUid);
             return true;
         }
-        if (owner == null || endpoint.equals(owner)) {
-            owner = endpoint;
-            lockCount++;
-            refUid = invocationUid;
-            return true;
-        }
+
         if (wait) {
-            waiters.offer(new LockInvocationKey(name, endpoint, commitIndex, invocationUid));
+            waiters.offer(new LockInvocationKey(name, endpoint, invocationUid, commitIndex));
         }
+
         return false;
     }
 
@@ -76,16 +76,10 @@ class RaftLock {
     }
 
     Collection<LockInvocationKey> release(LockEndpoint endpoint, int releaseCount, UUID invocationUid) {
-        // if release() is being retried
-        if (invocationUid.equals(refUid)) {
-            return Collections.emptyList();
-        }
+        if (owner != null && endpoint.equals(owner.endpoint)) {
+            owner.release(invocationUid, releaseCount);
 
-        if (endpoint.equals(owner)) {
-            refUid = invocationUid;
-
-            lockCount -= Math.min(releaseCount, lockCount);
-            if (lockCount > 0) {
+            if (owner.lockCount() > 0) {
                 return Collections.emptyList();
             }
 
@@ -104,17 +98,18 @@ class RaftLock {
                     }
                 }
 
-                owner = next.endpoint();
-                lockCount = 1;
+                owner = new LockOwner(next.endpoint());
+                for (LockInvocationKey key : entries) {
+                    owner.acquire(key.invocationUid());
+                }
+
                 return entries;
             } else {
                 owner = null;
             }
-
-            return Collections.emptyList();
         }
 
-        throw new IllegalMonitorStateException("Current thread is not owner of the lock!");
+        return Collections.emptyList();
     }
 
     List<Long> invalidateWaitEntries(long sessionId) {
@@ -144,16 +139,90 @@ class RaftLock {
         return false;
     }
 
-    Tuple2<LockEndpoint, Integer> lockCount() {
-        return Tuple2.of(owner, lockCount);
-    }
-
-    LockEndpoint owner() {
+    LockOwner owner() {
         return owner;
     }
 
     RaftLockSnapshot toSnapshot() {
-        return new RaftLockSnapshot(groupId, name, owner, lockCount, refUid, waiters);
+        return new RaftLockSnapshot(groupId, name, owner, waiters);
+    }
+
+    static class LockOwner implements IdentifiedDataSerializable {
+        private LockEndpoint endpoint;
+        private Set<UUID> acquireUids = new HashSet<UUID>();
+        private Set<UUID> releaseUids = new HashSet<UUID>();
+        private int releaseCount;
+
+        public LockOwner() {
+        }
+
+        LockOwner(LockEndpoint endpoint) {
+            this.endpoint = endpoint;
+        }
+
+        LockEndpoint endpoint() {
+            return endpoint;
+        }
+
+        private void acquire(UUID acquireUid) {
+            acquireUids.add(acquireUid);
+        }
+
+        private void release(UUID releaseUid, int releaseCount) {
+            if (releaseUids.add(releaseUid)) {
+                this.releaseCount = Math.min(acquireUids.size(), this.releaseCount + releaseCount);
+            }
+        }
+
+        int lockCount() {
+            return acquireUids.size() - releaseCount;
+        }
+
+        @Override
+        public int getFactoryId() {
+            return RaftLockDataSerializerHook.F_ID;
+        }
+
+        @Override
+        public int getId() {
+            return RaftLockDataSerializerHook.LOCK_OWNER;
+        }
+
+        @Override
+        public void writeData(ObjectDataOutput out)
+                throws IOException {
+            out.writeObject(endpoint);
+            out.writeInt(acquireUids.size());
+            for (UUID uuid : acquireUids) {
+                out.writeLong(uuid.getLeastSignificantBits());
+                out.writeLong(uuid.getMostSignificantBits());
+            }
+            out.writeInt(releaseUids.size());
+            for (UUID uuid : releaseUids) {
+                out.writeLong(uuid.getLeastSignificantBits());
+                out.writeLong(uuid.getMostSignificantBits());
+            }
+            out.writeInt(releaseCount);
+        }
+
+        @Override
+        public void readData(ObjectDataInput in)
+                throws IOException {
+            endpoint = in.readObject();
+            int acquireUidCount = in.readInt();
+            for (int i = 0; i < acquireUidCount; i++) {
+                long least = in.readLong();
+                long most = in.readLong();
+                acquireUids.add(new UUID(most, least));
+            }
+            int releaseUidCount = in.readInt();
+            for (int i = 0; i < releaseUidCount; i++) {
+                long least = in.readLong();
+                long most = in.readLong();
+                releaseUids.add(new UUID(most, least));
+            }
+            releaseCount = in.readInt();
+        }
     }
 
 }

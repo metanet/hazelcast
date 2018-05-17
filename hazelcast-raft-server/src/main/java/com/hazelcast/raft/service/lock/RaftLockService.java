@@ -202,7 +202,7 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
 
             if (timeoutMs > 0 && !acquired) {
                 if (timeoutMs <= TRY_LOCK_TIMEOUT_TASK_UPPER_BOUND_MILLIS) {
-                    LockInvocationKey key = new LockInvocationKey(name, endpoint, commitIndex, invocationUid);
+                    LockInvocationKey key = new LockInvocationKey(name, endpoint, invocationUid, commitIndex);
                     Runnable task = new InvalidateExpiredWaitEntriesTask(groupId, key);
                     ExecutionService executionService = nodeEngine.getExecutionService();
                     executionService.schedule(task, timeoutMs, MILLISECONDS);

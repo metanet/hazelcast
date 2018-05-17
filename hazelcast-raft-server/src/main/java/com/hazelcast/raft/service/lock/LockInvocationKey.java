@@ -35,7 +35,7 @@ public class LockInvocationKey implements IdentifiedDataSerializable {
     public LockInvocationKey() {
     }
 
-    LockInvocationKey(String name, LockEndpoint endpoint, long commitIndex, UUID invocationUid) {
+    LockInvocationKey(String name, LockEndpoint endpoint, UUID invocationUid, long commitIndex) {
         this.name = name;
         this.endpoint = endpoint;
         this.commitIndex = commitIndex;

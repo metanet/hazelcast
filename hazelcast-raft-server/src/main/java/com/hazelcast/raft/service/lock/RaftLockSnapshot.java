@@ -20,11 +20,11 @@ import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.RaftGroupId;
+import com.hazelcast.raft.service.lock.RaftLock.LockOwner;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * TODO: Javadoc Pending...
@@ -33,21 +33,16 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
 
     private RaftGroupId groupId;
     private String name;
-    private LockEndpoint owner;
-    private int lockCount;
-    private UUID refUid;
+    private LockOwner owner;
     private List<LockInvocationKey> waiters;
 
     public RaftLockSnapshot() {
     }
 
-    RaftLockSnapshot(RaftGroupId groupId, String name, LockEndpoint owner, int lockCount, UUID refUid,
-                            List<LockInvocationKey> waiters) {
+    RaftLockSnapshot(RaftGroupId groupId, String name, LockOwner owner, List<LockInvocationKey> waiters) {
         this.groupId = groupId;
         this.name = name;
         this.owner = owner;
-        this.lockCount = lockCount;
-        this.refUid = refUid;
         this.waiters = new ArrayList<LockInvocationKey>(waiters);
     }
 
@@ -59,16 +54,8 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
         return name;
     }
 
-    LockEndpoint getOwner() {
+    LockOwner getOwner() {
         return owner;
-    }
-
-    int getLockCount() {
-        return lockCount;
-    }
-
-    UUID getRefUid() {
-        return refUid;
     }
 
     List<LockInvocationKey> getWaiters() {
@@ -94,13 +81,6 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
         if (hasOwner) {
             out.writeObject(owner);
         }
-        out.writeInt(lockCount);
-        boolean hasRefUid = (refUid != null);
-        out.writeBoolean(hasRefUid);
-        if (hasRefUid) {
-            out.writeLong(refUid.getLeastSignificantBits());
-            out.writeLong(refUid.getMostSignificantBits());
-        }
         out.writeInt(waiters.size());
         for (LockInvocationKey key : waiters) {
             out.writeObject(key);
@@ -114,13 +94,6 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
         boolean hasOwner = in.readBoolean();
         if (hasOwner) {
             owner = in.readObject();
-        }
-        lockCount = in.readInt();
-        boolean hasRefUid = in.readBoolean();
-        if (hasRefUid) {
-            long least = in.readLong();
-            long most = in.readLong();
-            refUid = new UUID(most, least);
         }
         int count = in.readInt();
         waiters = new ArrayList<LockInvocationKey>();

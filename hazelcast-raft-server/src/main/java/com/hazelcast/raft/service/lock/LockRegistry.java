@@ -18,6 +18,7 @@ package com.hazelcast.raft.service.lock;
 
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.impl.util.Tuple2;
+import com.hazelcast.raft.service.lock.RaftLock.LockOwner;
 import com.hazelcast.util.Clock;
 import com.hazelcast.util.UuidUtil;
 
@@ -63,9 +64,9 @@ class LockRegistry {
             List<Long> indices = lock.invalidateWaitEntries(sessionId);
             invalidations.addAll(indices);
 
-            LockEndpoint owner = lock.owner();
-            if (owner != null && sessionId == owner.sessionId()) {
-                Collection<LockInvocationKey> w = lock.release(owner, Integer.MAX_VALUE, UuidUtil.newUnsecureUUID());
+            LockOwner owner = lock.owner();
+            if (owner != null && sessionId == owner.endpoint().sessionId()) {
+                Collection<LockInvocationKey> w = lock.release(owner.endpoint(), Integer.MAX_VALUE, UuidUtil.newUnsecureUUID());
                 for (LockInvocationKey waitEntry : w) {
                     acquires.add(waitEntry.commitIndex());
                 }
@@ -93,7 +94,7 @@ class LockRegistry {
         boolean wait = (timeoutMs > 0);
         boolean acquired = getRaftLock(name).acquire(endpoint, commitIndex, invocationUid, wait);
         if (wait && !acquired) {
-            LockInvocationKey key = new LockInvocationKey(name, endpoint, commitIndex, invocationUid);
+            LockInvocationKey key = new LockInvocationKey(name, endpoint, invocationUid, commitIndex);
             tryLockTimeouts.put(key, Tuple2.of(timeoutMs, Clock.currentTimeMillis() + timeoutMs));
         }
 
@@ -132,7 +133,12 @@ class LockRegistry {
             return Tuple2.of(null, 0);
         }
 
-        return raftLock.lockCount();
+        LockOwner owner = raftLock.owner();
+        if (owner == null) {
+            return Tuple2.of(null, 0);
+        }
+
+        return Tuple2.of(owner.endpoint(), owner.lockCount());
     }
 
 
@@ -174,6 +180,11 @@ class LockRegistry {
         }
 
         return added;
+    }
+
+    // used for testing
+    RaftLock getRaftLockOrNull(String name) {
+        return locks.get(name);
     }
 
 }
