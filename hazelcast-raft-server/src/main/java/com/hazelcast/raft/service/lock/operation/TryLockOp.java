@@ -19,6 +19,7 @@ package com.hazelcast.raft.service.lock.operation;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.raft.RaftGroupId;
+import com.hazelcast.raft.impl.util.PostponedResponse;
 import com.hazelcast.raft.service.lock.RaftLockDataSerializerHook;
 import com.hazelcast.raft.service.lock.RaftLockService;
 
@@ -43,7 +44,11 @@ public class TryLockOp extends AbstractLockOp {
     @Override
     public Object run(RaftGroupId groupId, long commitIndex) {
         RaftLockService service = getService();
-        return service.tryAcquire(groupId, name, getLockEndpoint(), commitIndex, invocationUid, timeoutMs);
+        if (service.tryAcquire(groupId, name, getLockEndpoint(), commitIndex, invocationUid, timeoutMs)) {
+            return commitIndex;
+        }
+
+        return timeoutMs > 0 ? PostponedResponse.INSTANCE : RaftLockService.INVALID_FENCE;
     }
 
     @Override

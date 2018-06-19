@@ -21,7 +21,6 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.impl.RaftOp;
-import com.hazelcast.raft.impl.util.Tuple2;
 import com.hazelcast.raft.service.lock.LockEndpoint;
 import com.hazelcast.raft.service.lock.RaftLockDataSerializerHook;
 import com.hazelcast.raft.service.lock.RaftLockService;
@@ -55,13 +54,9 @@ public class GetLockCountOp extends RaftOp implements IdentifiedDataSerializable
     @Override
     public Object run(RaftGroupId groupId, long commitIndex) {
         RaftLockService service = getService();
-        Tuple2<LockEndpoint, Integer> result = service.lockCount(groupId, name);
+        LockEndpoint endpoint = (sessionId != NO_SESSION) ? new LockEndpoint(sessionId, threadId) : null;
 
-        if (sessionId != NO_SESSION) {
-            LockEndpoint endpoint = new LockEndpoint(sessionId, threadId);
-            return endpoint.equals(result.element1) ? result.element2 : 0;
-        }
-        return result.element2;
+        return service.getLockCount(groupId, name, endpoint);
     }
 
     @Override

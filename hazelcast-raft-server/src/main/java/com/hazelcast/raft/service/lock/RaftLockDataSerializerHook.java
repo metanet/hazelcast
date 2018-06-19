@@ -72,7 +72,6 @@ public class RaftLockDataSerializerHook implements DataSerializerHook {
                         return new InvalidateWaitEntriesOp();
                     case GET_LOCK_COUNT_OP:
                         return new GetLockCountOp();
-
                 }
                 throw new IllegalArgumentException("Undefined type: " + typeId);
             }

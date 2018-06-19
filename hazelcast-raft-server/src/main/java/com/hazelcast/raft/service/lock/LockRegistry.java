@@ -66,9 +66,9 @@ class LockRegistry {
             List<Long> indices = lock.invalidateWaitEntries(sessionId);
             invalidations.addAll(indices);
 
-            LockEndpoint owner = lock.owner();
-            if (owner != null && sessionId == owner.sessionId()) {
-                Collection<LockInvocationKey> w = lock.release(owner, Integer.MAX_VALUE, UuidUtil.newUnsecureUUID());
+            LockInvocationKey owner = lock.owner();
+            if (owner != null && sessionId == owner.endpoint().sessionId()) {
+                Collection<LockInvocationKey> w = lock.release(owner.endpoint(), Integer.MAX_VALUE, UuidUtil.newUnsecureUUID());
                 for (LockInvocationKey waitEntry : w) {
                     acquires.add(waitEntry.commitIndex());
                 }
@@ -133,7 +133,7 @@ class LockRegistry {
         return lock.invalidateWaitEntry(key);
     }
 
-    Tuple2<LockEndpoint, Integer> lockCount(String name) {
+    int getLockCount(String name, LockEndpoint endpoint) {
         checkNotNull(name);
         if (destroyedLockNames.contains(name)) {
             throw new IllegalStateException("Lock[" + name + "] is already destroyed!");
@@ -141,12 +141,16 @@ class LockRegistry {
 
         RaftLock raftLock = locks.get(name);
         if (raftLock == null) {
-            return Tuple2.of(null, 0);
+            return 0;
+        }
+
+        if (endpoint != null) {
+            LockInvocationKey owner = raftLock.owner();
+            return (owner != null && endpoint.equals(owner.endpoint())) ? raftLock.lockCount() : 0;
         }
 
         return raftLock.lockCount();
     }
-
 
     Collection<LockInvocationKey> getExpiredWaitEntries(long now) {
         List<LockInvocationKey> expired = new ArrayList<LockInvocationKey>();

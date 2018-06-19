@@ -17,7 +17,6 @@
 package com.hazelcast.raft.service.lock;
 
 import com.hazelcast.raft.RaftGroupId;
-import com.hazelcast.raft.impl.util.Tuple2;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -35,7 +34,7 @@ class RaftLock {
     private final RaftGroupId groupId;
     private final String name;
 
-    private LockEndpoint owner;
+    private LockInvocationKey owner;
     private int lockCount;
     private UUID refUid;
     private LinkedList<LockInvocationKey> waitEntries = new LinkedList<LockInvocationKey>();
@@ -59,15 +58,22 @@ class RaftLock {
         if (invocationUid.equals(refUid)) {
             return true;
         }
-        if (owner == null || endpoint.equals(owner)) {
-            owner = endpoint;
+
+        LockInvocationKey key = new LockInvocationKey(name, endpoint, commitIndex, invocationUid);
+        if (owner == null) {
+            owner = key;
+        }
+
+        if (endpoint.equals(owner.endpoint())) {
             lockCount++;
             refUid = invocationUid;
             return true;
         }
+
         if (wait) {
-            waitEntries.offer(new LockInvocationKey(name, endpoint, commitIndex, invocationUid));
+            waitEntries.offer(key);
         }
+
         return false;
     }
 
@@ -81,7 +87,7 @@ class RaftLock {
             return Collections.emptyList();
         }
 
-        if (endpoint.equals(owner)) {
+        if (owner != null && endpoint.equals(owner.endpoint())) {
             refUid = invocationUid;
 
             lockCount -= Math.min(releaseCount, lockCount);
@@ -89,22 +95,22 @@ class RaftLock {
                 return Collections.emptyList();
             }
 
-            LockInvocationKey next = waitEntries.poll();
-            if (next != null) {
+            LockInvocationKey nextOwner = waitEntries.poll();
+            if (nextOwner != null) {
                 List<LockInvocationKey> entries = new ArrayList<LockInvocationKey>();
-                entries.add(next);
+                entries.add(nextOwner);
 
                 Iterator<LockInvocationKey> iter = waitEntries.iterator();
                 while (iter.hasNext()) {
                     LockInvocationKey n = iter.next();
-                    if (next.invocationUid().equals(n.invocationUid())) {
+                    if (nextOwner.invocationUid().equals(n.invocationUid())) {
                         iter.remove();
-                        assert next.endpoint().equals(n.endpoint());
+                        assert nextOwner.endpoint().equals(n.endpoint());
                         entries.add(n);
                     }
                 }
 
-                owner = next.endpoint();
+                owner = nextOwner;
                 lockCount = 1;
                 return entries;
             } else {
@@ -144,11 +150,11 @@ class RaftLock {
         return false;
     }
 
-    Tuple2<LockEndpoint, Integer> lockCount() {
-        return Tuple2.of(owner, lockCount);
+    int lockCount() {
+        return lockCount;
     }
 
-    LockEndpoint owner() {
+    LockInvocationKey owner() {
         return owner;
     }
 

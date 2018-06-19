@@ -23,6 +23,7 @@ import com.hazelcast.core.ILock;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.SnapshotAwareService;
+import com.hazelcast.raft.impl.RaftGroupLifecycleAwareService;
 import com.hazelcast.raft.impl.RaftNode;
 import com.hazelcast.raft.impl.RaftNodeImpl;
 import com.hazelcast.raft.impl.service.RaftInvocationManager;
@@ -30,12 +31,10 @@ import com.hazelcast.raft.impl.service.RaftService;
 import com.hazelcast.raft.impl.session.SessionAccessor;
 import com.hazelcast.raft.impl.session.SessionAwareService;
 import com.hazelcast.raft.impl.session.SessionExpiredException;
-import com.hazelcast.raft.impl.util.PostponedResponse;
 import com.hazelcast.raft.impl.util.Tuple2;
 import com.hazelcast.raft.service.lock.operation.InvalidateWaitEntriesOp;
 import com.hazelcast.raft.service.lock.proxy.RaftLockProxy;
 import com.hazelcast.raft.service.session.SessionManagerService;
-import com.hazelcast.raft.impl.RaftGroupLifecycleAwareService;
 import com.hazelcast.raft.service.spi.RaftRemoteService;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.ManagedService;
@@ -68,6 +67,7 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
 
     private static final long TRY_LOCK_TIMEOUT_TASK_PERIOD_MILLIS = 500;
     static final long TRY_LOCK_TIMEOUT_TASK_UPPER_BOUND_MILLIS = 1500;
+    public static final long INVALID_FENCE = 0L;
     public static final String SERVICE_NAME = "hz:raft:lockService";
 
     private final ConcurrentMap<RaftGroupId, LockRegistry> registries = new ConcurrentHashMap<RaftGroupId, LockRegistry>();
@@ -138,9 +138,12 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
         Tuple2<Collection<Long>, Collection<Long>> t = registry.invalidateSession(sessionId);
         if (t != null) {
             Collection<Long> invalidations = t.element1;
-            Collection<Long> acquires = t.element2;
             completeFutures(groupId, invalidations, new SessionExpiredException(sessionId));
-            completeFutures(groupId, acquires, true);
+            Collection<Long> acquires = t.element2;
+            if (acquires.size() > 0) {
+                long newOwnerCommitIndex = acquires.iterator().next();
+                completeFutures(groupId, acquires, newOwnerCommitIndex);
+            }
         }
     }
 
@@ -214,7 +217,7 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
         throw new SessionExpiredException(endpoint.sessionId());
     }
 
-    public Object tryAcquire(RaftGroupId groupId, String name, LockEndpoint endpoint, long commitIndex, UUID invocationUid,
+    public boolean tryAcquire(RaftGroupId groupId, String name, LockEndpoint endpoint, long commitIndex, UUID invocationUid,
                           long timeoutMs) {
         if (sessionAccessor.isValid(groupId, endpoint.sessionId())) {
             sessionAccessor.heartbeat(groupId, endpoint.sessionId());
@@ -224,19 +227,16 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
                         + invocationUid + ">");
             }
 
-            if (timeoutMs > 0 && !acquired) {
-                if (timeoutMs <= TRY_LOCK_TIMEOUT_TASK_UPPER_BOUND_MILLIS) {
-                    LockInvocationKey key = new LockInvocationKey(name, endpoint, commitIndex, invocationUid);
-                    Runnable task = new InvalidateExpiredWaitEntriesTask(groupId, key);
-                    ExecutionService executionService = nodeEngine.getExecutionService();
-                    executionService.schedule(task, timeoutMs, MILLISECONDS);
-                }
-
-                return PostponedResponse.INSTANCE;
+            if (!acquired && timeoutMs > 0 && timeoutMs <= TRY_LOCK_TIMEOUT_TASK_UPPER_BOUND_MILLIS) {
+                LockInvocationKey key = new LockInvocationKey(name, endpoint, commitIndex, invocationUid);
+                Runnable task = new InvalidateExpiredWaitEntriesTask(groupId, key);
+                ExecutionService executionService = nodeEngine.getExecutionService();
+                executionService.schedule(task, timeoutMs, MILLISECONDS);
             }
 
             return acquired;
         }
+
         throw new SessionExpiredException(endpoint.sessionId());
     }
 
@@ -255,17 +255,21 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
 
             if (logger.isFineEnabled()) {
                 logger.fine("Lock: " + name + " in " + groupId + " is released by " + endpoint);
-                if (waitEntries.size() > 0) {
-                    LockInvocationKey newOwner = waitEntries.iterator().next();
-                    logger.fine("Lock: " + name + " in " + groupId + " is acquired by " + newOwner.endpoint());
-                }
             }
+
+            if (waitEntries.isEmpty()) {
+                return;
+            }
+
+            LockInvocationKey newOwner = waitEntries.iterator().next();
+            logger.fine("Lock: " + name + " in " + groupId + " is acquired by " + newOwner.endpoint());
 
             List<Long> indices = new ArrayList<Long>(waitEntries.size());
             for (LockInvocationKey waitEntry : waitEntries) {
                 indices.add(waitEntry.commitIndex());
             }
-            completeFutures(groupId, indices, true);
+
+            completeFutures(groupId, indices, newOwner.commitIndex());
         } else {
             throw new IllegalMonitorStateException();
         }
@@ -289,7 +293,7 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
             }
         }
 
-        completeFutures(groupId, invalidated, false);
+        completeFutures(groupId, invalidated, INVALID_FENCE);
     }
 
     private void completeFutures(RaftGroupId groupId, Collection<Long> indices, Object result) {
@@ -314,16 +318,16 @@ public class RaftLockService implements ManagedService, SnapshotAwareService<Loc
         return timeouts;
     }
 
-    public Tuple2<LockEndpoint, Integer> lockCount(RaftGroupId groupId, String name) {
+    public int getLockCount(RaftGroupId groupId, String name, LockEndpoint endpoint) {
         checkNotNull(groupId);
         checkNotNull(name);
 
         LockRegistry registry = registries.get(groupId);
         if (registry == null) {
-            return Tuple2.of(null, 0);
+            return 0;
         }
 
-        return registry.lockCount(name);
+        return registry.getLockCount(name, endpoint);
     }
 
     // queried locally in tests

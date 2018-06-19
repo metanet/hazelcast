@@ -16,8 +16,10 @@
 
 package com.hazelcast.raft.service.session;
 
+import com.hazelcast.core.ExecutionCallback;
 import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.raft.RaftGroupId;
+import com.hazelcast.raft.impl.session.SessionExpiredException;
 import com.hazelcast.raft.impl.session.SessionResponse;
 import com.hazelcast.util.Clock;
 
@@ -222,10 +224,23 @@ public abstract class AbstractSessionManager {
             prevHeartbeats.clear();
 
             for (Entry<RaftGroupId, ClientSession> entry : sessions.entrySet()) {
-                RaftGroupId groupId = entry.getKey();
-                ClientSession session = entry.getValue();
+                final RaftGroupId groupId = entry.getKey();
+                final ClientSession session = entry.getValue();
                 if (session.isInUse()) {
-                    prevHeartbeats.add(heartbeat(groupId, session.id));
+                    ICompletableFuture<Object> f = heartbeat(groupId, session.id);
+                    f.andThen(new ExecutionCallback<Object>() {
+                        @Override
+                        public void onResponse(Object response) {
+                        }
+
+                        @Override
+                        public void onFailure(Throwable t) {
+                            if (t instanceof SessionExpiredException) {
+                                invalidateSession(groupId, session.id);
+                            }
+                        }
+                    });
+                    prevHeartbeats.add(f);
                 }
             }
         }

@@ -46,6 +46,9 @@ public abstract class AbstractLockMessageTask extends AbstractMessageTask implem
         if (response instanceof Integer) {
             return encodeLongResponse((Integer) response);
         }
+        if (response instanceof Long) {
+            return encodeLongResponse((Long) response);
+        }
         if (response instanceof Boolean) {
             return encodeBooleanResponse((Boolean) response);
         }

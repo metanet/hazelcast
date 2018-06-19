@@ -42,6 +42,7 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
 
     private static final ClientMessageDecoder INT_RESPONSE_DECODER = new IntResponseDecoder();
     private static final ClientMessageDecoder BOOLEAN_RESPONSE_DECODER = new BooleanResponseDecoder();
+    private static final ClientMessageDecoder LONG_RESPONSE_DECODER = new LongResponseDecoder();
 
     public static ILock create(HazelcastInstance instance, String name) {
         int dataSize = ClientMessage.HEADER_SIZE + calculateDataSize(name);
@@ -84,7 +85,7 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
         for (;;) {
             long sessionId = acquireSession();
             ClientMessage clientMessage = encodeRequest(LOCK, groupId, name, sessionId, ThreadUtil.getThreadId(), invUid);
-            ICompletableFuture<Object> future = invoke(clientMessage, BOOLEAN_RESPONSE_DECODER);
+            ICompletableFuture<Object> future = invoke(clientMessage, LONG_RESPONSE_DECODER);
             try {
                 join(future);
                 break;
@@ -107,9 +108,9 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
             long sessionId = acquireSession();
             ClientMessage clientMessage = encodeRequest(TRY_LOCK, groupId, name, sessionId, ThreadUtil.getThreadId(),
                     invUid, timeoutMs);
-            ICompletableFuture<Boolean> future = invoke(clientMessage, BOOLEAN_RESPONSE_DECODER);
+            ICompletableFuture<Long> future = invoke(clientMessage, LONG_RESPONSE_DECODER);
             try {
-                return join(future);
+                return join(future) > 0L;
             } catch (SessionExpiredException e) {
                 invalidateSession(e.getSessionId());
             }
@@ -299,6 +300,13 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
         @Override
         public Boolean decodeClientMessage(ClientMessage clientMessage) {
             return clientMessage.getBoolean();
+        }
+    }
+
+    private static class LongResponseDecoder implements ClientMessageDecoder {
+        @Override
+        public Long decodeClientMessage(ClientMessage clientMessage) {
+            return clientMessage.getLong();
         }
     }
 }

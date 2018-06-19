@@ -41,7 +41,7 @@ public class LockOp extends AbstractLockOp {
         RaftLockService service = getService();
         LockEndpoint endpoint = getLockEndpoint();
         if (service.acquire(groupId, name, endpoint, commitIndex, invocationUid)) {
-            return true;
+            return commitIndex;
         }
         return PostponedResponse.INSTANCE;
     }

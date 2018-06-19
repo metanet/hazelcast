@@ -33,7 +33,7 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
 
     private RaftGroupId groupId;
     private String name;
-    private LockEndpoint owner;
+    private LockInvocationKey owner;
     private int lockCount;
     private UUID refUid;
     private List<LockInvocationKey> waitEntries;
@@ -41,7 +41,7 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
     public RaftLockSnapshot() {
     }
 
-    RaftLockSnapshot(RaftGroupId groupId, String name, LockEndpoint owner, int lockCount, UUID refUid,
+    RaftLockSnapshot(RaftGroupId groupId, String name, LockInvocationKey owner, int lockCount, UUID refUid,
                             List<LockInvocationKey> waitEntries) {
         this.groupId = groupId;
         this.name = name;
@@ -59,7 +59,7 @@ public class RaftLockSnapshot implements IdentifiedDataSerializable {
         return name;
     }
 
-    LockEndpoint getOwner() {
+    LockInvocationKey getOwner() {
         return owner;
     }
 
