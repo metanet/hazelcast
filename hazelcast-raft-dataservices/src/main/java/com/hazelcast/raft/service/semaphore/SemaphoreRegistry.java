@@ -22,6 +22,7 @@ import com.hazelcast.raft.impl.util.Tuple2;
 import com.hazelcast.raft.service.blocking.ResourceRegistry;
 
 import java.util.Collection;
+import java.util.UUID;
 
 /**
  * TODO: Javadoc Pending...
@@ -50,18 +51,17 @@ public class SemaphoreRegistry extends ResourceRegistry<SemaphoreInvocationKey, 
         return semaphore != null ? semaphore.getAvailable() : 0;
     }
 
-    boolean acquire(long commitIndex, String name, long sessionId, int permits, long timeoutMs) {
-        boolean wait = (timeoutMs != 0);
-        boolean acquired = getOrInitResource(name).acquire(commitIndex, name, sessionId, permits, wait);
+    boolean acquire(String name, SemaphoreInvocationKey key, int permits, long timeoutMs) {
+        boolean acquired = getOrInitResource(name).acquire(key, permits, (timeoutMs != 0));
         if (!acquired && timeoutMs > 0) {
-            addWaitKey(new SemaphoreInvocationKey(name, commitIndex, sessionId, permits), timeoutMs);
+            addWaitKey(key, timeoutMs);
         }
 
         return acquired;
     }
 
-    Collection<SemaphoreInvocationKey> release(String name, long sessionId, int permits) {
-        Collection<SemaphoreInvocationKey> keys = getOrInitResource(name).release(sessionId, permits);
+    Collection<SemaphoreInvocationKey> release(String name, long sessionId, UUID invocationUid, int permits) {
+        Collection<SemaphoreInvocationKey> keys = getOrInitResource(name).release(sessionId, invocationUid, permits);
         for (SemaphoreInvocationKey key : keys) {
             removeWaitKey(key);
         }
@@ -69,13 +69,9 @@ public class SemaphoreRegistry extends ResourceRegistry<SemaphoreInvocationKey, 
         return keys;
     }
 
-    int drainPermits(String name, long sessionId) {
+    int drainPermits(String name, long sessionId, UUID invocationUid) {
         RaftSemaphore semaphore = getResourceOrNull(name);
-        if (semaphore == null) {
-            return 0;
-        }
-
-        return semaphore.drain(sessionId);
+        return semaphore != null ? semaphore.drain(sessionId, invocationUid) : 0;
     }
 
     Tuple2<Boolean, Collection<SemaphoreInvocationKey>> changePermits(String name, int permits) {

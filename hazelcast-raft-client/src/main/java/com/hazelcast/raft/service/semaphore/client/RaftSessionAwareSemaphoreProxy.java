@@ -24,6 +24,7 @@ import com.hazelcast.client.spi.impl.ClientInvocationFuture;
 import com.hazelcast.client.util.ClientDelegatingFuture;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ISemaphore;
+import com.hazelcast.core.OperationTimeoutException;
 import com.hazelcast.nio.Bits;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.impl.RaftGroupIdImpl;
@@ -32,7 +33,9 @@ import com.hazelcast.raft.service.semaphore.RaftSemaphoreService;
 import com.hazelcast.raft.service.session.SessionAwareProxy;
 import com.hazelcast.raft.service.session.SessionManagerProvider;
 import com.hazelcast.spi.InternalCompletableFuture;
+import com.hazelcast.util.Clock;
 
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.client.impl.protocol.util.ParameterUtil.calculateDataSize;
@@ -50,6 +53,7 @@ import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSI
 import static com.hazelcast.raft.service.util.ClientAccessor.getClient;
 import static com.hazelcast.util.Preconditions.checkNotNegative;
 import static com.hazelcast.util.Preconditions.checkPositive;
+import static com.hazelcast.util.UuidUtil.newUnsecureUUID;
 import static java.lang.Math.max;
 
 /**
@@ -115,11 +119,14 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
     @Override
     public void acquire(int permits) {
         checkPositive(permits, "Permits must be positive!");
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 4
+                + Bits.INT_SIZE_IN_BYTES;
         for (;;) {
             long sessionId = acquireSession(permits);
-
-            int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 2 + Bits.INT_SIZE_IN_BYTES;
             ClientMessage msg = prepareClientMessage(groupId, name, sessionId, dataSize, ACQUIRE_PERMITS_TYPE);
+            msg.set(invocationUid.getLeastSignificantBits());
+            msg.set(invocationUid.getMostSignificantBits());
             msg.set(permits);
             msg.set(-1L);
             msg.updateFrameLength();
@@ -128,6 +135,8 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
             try {
                 future.join();
                 return;
+            } catch (OperationTimeoutException ignored) {
+                // I can retry safely because my retry would be idempotent...
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
             }
@@ -153,12 +162,16 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
     public boolean tryAcquire(int permits, long timeout, TimeUnit unit) {
         checkPositive(permits, "Permits must be positive!");
         long timeoutMs = max(0, unit.toMillis(timeout));
-
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 4
+                + Bits.INT_SIZE_IN_BYTES;
+        long start;
         for (;;) {
+            start = Clock.currentTimeMillis();
             long sessionId = acquireSession(permits);
-            int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 2
-                    + Bits.INT_SIZE_IN_BYTES;
             ClientMessage msg = prepareClientMessage(groupId, name, sessionId, dataSize, ACQUIRE_PERMITS_TYPE);
+            msg.set(invocationUid.getLeastSignificantBits());
+            msg.set(invocationUid.getMostSignificantBits());
             msg.set(permits);
             msg.set(timeoutMs);
             msg.updateFrameLength();
@@ -170,6 +183,8 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
                     releaseSession(sessionId, permits);
                 }
                 return acquired;
+            } catch (OperationTimeoutException e) {
+                timeoutMs = Math.max(0, (timeoutMs - (Clock.currentTimeMillis() - start)));
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
             }
@@ -189,14 +204,26 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
             throw new IllegalStateException("No valid session!");
         }
 
-        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES
-                + Bits.INT_SIZE_IN_BYTES;
-        ClientMessage msg = prepareClientMessage(groupId, name, sessionId, dataSize, RELEASE_PERMITS_TYPE);
-        msg.set(permits);
-        msg.updateFrameLength();
-
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) +
+                Bits.LONG_SIZE_IN_BYTES * 3 + Bits.INT_SIZE_IN_BYTES;
         try {
-            invoke(msg, BOOLEAN_RESPONSE_DECODER).join();
+            for (;;) {
+                ClientMessage msg = prepareClientMessage(groupId, name, sessionId, dataSize, RELEASE_PERMITS_TYPE);
+                msg.set(invocationUid.getLeastSignificantBits());
+                msg.set(invocationUid.getMostSignificantBits());
+                msg.set(permits);
+                msg.updateFrameLength();
+                try {
+                    invoke(msg, BOOLEAN_RESPONSE_DECODER).join();
+                    return;
+                } catch (OperationTimeoutException ignored) {
+                    // I can retry safely because my retry would be idempotent...
+                } catch (SessionExpiredException e) {
+                    invalidateSession(sessionId);
+                    throw e;
+                }
+            }
         } finally {
             releaseSession(sessionId, permits);
         }
@@ -214,10 +241,13 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
 
     @Override
     public int drainPermits() {
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 3;
         for (;;) {
             long sessionId = acquireSession(DRAIN_SESSION_ACQ_COUNT);
-            int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES;
             ClientMessage msg = prepareClientMessage(groupId, name, sessionId, dataSize, DRAIN_PERMITS_TYPE);
+            msg.set(invocationUid.getLeastSignificantBits());
+            msg.set(invocationUid.getMostSignificantBits());
             msg.updateFrameLength();
 
             InternalCompletableFuture<Integer> future = invoke(msg, INT_RESPONSE_DECODER);
@@ -225,6 +255,8 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
                 int count = future.join();
                 releaseSession(sessionId, DRAIN_SESSION_ACQ_COUNT - count);
                 return count;
+            } catch (OperationTimeoutException ignored) {
+                // I can retry safely because my retry would be idempotent...
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
             }

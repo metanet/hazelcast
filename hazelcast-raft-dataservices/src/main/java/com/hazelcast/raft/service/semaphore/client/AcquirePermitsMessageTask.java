@@ -22,11 +22,14 @@ import com.hazelcast.nio.Connection;
 import com.hazelcast.raft.impl.service.RaftInvocationManager;
 import com.hazelcast.raft.service.semaphore.operation.AcquirePermitsOp;
 
+import java.util.UUID;
+
 /**
  * TODO: Javadoc Pending...
  */
 public class AcquirePermitsMessageTask extends AbstractSemaphoreMessageTask {
 
+    private UUID invocationUid;
     private int permits;
     private long timeoutMs;
 
@@ -37,12 +40,15 @@ public class AcquirePermitsMessageTask extends AbstractSemaphoreMessageTask {
     @Override
     protected void processMessage() {
         RaftInvocationManager invocationManager = getRaftInvocationManager();
-        invocationManager.invoke(groupId, new AcquirePermitsOp(name, sessionId, permits, timeoutMs)).andThen(this);
+        invocationManager.invoke(groupId, new AcquirePermitsOp(name, sessionId, invocationUid, permits, timeoutMs)).andThen(this);
     }
 
     @Override
     protected Object decodeClientMessage(ClientMessage clientMessage) {
         super.decodeClientMessage(clientMessage);
+        long least = clientMessage.getLong();
+        long most = clientMessage.getLong();
+        invocationUid = new UUID(most, least);
         permits = clientMessage.getInt();
         timeoutMs = clientMessage.getLong();
         return null;

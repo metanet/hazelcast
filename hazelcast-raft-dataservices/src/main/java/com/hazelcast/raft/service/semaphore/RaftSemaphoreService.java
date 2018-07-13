@@ -31,6 +31,7 @@ import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.util.ExceptionUtil;
 
 import java.util.Collection;
+import java.util.UUID;
 
 /**
  * TODO: Javadoc Pending...
@@ -81,25 +82,27 @@ public class RaftSemaphoreService extends AbstractBlockingService<SemaphoreInvoc
         return registry != null ? registry.availablePermits(name) : 0;
     }
 
-    public boolean acquirePermits(RaftGroupId groupId, long commitIndex, String name, long sessionId, int permits, long timeoutMs) {
+    public boolean acquirePermits(RaftGroupId groupId, long commitIndex, String name, long sessionId, UUID invocationUid,
+                                  int permits, long timeoutMs) {
         heartbeatSession(groupId, sessionId);
-        boolean success = getOrInitRegistry(groupId).acquire(commitIndex, name, sessionId, permits, timeoutMs);
+        SemaphoreInvocationKey key = new SemaphoreInvocationKey(name, commitIndex, sessionId, invocationUid, permits);
+        boolean success = getOrInitRegistry(groupId).acquire(name, key, permits, timeoutMs);
         if (!success) {
-            scheduleTimeout(groupId, new SemaphoreInvocationKey(name, commitIndex, sessionId, permits), timeoutMs);
+            scheduleTimeout(groupId, key, timeoutMs);
         }
 
         return success;
     }
 
-    public void releasePermits(RaftGroupId groupId, String name, long sessionId, int permits) {
+    public void releasePermits(RaftGroupId groupId, String name, long sessionId, UUID invocationUid, int permits) {
         heartbeatSession(groupId, sessionId);
-        Collection<SemaphoreInvocationKey> keys = getOrInitRegistry(groupId).release(name, sessionId, permits);
+        Collection<SemaphoreInvocationKey> keys = getOrInitRegistry(groupId).release(name, sessionId, invocationUid, permits);
         notifyWaitKeys(groupId, keys, true);
     }
 
-    public int drainPermits(RaftGroupId groupId, String name, long sessionId) {
+    public int drainPermits(RaftGroupId groupId, String name, long sessionId, UUID invocationUid) {
         SemaphoreRegistry registry = getRegistryOrNull(groupId);
-        return registry != null ? registry.drainPermits(name, sessionId) : 0;
+        return registry != null ? registry.drainPermits(name, sessionId, invocationUid) : 0;
     }
 
     public boolean changePermits(RaftGroupId groupId, String name, int permits) {

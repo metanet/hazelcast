@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSION_ID;
 import static com.hazelcast.util.Preconditions.checkNotNegative;
 import static com.hazelcast.util.Preconditions.checkPositive;
+import static com.hazelcast.util.UuidUtil.newUnsecureUUID;
 import static java.lang.Math.max;
 
 /**
@@ -65,7 +66,8 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     @Override
     public void acquire(int permits) {
         checkPositive(permits, "Permits must be positive!");
-        raftInvocationManager.invoke(groupId, new AcquirePermitsOp(name, NO_SESSION_ID, permits, -1L)).join();
+        RaftOp op = new AcquirePermitsOp(name, NO_SESSION_ID, newUnsecureUUID(), permits, -1L);
+        raftInvocationManager.invoke(groupId, op).join();
     }
 
     @Override
@@ -87,7 +89,7 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     public boolean tryAcquire(int permits, long timeout, TimeUnit unit) {
         checkPositive(permits, "Permits must be positive!");
         long timeoutMs = max(0, unit.toMillis(timeout));
-        RaftOp op = new AcquirePermitsOp(name, NO_SESSION_ID, permits, timeoutMs);
+        RaftOp op = new AcquirePermitsOp(name, NO_SESSION_ID, newUnsecureUUID(), permits, timeoutMs);
         return raftInvocationManager.<Boolean>invoke(groupId, op).join();
     }
 
@@ -99,7 +101,7 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     @Override
     public void release(int permits) {
         checkPositive(permits, "Permits must be positive!");
-        raftInvocationManager.invoke(groupId, new ReleasePermitsOp(name, NO_SESSION_ID, permits)).join();
+        raftInvocationManager.invoke(groupId, new ReleasePermitsOp(name, NO_SESSION_ID, newUnsecureUUID(), permits)).join();
     }
 
     @Override
@@ -109,7 +111,7 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
 
     @Override
     public int drainPermits() {
-        return raftInvocationManager.<Integer>invoke(groupId, new DrainPermitsOp(name, NO_SESSION_ID)).join();
+        return raftInvocationManager.<Integer>invoke(groupId, new DrainPermitsOp(name, NO_SESSION_ID, newUnsecureUUID())).join();
     }
 
     @Override

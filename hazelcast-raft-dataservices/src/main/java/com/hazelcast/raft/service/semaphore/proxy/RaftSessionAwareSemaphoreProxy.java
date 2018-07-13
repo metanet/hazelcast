@@ -17,6 +17,7 @@
 package com.hazelcast.raft.service.semaphore.proxy;
 
 import com.hazelcast.core.ISemaphore;
+import com.hazelcast.core.OperationTimeoutException;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.impl.RaftOp;
 import com.hazelcast.raft.impl.service.RaftInvocationManager;
@@ -32,11 +33,14 @@ import com.hazelcast.raft.service.session.SessionAwareProxy;
 import com.hazelcast.raft.service.session.SessionManagerService;
 import com.hazelcast.raft.service.spi.operation.DestroyRaftObjectOp;
 import com.hazelcast.spi.InternalCompletableFuture;
+import com.hazelcast.util.Clock;
 
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.util.Preconditions.checkNotNegative;
 import static com.hazelcast.util.Preconditions.checkPositive;
+import static com.hazelcast.util.UuidUtil.newUnsecureUUID;
 import static java.lang.Math.max;
 
 /**
@@ -70,13 +74,16 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
     @Override
     public void acquire(int permits) {
         checkPositive(permits, "Permits must be positive!");
+        UUID invocationUid = newUnsecureUUID();
         for (;;) {
             long sessionId = acquireSession(permits);
-            AcquirePermitsOp op = new AcquirePermitsOp(name, sessionId, permits, -1L);
+            AcquirePermitsOp op = new AcquirePermitsOp(name, sessionId, invocationUid, permits, -1L);
             InternalCompletableFuture<Long> f = raftInvocationManager.invoke(groupId, op);
             try {
                 f.join();
                 return;
+            } catch (OperationTimeoutException ignored) {
+                // I can retry safely because my retry would be idempotent...
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
             }
@@ -102,9 +109,12 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
     public boolean tryAcquire(int permits, long timeout, TimeUnit unit) {
         checkPositive(permits, "Permits must be positive!");
         long timeoutMs = max(0, unit.toMillis(timeout));
+        UUID invocationUid = newUnsecureUUID();
+        long start;
         for (;;) {
+            start = Clock.currentTimeMillis();
             long sessionId = acquireSession(permits);
-            AcquirePermitsOp op = new AcquirePermitsOp(name, sessionId, permits, timeoutMs);
+            AcquirePermitsOp op = new AcquirePermitsOp(name, sessionId, invocationUid, permits, timeoutMs);
             InternalCompletableFuture<Boolean> f = raftInvocationManager.invoke(groupId, op);
             try {
                 boolean acquired = f.join();
@@ -112,8 +122,14 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
                     releaseSession(sessionId, permits);
                 }
                 return acquired;
+            } catch (OperationTimeoutException e) {
+                timeoutMs = Math.max(0, (timeoutMs - (Clock.currentTimeMillis() - start)));
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
+                timeoutMs -= (Clock.currentTimeMillis() - start);
+                if (timeoutMs <= 0) {
+                    return false;
+                }
             }
         }
     }
@@ -130,9 +146,22 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
         if (sessionId < 0) {
             throw new IllegalStateException("No valid session!");
         }
-        InternalCompletableFuture f = raftInvocationManager.invoke(groupId, new ReleasePermitsOp(name, sessionId, permits));
+
+        UUID invocationUid = newUnsecureUUID();
         try {
-            f.join();
+            for (;;) {
+                RaftOp op = new ReleasePermitsOp(name, sessionId, invocationUid, permits);
+                InternalCompletableFuture f = raftInvocationManager.invoke(groupId, op);
+                try {
+                    f.join();
+                    return;
+                } catch (OperationTimeoutException ignored) {
+                    // I can retry safely because my retry would be idempotent...
+                } catch (SessionExpiredException e) {
+                    invalidateSession(sessionId);
+                    throw e;
+                }
+            }
         } finally {
             releaseSession(sessionId, permits);
         }
@@ -145,14 +174,17 @@ public class RaftSessionAwareSemaphoreProxy extends SessionAwareProxy implements
 
     @Override
     public int drainPermits() {
+        UUID invocationUid = newUnsecureUUID();
         for (;;) {
             long sessionId = acquireSession(DRAIN_SESSION_ACQ_COUNT);
-            RaftOp op = new DrainPermitsOp(name, sessionId);
+            RaftOp op = new DrainPermitsOp(name, sessionId, invocationUid);
             InternalCompletableFuture<Integer> future = raftInvocationManager.invoke(groupId, op);
             try {
                 int count = future.join();
                 releaseSession(sessionId, DRAIN_SESSION_ACQ_COUNT - count);
                 return count;
+            } catch (OperationTimeoutException ignored) {
+                // I can retry safely because my retry would be idempotent...
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
             }

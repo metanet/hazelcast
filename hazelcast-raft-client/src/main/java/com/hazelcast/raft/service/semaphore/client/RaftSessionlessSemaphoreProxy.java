@@ -30,6 +30,7 @@ import com.hazelcast.raft.impl.RaftGroupIdImpl;
 import com.hazelcast.raft.service.semaphore.RaftSemaphoreService;
 import com.hazelcast.spi.InternalCompletableFuture;
 
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.client.impl.protocol.util.ParameterUtil.calculateDataSize;
@@ -46,6 +47,7 @@ import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSI
 import static com.hazelcast.raft.service.util.ClientAccessor.getClient;
 import static com.hazelcast.util.Preconditions.checkNotNegative;
 import static com.hazelcast.util.Preconditions.checkPositive;
+import static com.hazelcast.util.UuidUtil.newUnsecureUUID;
 import static java.lang.Math.max;
 
 /**
@@ -113,9 +115,12 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     public void acquire(int permits) {
         checkPositive(permits, "Permits must be positive!");
 
-        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 2
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 4
                 + Bits.INT_SIZE_IN_BYTES;
         ClientMessage msg = prepareClientMessage(groupId, name, dataSize, ACQUIRE_PERMITS_TYPE);
+        msg.set(invocationUid.getLeastSignificantBits());
+        msg.set(invocationUid.getMostSignificantBits());
         msg.set(permits);
         msg.set(-1L);
         msg.updateFrameLength();
@@ -141,11 +146,14 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     @Override
     public boolean tryAcquire(int permits, long timeout, TimeUnit unit) {
         checkPositive(permits, "Permits must be positive!");
-        long timeoutMs = max(0, unit.toMillis(timeout));
 
-        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 2
+        UUID invocationUid = newUnsecureUUID();
+        long timeoutMs = max(0, unit.toMillis(timeout));
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 4
                 + Bits.INT_SIZE_IN_BYTES;
         ClientMessage msg = prepareClientMessage(groupId, name, dataSize, ACQUIRE_PERMITS_TYPE);
+        msg.set(invocationUid.getLeastSignificantBits());
+        msg.set(invocationUid.getMostSignificantBits());
         msg.set(permits);
         msg.set(timeoutMs);
         msg.updateFrameLength();
@@ -163,9 +171,12 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     public void release(int permits) {
         checkPositive(permits, "Permits must be positive!");
 
-        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 3
                 + Bits.INT_SIZE_IN_BYTES;
         ClientMessage msg = prepareClientMessage(groupId, name, dataSize, RELEASE_PERMITS_TYPE);
+        msg.set(invocationUid.getLeastSignificantBits());
+        msg.set(invocationUid.getMostSignificantBits());
         msg.set(permits);
         msg.updateFrameLength();
 
@@ -184,8 +195,11 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
 
     @Override
     public int drainPermits() {
-        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES;
+        UUID invocationUid = newUnsecureUUID();
+        int dataSize = ClientMessage.HEADER_SIZE + dataSize(groupId) + calculateDataSize(name) + Bits.LONG_SIZE_IN_BYTES * 3;
         ClientMessage msg = prepareClientMessage(groupId, name, dataSize, DRAIN_PERMITS_TYPE);
+        msg.set(invocationUid.getLeastSignificantBits());
+        msg.set(invocationUid.getMostSignificantBits());
         msg.updateFrameLength();
 
         InternalCompletableFuture<Integer> future = invoke(msg, INT_RESPONSE_DECODER);

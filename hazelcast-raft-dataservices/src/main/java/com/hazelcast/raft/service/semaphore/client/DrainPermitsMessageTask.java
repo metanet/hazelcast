@@ -22,10 +22,14 @@ import com.hazelcast.nio.Connection;
 import com.hazelcast.raft.impl.service.RaftInvocationManager;
 import com.hazelcast.raft.service.semaphore.operation.DrainPermitsOp;
 
+import java.util.UUID;
+
 /**
  * TODO: Javadoc Pending...
  */
 public class DrainPermitsMessageTask extends AbstractSemaphoreMessageTask {
+
+    private UUID invocationUid;
 
     DrainPermitsMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
         super(clientMessage, node, connection);
@@ -34,7 +38,16 @@ public class DrainPermitsMessageTask extends AbstractSemaphoreMessageTask {
     @Override
     protected void processMessage() {
         RaftInvocationManager invocationManager = getRaftInvocationManager();
-        invocationManager.invoke(groupId, new DrainPermitsOp(name, sessionId)).andThen(this);
+        invocationManager.invoke(groupId, new DrainPermitsOp(name, sessionId, invocationUid)).andThen(this);
+    }
+
+    @Override
+    protected Object decodeClientMessage(ClientMessage clientMessage) {
+        super.decodeClientMessage(clientMessage);
+        long least = clientMessage.getLong();
+        long most = clientMessage.getLong();
+        invocationUid = new UUID(most, least);
+        return null;
     }
 
 }

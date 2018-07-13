@@ -23,6 +23,7 @@ import com.hazelcast.raft.service.semaphore.RaftSemaphoreDataSerializerHook;
 import com.hazelcast.raft.service.semaphore.RaftSemaphoreService;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * TODO: Javadoc Pending...
@@ -34,15 +35,15 @@ public class ReleasePermitsOp extends AbstractSemaphoreOp {
     public ReleasePermitsOp() {
     }
 
-    public ReleasePermitsOp(String name, long sessionId, int permits) {
-        super(name, sessionId);
+    public ReleasePermitsOp(String name, long sessionId, UUID invocationUid,  int permits) {
+        super(name, sessionId, invocationUid);
         this.permits = permits;
     }
 
     @Override
     public Object run(RaftGroupId groupId, long commitIndex) {
         RaftSemaphoreService service = getService();
-        service.releasePermits(groupId, name, sessionId, permits);
+        service.releasePermits(groupId, name, sessionId, invocationUid, permits);
         return true;
     }
 

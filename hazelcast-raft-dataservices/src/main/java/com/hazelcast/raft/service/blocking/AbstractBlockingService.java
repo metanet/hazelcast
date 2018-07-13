@@ -190,9 +190,9 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
         return registry;
     }
 
-    protected final void scheduleTimeout(RaftGroupId groupId, W waitEntry, long timeoutMs) {
+    protected final void scheduleTimeout(RaftGroupId groupId, W waitKey, long timeoutMs) {
         if (timeoutMs > 0 && timeoutMs <= WAIT_TIMEOUT_TASK_UPPER_BOUND_MILLIS) {
-            Runnable task = new InvalidateExpiredWaitKeysTask(groupId, waitEntry);
+            Runnable task = new InvalidateExpiredWaitKeysTask(groupId, waitKey);
             ExecutionService executionService = nodeEngine.getExecutionService();
             executionService.schedule(task, timeoutMs, MILLISECONDS);
         }
@@ -217,8 +217,8 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
         }
 
         List<Long> indices = new ArrayList<Long>(keys.size());
-        for (W entry : keys) {
-            indices.add(entry.commitIndex());
+        for (W key : keys) {
+            indices.add(key.commitIndex());
         }
 
         completeFutures(groupId, indices, result);

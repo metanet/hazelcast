@@ -22,6 +22,7 @@ import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.service.blocking.WaitKey;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * TODO: Javadoc Pending...
@@ -31,15 +32,17 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
     private String name;
     private long commitIndex;
     private long sessionId;
+    private UUID invocationUid;
     private int permits;
 
     public SemaphoreInvocationKey() {
     }
 
-    public SemaphoreInvocationKey(String name, long commitIndex, long sessionId, int permits) {
+    public SemaphoreInvocationKey(String name, long commitIndex, long sessionId, UUID invocationUid, int permits) {
         this.name = name;
         this.commitIndex = commitIndex;
         this.sessionId = sessionId;
+        this.invocationUid = invocationUid;
         this.permits = permits;
     }
 
@@ -56,6 +59,10 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
     @Override
     public long sessionId() {
         return sessionId;
+    }
+
+    public UUID invocationUid() {
+        return invocationUid;
     }
 
     public int permits() {
@@ -78,6 +85,8 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
         out.writeUTF(name);
         out.writeLong(commitIndex);
         out.writeLong(sessionId);
+        out.writeLong(invocationUid.getLeastSignificantBits());
+        out.writeLong(invocationUid.getMostSignificantBits());
         out.writeInt(permits);
     }
 
@@ -87,6 +96,9 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
         name = in.readUTF();
         commitIndex = in.readLong();
         sessionId = in.readLong();
+        long least = in.readLong();
+        long most = in.readLong();
+        invocationUid = new UUID(most, least);
         permits = in.readInt();
     }
 
@@ -110,7 +122,10 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
         if (permits != that.permits) {
             return false;
         }
-        return name.equals(that.name);
+        if (!name.equals(that.name)) {
+            return false;
+        }
+        return invocationUid.equals(that.invocationUid);
     }
 
     @Override
@@ -118,6 +133,7 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
         int result = name.hashCode();
         result = 31 * result + (int) (commitIndex ^ (commitIndex >>> 32));
         result = 31 * result + (int) (sessionId ^ (sessionId >>> 32));
+        result = 31 * result + invocationUid.hashCode();
         result = 31 * result + permits;
         return result;
     }
@@ -125,7 +141,6 @@ public class SemaphoreInvocationKey implements WaitKey, IdentifiedDataSerializab
     @Override
     public String toString() {
         return "SemaphoreInvocationKey{" + "name='" + name + '\'' + ", commitIndex=" + commitIndex + ", sessionId=" + sessionId
-                + ", permits=" + permits + '}';
+                + ", invocationUid=" + invocationUid + ", permits=" + permits + '}';
     }
-
 }

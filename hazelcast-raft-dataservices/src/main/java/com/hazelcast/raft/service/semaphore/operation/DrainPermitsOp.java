@@ -20,6 +20,8 @@ import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.service.semaphore.RaftSemaphoreDataSerializerHook;
 import com.hazelcast.raft.service.semaphore.RaftSemaphoreService;
 
+import java.util.UUID;
+
 /**
  * TODO: Javadoc Pending...
  */
@@ -28,14 +30,14 @@ public class DrainPermitsOp extends AbstractSemaphoreOp {
     public DrainPermitsOp() {
     }
 
-    public DrainPermitsOp(String name, long sessionId) {
-        super(name, sessionId);
+    public DrainPermitsOp(String name, long sessionId, UUID invocationUid) {
+        super(name, sessionId, invocationUid);
     }
 
     @Override
     public Object run(RaftGroupId groupId, long commitIndex) {
         RaftSemaphoreService service = getService();
-        return service.drainPermits(groupId, name, sessionId);
+        return service.drainPermits(groupId, name, sessionId, invocationUid);
     }
 
     @Override

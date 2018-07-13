@@ -24,6 +24,7 @@ import com.hazelcast.raft.service.semaphore.RaftSemaphoreDataSerializerHook;
 import com.hazelcast.raft.service.semaphore.RaftSemaphoreService;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * TODO: Javadoc Pending...
@@ -32,13 +33,15 @@ abstract class AbstractSemaphoreOp extends RaftOp implements IdentifiedDataSeria
 
     protected String name;
     protected long sessionId;
+    protected UUID invocationUid;
 
     public AbstractSemaphoreOp() {
     }
 
-    public AbstractSemaphoreOp(String name, long sessionId) {
+    public AbstractSemaphoreOp(String name, long sessionId, UUID invocationUid) {
         this.name = name;
         this.sessionId = sessionId;
+        this.invocationUid = invocationUid;
     }
 
     @Override
@@ -55,11 +58,16 @@ abstract class AbstractSemaphoreOp extends RaftOp implements IdentifiedDataSeria
     public void writeData(ObjectDataOutput out) throws IOException {
         out.writeUTF(name);
         out.writeLong(sessionId);
+        out.writeLong(invocationUid.getLeastSignificantBits());
+        out.writeLong(invocationUid.getMostSignificantBits());
     }
 
     @Override
     public void readData(ObjectDataInput in) throws IOException {
         name = in.readUTF();
         sessionId = in.readLong();
+        long least = in.readLong();
+        long most = in.readLong();
+        invocationUid = new UUID(most, least);
     }
 }
