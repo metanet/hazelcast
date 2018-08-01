@@ -41,6 +41,7 @@ import java.util.concurrent.locks.Condition;
 
 import static com.hazelcast.client.impl.protocol.util.ParameterUtil.calculateDataSize;
 import static com.hazelcast.raft.impl.RaftGroupIdImpl.dataSize;
+import static com.hazelcast.raft.service.lock.RaftLockService.INVALID_FENCE;
 import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvider.CREATE_TYPE;
 import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvider.DESTROY_TYPE;
 import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvider.FORCE_UNLOCK_TYPE;
@@ -49,6 +50,7 @@ import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvi
 import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvider.LOCK_TYPE;
 import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvider.TRY_LOCK_TYPE;
 import static com.hazelcast.raft.service.lock.client.LockMessageTaskFactoryProvider.UNLOCK_TYPE;
+import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSION_ID;
 import static com.hazelcast.raft.service.util.ClientAccessor.getClient;
 import static com.hazelcast.util.ThreadUtil.getThreadId;
 
@@ -102,9 +104,8 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
         for (;;) {
             long sessionId = acquireSession();
             ClientMessage msg = encodeRequest(LOCK_TYPE, groupId, name, sessionId, getThreadId(), invUid);
-            InternalCompletableFuture<Object> future = invoke(client, name, msg, LONG_RESPONSE_DECODER);
             try {
-                future.join();
+                invoke(client, name, msg, LONG_RESPONSE_DECODER).join();
                 break;
             } catch (SessionExpiredException e) {
                 invalidateSession(sessionId);
@@ -124,9 +125,9 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
         for (;;) {
             long sessionId = acquireSession();
             ClientMessage msg = encodeRequest(TRY_LOCK_TYPE, groupId, name, sessionId, getThreadId(), invUid, timeoutMs);
-            InternalCompletableFuture<Long> future = invoke(client, name, msg, LONG_RESPONSE_DECODER);
             try {
-                boolean locked = future.join() > RaftLockService.INVALID_FENCE;
+                InternalCompletableFuture<Long> future = invoke(client, name, msg, LONG_RESPONSE_DECODER);
+                boolean locked = (future.join() != INVALID_FENCE);
                 if (!locked) {
                     releaseSession(sessionId);
                 }
@@ -140,14 +141,13 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
     @Override
     public void unlock() {
         long sessionId = getSession();
-        if (sessionId < 0) {
+        if (sessionId == NO_SESSION_ID) {
             throw new IllegalMonitorStateException();
         }
         UUID invUid = UuidUtil.newUnsecureUUID();
         ClientMessage msg = encodeRequest(UNLOCK_TYPE, groupId, name, sessionId, getThreadId(), invUid);
-        InternalCompletableFuture<Object> future = invoke(client, name, msg, BOOLEAN_RESPONSE_DECODER);
         try {
-            future.join();
+            invoke(client, name, msg, BOOLEAN_RESPONSE_DECODER).join();
         } catch (SessionExpiredException e) {
             throw new IllegalMonitorStateException("Current thread is not owner of the lock!");
         } finally {
@@ -163,7 +163,7 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
     @Override
     public boolean isLockedByCurrentThread() {
         long sessionId = getSession();
-        if (sessionId < 0) {
+        if (sessionId == NO_SESSION_ID) {
             return false;
         }
         ClientMessage msg = encodeRequest(LOCK_COUNT_TYPE, groupId, name, sessionId, getThreadId());
@@ -173,7 +173,7 @@ public class RaftLockProxy extends SessionAwareProxy implements ILock {
 
     @Override
     public int getLockCount() {
-        ClientMessage msg = encodeRequest(LOCK_COUNT_TYPE, groupId, name, -1, -1);
+        ClientMessage msg = encodeRequest(LOCK_COUNT_TYPE, groupId, name, NO_SESSION_ID, 0);
         InternalCompletableFuture<Integer> future = invoke(client, name, msg, INT_RESPONSE_DECODER);
         return future.join();
     }

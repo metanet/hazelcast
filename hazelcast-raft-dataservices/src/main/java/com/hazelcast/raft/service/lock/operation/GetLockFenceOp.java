@@ -21,10 +21,13 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.raft.RaftGroupId;
 import com.hazelcast.raft.impl.RaftOp;
+import com.hazelcast.raft.service.lock.LockEndpoint;
 import com.hazelcast.raft.service.lock.RaftLockDataSerializerHook;
 import com.hazelcast.raft.service.lock.RaftLockService;
 
 import java.io.IOException;
+
+import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSION_ID;
 
 /**
  * TODO: Javadoc Pending...
@@ -32,18 +35,24 @@ import java.io.IOException;
 public class GetLockFenceOp extends RaftOp implements IdentifiedDataSerializable {
 
     private String name;
+    private long sessionId;
+    private long threadId;
 
     public GetLockFenceOp() {
     }
 
-    public GetLockFenceOp(String name) {
+    public GetLockFenceOp(String name, long sessionId, long threadId) {
         this.name = name;
+        this.sessionId = sessionId;
+        this.threadId = threadId;
     }
 
     @Override
     public Object run(RaftGroupId groupId, long commitIndex) {
         RaftLockService service = getService();
-        return service.getLockFence(groupId, name);
+        LockEndpoint endpoint = (sessionId != NO_SESSION_ID) ? new LockEndpoint(sessionId, threadId) : null;
+
+        return service.getLockFence(groupId, name, endpoint);
     }
 
     @Override
@@ -64,15 +73,21 @@ public class GetLockFenceOp extends RaftOp implements IdentifiedDataSerializable
     @Override
     public void writeData(ObjectDataOutput out) throws IOException {
         out.writeUTF(name);
+        out.writeLong(sessionId);
+        out.writeLong(threadId);
     }
 
     @Override
     public void readData(ObjectDataInput in) throws IOException {
         name = in.readUTF();
+        sessionId = in.readLong();
+        threadId = in.readLong();
     }
 
     @Override
     protected void toString(StringBuilder sb) {
         sb.append(", name=").append(name);
+        sb.append(", sessionId=").append(sessionId);
+        sb.append(", threadId=").append(threadId);
     }
 }

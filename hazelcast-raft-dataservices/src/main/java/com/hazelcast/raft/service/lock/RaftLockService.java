@@ -144,11 +144,11 @@ public class RaftLockService extends AbstractBlockingService<LockInvocationKey, 
         return registry != null ? registry.getLockCount(name, endpoint) : 0;
     }
 
-    public long getLockFence(RaftGroupId groupId, String name) {
+    public long getLockFence(RaftGroupId groupId, String name, LockEndpoint endpoint) {
         checkNotNull(groupId);
         checkNotNull(name);
 
-        return getLockRegistryOrFail(groupId, name).getLockFence(name);
+        return getLockRegistryOrFail(groupId, name).getLockFence(name, endpoint);
     }
 
     private LockRegistry getLockRegistryOrFail(RaftGroupId groupId, String name) {

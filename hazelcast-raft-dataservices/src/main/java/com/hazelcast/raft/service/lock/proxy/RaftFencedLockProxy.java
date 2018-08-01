@@ -70,13 +70,13 @@ public class RaftFencedLockProxy extends AbstractRaftFencedLockProxy {
     }
 
     @Override
-    protected InternalCompletableFuture<Long> doGetLockFence(RaftGroupId groupId, String name) {
-        return invoke(new GetLockFenceOp(name));
+    protected InternalCompletableFuture<Long> doGetLockFence(RaftGroupId groupId, String name, long sessionId, long threadId) {
+        return invoke(new GetLockFenceOp(name, sessionId, threadId));
     }
 
     @Override
-    protected InternalCompletableFuture<Integer> doGetLockCount(RaftGroupId groupId, String name) {
-        return invoke(new GetLockCountOp(name));
+    protected InternalCompletableFuture<Integer> doGetLockCount(RaftGroupId groupId, String name, long sessionId, long threadId) {
+        return invoke(new GetLockCountOp(name, sessionId, threadId));
     }
 
     private <T> InternalCompletableFuture<T> invoke(RaftOp op) {

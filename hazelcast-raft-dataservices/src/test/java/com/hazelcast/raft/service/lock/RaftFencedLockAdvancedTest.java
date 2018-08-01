@@ -251,7 +251,7 @@ public class RaftFencedLockAdvancedTest extends HazelcastRaftTestSupport {
                 assertNotNull(registry);
                 assertFalse(registry.getWaitTimeouts().isEmpty());
                 assertTrue(registry.getLockCount(name, null) > 0);
-                assertEquals(fence, registry.getLockFence(name));
+                assertEquals(fence, registry.getLockFence(name, null));
             }
         });
     }

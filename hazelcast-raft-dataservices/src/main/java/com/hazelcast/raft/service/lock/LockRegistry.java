@@ -99,7 +99,7 @@ class LockRegistry extends ResourceRegistry<LockInvocationKey, RaftLock> impleme
         return lock.lockCount();
     }
 
-    long getLockFence(String name) {
+    long getLockFence(String name, LockEndpoint endpoint) {
         RaftLock lock = getResourceOrNull(name);
         if (lock == null) {
             throw new IllegalMonitorStateException();
@@ -108,6 +108,8 @@ class LockRegistry extends ResourceRegistry<LockInvocationKey, RaftLock> impleme
         LockInvocationKey owner = lock.owner();
         if (owner == null) {
             throw new IllegalMonitorStateException("Lock[" + name + "] has no owner!");
+        } else if (endpoint != null && !owner.endpoint().equals(endpoint)) {
+            throw new IllegalMonitorStateException("Lock[" + name + "] is owned by " + owner.endpoint() + "!");
         }
 
         return owner.commitIndex();

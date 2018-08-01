@@ -55,8 +55,8 @@ import static java.lang.Math.max;
  */
 public class RaftSessionlessSemaphoreProxy implements ISemaphore {
 
-    static final ClientMessageDecoder INT_RESPONSE_DECODER = new IntResponseDecoder();
-    static final ClientMessageDecoder BOOLEAN_RESPONSE_DECODER = new BooleanResponseDecoder();
+    private static final ClientMessageDecoder INT_RESPONSE_DECODER = new IntResponseDecoder();
+    private static final ClientMessageDecoder BOOLEAN_RESPONSE_DECODER = new BooleanResponseDecoder();
 
     public static ISemaphore create(HazelcastInstance instance, String name) {
         int dataSize = ClientMessage.HEADER_SIZE + calculateDataSize(name);
@@ -86,7 +86,7 @@ public class RaftSessionlessSemaphoreProxy implements ISemaphore {
     private final RaftGroupId groupId;
     private final String name;
 
-    public RaftSessionlessSemaphoreProxy(HazelcastInstance instance, RaftGroupId groupId, String name) {
+    private RaftSessionlessSemaphoreProxy(HazelcastInstance instance, RaftGroupId groupId, String name) {
         this.client = getClient(instance);
         this.groupId = groupId;
         this.name = name;

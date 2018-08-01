@@ -27,22 +27,18 @@ import com.hazelcast.raft.service.lock.RaftLockService;
 
 import java.io.IOException;
 
+import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSION_ID;
+
 /**
  * TODO: Javadoc Pending...
  */
 public class GetLockCountOp extends RaftOp implements IdentifiedDataSerializable {
 
-    private static int NO_SESSION = -1;
-
     private String name;
-    private long sessionId = NO_SESSION;
+    private long sessionId;
     private long threadId;
 
     public GetLockCountOp() {
-    }
-
-    public GetLockCountOp(String name) {
-        this.name = name;
     }
 
     public GetLockCountOp(String name, long sessionId, long threadId) {
@@ -54,7 +50,7 @@ public class GetLockCountOp extends RaftOp implements IdentifiedDataSerializable
     @Override
     public Object run(RaftGroupId groupId, long commitIndex) {
         RaftLockService service = getService();
-        LockEndpoint endpoint = (sessionId != NO_SESSION) ? new LockEndpoint(sessionId, threadId) : null;
+        LockEndpoint endpoint = (sessionId != NO_SESSION_ID) ? new LockEndpoint(sessionId, threadId) : null;
 
         return service.getLockCount(groupId, name, endpoint);
     }

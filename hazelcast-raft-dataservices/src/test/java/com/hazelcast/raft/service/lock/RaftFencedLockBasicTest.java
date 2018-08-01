@@ -164,7 +164,7 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
 
     @Test(timeout = 60000)
     public void testLock_Unlock_thenLock() {
-        final long fence = lock.lock();
+        long fence = lock.lock();
         lock.unlock();
 
         final AtomicReference<Long> newFenceRef = new AtomicReference<Long>();
@@ -439,8 +439,8 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
 
     @Test(timeout = 60000)
     public void test_reentrantLock_whenForceUnlockedByOtherEndpoint() throws ExecutionException, InterruptedException {
-        long fence = lock.lock();
-        assertTrue(fence > 0);
+        long fence1 = lock.lock();
+        assertTrue(fence1 > 0);
 
         spawn(new Runnable() {
             @Override
@@ -449,10 +449,11 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
             }
         }).get();
 
-        lock.lock();
+        long fence2 = lock.lock();
 
+        assertTrue(fence2 > fence1);
         assertTrue(lock.isLockedByCurrentThread());
-        assertEquals(2, lock.getLockCount());
+        assertEquals(1, lock.getLockCount());
     }
 
     @Test(timeout = 60000)

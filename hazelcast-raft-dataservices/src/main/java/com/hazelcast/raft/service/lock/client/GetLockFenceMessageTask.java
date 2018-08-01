@@ -36,7 +36,7 @@ public class GetLockFenceMessageTask extends AbstractLockMessageTask {
     @Override
     protected void processMessage() {
         RaftInvocationManager invocationManager = getRaftInvocationManager();
-        invocationManager.invoke(groupId, new GetLockFenceOp(name)).andThen(this);
+        invocationManager.invoke(groupId, new GetLockFenceOp(name, sessionId, threadId)).andThen(this);
     }
 
     @Override

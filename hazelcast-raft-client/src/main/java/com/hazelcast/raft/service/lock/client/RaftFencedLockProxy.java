@@ -80,7 +80,7 @@ public class RaftFencedLockProxy extends AbstractRaftFencedLockProxy {
 
     private final HazelcastClientInstanceImpl client;
 
-    public RaftFencedLockProxy(HazelcastInstance instance, RaftGroupId groupId, String name) {
+    private RaftFencedLockProxy(HazelcastInstance instance, RaftGroupId groupId, String name) {
         super(SessionManagerProvider.get(getClient(instance)), groupId, name);
         this.client = getClient(instance);
     }
@@ -111,14 +111,14 @@ public class RaftFencedLockProxy extends AbstractRaftFencedLockProxy {
     }
 
     @Override
-    protected InternalCompletableFuture<Long> doGetLockFence(RaftGroupId groupId, String name) {
-        ClientMessage msg = encodeRequest(LOCK_FENCE_TYPE, groupId, name, -1, -1);
+    protected InternalCompletableFuture<Long> doGetLockFence(RaftGroupId groupId, String name, long sessionId, long threadId) {
+        ClientMessage msg = encodeRequest(LOCK_FENCE_TYPE, groupId, name, sessionId, threadId);
         return invoke(client, name, msg, LONG_RESPONSE_DECODER);
     }
 
     @Override
-    protected InternalCompletableFuture<Integer> doGetLockCount(RaftGroupId groupId, String name) {
-        ClientMessage msg = encodeRequest(LOCK_COUNT_TYPE, groupId, name, -1, -1);
+    protected InternalCompletableFuture<Integer> doGetLockCount(RaftGroupId groupId, String name, long sessionId, long threadId) {
+        ClientMessage msg = encodeRequest(LOCK_COUNT_TYPE, groupId, name, sessionId, threadId);
         return invoke(client, name, msg, INT_RESPONSE_DECODER);
     }
 
