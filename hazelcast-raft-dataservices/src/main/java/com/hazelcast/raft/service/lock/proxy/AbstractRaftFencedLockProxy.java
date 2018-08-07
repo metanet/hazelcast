@@ -149,11 +149,6 @@ public abstract class AbstractRaftFencedLockProxy extends SessionAwareProxy impl
     }
 
     @Override
-    public final RaftGroupId getRaftGroupId() {
-        return groupId;
-    }
-
-    @Override
     public final String getName() {
         return name;
     }

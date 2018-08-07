@@ -37,6 +37,7 @@ import java.util.UUID;
 
 import static com.hazelcast.raft.service.session.AbstractSessionManager.NO_SESSION_ID;
 import static com.hazelcast.util.Preconditions.checkPositive;
+import static java.util.Collections.unmodifiableCollection;
 
 /**
  * TODO: Javadoc Pending...
@@ -186,6 +187,11 @@ public class RaftSemaphore extends BlockingResource<SemaphoreInvocationKey> impl
         available = 0;
 
         return drained;
+    }
+
+    @Override
+    public Collection<Long> getOwnerSessionIds() {
+        return unmodifiableCollection(sessionStates.keySet());
     }
 
     Tuple2<Boolean, Collection<SemaphoreInvocationKey>> change(int permits) {

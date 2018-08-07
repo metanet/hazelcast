@@ -50,6 +50,11 @@ class RaftLock extends BlockingResource<LockInvocationKey> implements Identified
         super(groupId, name);
     }
 
+    @Override
+    public Collection<Long> getOwnerSessionIds() {
+        return owner != null ? Collections.singleton(owner.sessionId()) : Collections.<Long>emptyList();
+    }
+
     long acquire(LockEndpoint endpoint, long commitIndex, UUID invocationUid, boolean wait) {
         // if acquire() is being retried
         if (owner != null && owner.invocationUid().equals(invocationUid)) {

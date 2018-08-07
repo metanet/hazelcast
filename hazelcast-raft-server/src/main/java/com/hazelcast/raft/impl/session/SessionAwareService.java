@@ -18,6 +18,8 @@ package com.hazelcast.raft.impl.session;
 
 import com.hazelcast.raft.RaftGroupId;
 
+import java.util.Collection;
+
 /**
  * TODO: Javadoc Pending...
  */
@@ -26,5 +28,7 @@ public interface SessionAwareService {
     void setSessionAccessor(SessionAccessor accessor);
 
     void onSessionInvalidated(RaftGroupId groupId, long sessionId);
+
+    Collection<Long> getActiveSessions(RaftGroupId groupId);
 
 }

@@ -45,7 +45,7 @@ import static java.util.Collections.unmodifiableMap;
 public abstract class ResourceRegistry<W extends WaitKey, R extends BlockingResource<W>> implements DataSerializable {
 
     private RaftGroupId groupId;
-    private final Map<String, R> resources = new HashMap<String, R>();
+    private final Map<String, R> resources = new ConcurrentHashMap<String, R>();
     private final Set<String> destroyedNames = new HashSet<String>();
     // value.element1: timeout duration, value.element2: deadline timestamp (transient)
     private final Map<W, Tuple2<Long, Long>> waitTimeouts = new ConcurrentHashMap<W, Tuple2<Long, Long>>();
@@ -146,6 +146,18 @@ public abstract class ResourceRegistry<W extends WaitKey, R extends BlockingReso
     // queried locally in tests
     public final Map<W, Tuple2<Long, Long>> getWaitTimeouts() {
         return unmodifiableMap(waitTimeouts);
+    }
+
+    public final Collection<Long> getActiveSessions() {
+        Set<Long> sessions = new HashSet<Long>();
+        for (R res : resources.values()) {
+            sessions.addAll(res.getOwnerSessionIds());
+            for (WaitKey key : res.getWaitKeys()) {
+                sessions.add(key.sessionId());
+            }
+        }
+
+        return sessions;
     }
 
     public final Collection<Long> destroyResource(String name) {

@@ -24,6 +24,7 @@ import com.hazelcast.raft.impl.session.SessionExpiredException;
 import com.hazelcast.util.collection.Long2ObjectHashMap;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -47,6 +48,8 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
         this.groupId = groupId;
         this.name = name;
     }
+
+    public abstract Collection<Long> getOwnerSessionIds();
 
     public final RaftGroupId getGroupId() {
         return groupId;

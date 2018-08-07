@@ -328,7 +328,7 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
         assertTrue(fence > 0);
 
         final AbstractSessionManager sessionManager = getSessionManager(lockInstance);
-        final RaftGroupId groupId = lock.getRaftGroupId();
+        final RaftGroupId groupId = lock.getGroupId();
         final long sessionId = sessionManager.getSession(groupId);
         assertNotEquals(AbstractSessionManager.NO_SESSION_ID, sessionId);
 
@@ -353,7 +353,7 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
         assertTrue(fence > 0);
 
         final AbstractSessionManager sessionManager = getSessionManager(lockInstance);
-        final RaftGroupId groupId = lock.getRaftGroupId();
+        final RaftGroupId groupId = lock.getGroupId();
         final long sessionId = sessionManager.getSession(groupId);
         assertNotEquals(AbstractSessionManager.NO_SESSION_ID, sessionId);
 
@@ -378,7 +378,7 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
         assertTrue(fence > 0);
 
         final AbstractSessionManager sessionManager = getSessionManager(lockInstance);
-        final RaftGroupId groupId = lock.getRaftGroupId();
+        final RaftGroupId groupId = lock.getGroupId();
         final long sessionId = sessionManager.getSession(groupId);
         assertNotEquals(AbstractSessionManager.NO_SESSION_ID, sessionId);
 
@@ -461,7 +461,7 @@ public class RaftFencedLockBasicTest extends HazelcastRaftTestSupport {
         lockByOtherThread(lock);
 
         final AbstractSessionManager sessionManager = getSessionManager(lockInstance);
-        final RaftGroupId groupId = lock.getRaftGroupId();
+        final RaftGroupId groupId = lock.getGroupId();
         final long sessionId = sessionManager.getSession(groupId);
         assertNotEquals(AbstractSessionManager.NO_SESSION_ID, sessionId);
         assertEquals(1, sessionManager.getSessionUsageCount(groupId, sessionId));

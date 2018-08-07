@@ -4,6 +4,7 @@ import com.hazelcast.internal.serialization.DataSerializerHook;
 import com.hazelcast.internal.serialization.impl.FactoryIdHelper;
 import com.hazelcast.nio.serialization.DataSerializableFactory;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
+import com.hazelcast.raft.impl.session.operation.CloseInactiveSessionsOp;
 import com.hazelcast.raft.impl.session.operation.CloseSessionOp;
 import com.hazelcast.raft.impl.session.operation.InvalidateSessionsOp;
 import com.hazelcast.raft.impl.session.operation.CreateSessionOp;
@@ -21,6 +22,7 @@ public class RaftSessionServiceDataSerializerHook implements DataSerializerHook 
     public static final int HEARTBEAT_SESSION = 4;
     public static final int CLOSE_SESSION = 5;
     public static final int INVALIDATE_SESSIONS = 6;
+    public static final int CLOSE_INACTIVE_SESSIONS = 7;
 
 
     @Override
@@ -46,6 +48,8 @@ public class RaftSessionServiceDataSerializerHook implements DataSerializerHook 
                         return new CloseSessionOp();
                     case INVALIDATE_SESSIONS:
                         return new InvalidateSessionsOp();
+                    case CLOSE_INACTIVE_SESSIONS:
+                        return new CloseInactiveSessionsOp();
                 }
                 throw new IllegalArgumentException("Undefined type: " + typeId);
             }

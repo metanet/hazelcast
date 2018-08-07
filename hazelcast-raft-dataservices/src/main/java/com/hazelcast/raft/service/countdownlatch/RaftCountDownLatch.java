@@ -52,6 +52,11 @@ public class RaftCountDownLatch extends BlockingResource<CountDownLatchInvocatio
     }
 
     @Override
+    public Collection<Long> getOwnerSessionIds() {
+        return Collections.emptyList();
+    }
+
+    @Override
     protected void onInvalidateSession(long sessionId, Long2ObjectHashMap<Object> result) {
     }
 

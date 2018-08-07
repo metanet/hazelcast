@@ -27,22 +27,30 @@ import com.hazelcast.raft.impl.RaftGroupLifecycleAwareService;
 import com.hazelcast.raft.impl.RaftNode;
 import com.hazelcast.raft.impl.service.RaftService;
 import com.hazelcast.raft.impl.service.TermChangeAwareService;
+import com.hazelcast.raft.impl.session.operation.CloseInactiveSessionsOp;
 import com.hazelcast.raft.impl.session.operation.CloseSessionOp;
 import com.hazelcast.raft.impl.session.operation.InvalidateSessionsOp;
+import com.hazelcast.raft.impl.util.PartitionSpecificRunnableAdaptor;
 import com.hazelcast.raft.impl.util.Tuple2;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.ManagedService;
 import com.hazelcast.spi.NodeEngine;
+import com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl;
+import com.hazelcast.util.Clock;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import static java.util.Collections.emptySet;
 import static java.util.Collections.unmodifiableCollection;
@@ -58,6 +66,8 @@ public class RaftSessionService
 
     public static String SERVICE_NAME = "hz:core:raftSession";
     private static final long CHECK_EXPIRED_SESSIONS_TASK_PERIOD_IN_MILLIS = SECONDS.toMillis(1);
+
+    private static final long CHECK_INACTIVE_SESSIONS_TASK_PERIOD_IN_MILLIS = SECONDS.toMillis(30);
 
     private final NodeEngine nodeEngine;
     private final ILogger logger;
@@ -80,6 +90,8 @@ public class RaftSessionService
         ExecutionService executionService = nodeEngine.getExecutionService();
         executionService.scheduleWithRepetition(new CheckExpiredSessions(), CHECK_EXPIRED_SESSIONS_TASK_PERIOD_IN_MILLIS,
                 CHECK_EXPIRED_SESSIONS_TASK_PERIOD_IN_MILLIS, MILLISECONDS);
+        executionService.scheduleWithRepetition(new CheckInactiveSessions(), CHECK_INACTIVE_SESSIONS_TASK_PERIOD_IN_MILLIS,
+                CHECK_INACTIVE_SESSIONS_TASK_PERIOD_IN_MILLIS, MILLISECONDS);
     }
 
     @Override
@@ -142,7 +154,7 @@ public class RaftSessionService
             logger.info("Created new session registry for " + groupId);
         }
 
-        long sessionTTLMillis = getSessionTimeToLiveMillis();
+        long sessionTTLMillis = getSessionTTLMillis();
         long sessionId = registry.createNewSession(sessionTTLMillis, endpoint);
         logger.info("Created new session: " + sessionId + " in " + groupId);
         return new SessionResponse(sessionId, sessionTTLMillis, getHeartbeatIntervalMillis());
@@ -154,7 +166,7 @@ public class RaftSessionService
             throw new IllegalStateException("No session: " + sessionId + " for raft group: " + groupId);
         }
 
-        registry.heartbeat(sessionId, getSessionTimeToLiveMillis());
+        registry.heartbeat(sessionId, getSessionTTLMillis());
         logger.info("Session: " + sessionId + " heartbeat in " + groupId);
     }
 
@@ -193,6 +205,27 @@ public class RaftSessionService
         }
     }
 
+    public void closeInactiveSessions(RaftGroupId groupId, Collection<Long> inactiveSessions) {
+        SessionRegistry registry = registries.get(groupId);
+        if (registry == null) {
+            return;
+        }
+
+        Collection<Long> closed = new HashSet<Long>(inactiveSessions);
+        for (SessionAwareService service : nodeEngine.getServices(SessionAwareService.class)) {
+            closed.removeAll(service.getActiveSessions(groupId));
+        }
+
+        for (long sessionId : closed) {
+            registry.closeSession(sessionId);
+        }
+
+        if (closed.size() > 0) {
+            logger.info("Inactive sessions: " + closed + " are closed in " + groupId);
+            notifyServices(groupId, closed);
+        }
+    }
+
     // queried locally in tests
     SessionRegistry getSessionRegistryOrNull(RaftGroupId groupId) {
         return registries.get(groupId);
@@ -202,7 +235,7 @@ public class RaftSessionService
         return raftService.getConfig().getSessionHeartbeatIntervalMillis();
     }
 
-    private long getSessionTimeToLiveMillis() {
+    private long getSessionTTLMillis() {
         return SECONDS.toMillis(raftService.getConfig().getSessionTimeToLiveSeconds());
     }
 
@@ -238,8 +271,50 @@ public class RaftSessionService
         return expired;
     }
 
-    private class CheckExpiredSessions implements Runnable {
+    private Map<RaftGroupId, Collection<Long>> getInactiveSessions() {
+        final Map<RaftGroupId, Collection<Long>> response = new ConcurrentHashMap<RaftGroupId, Collection<Long>>();
+        final Semaphore semaphore = new Semaphore(0);
 
+        OperationServiceImpl operationService = (OperationServiceImpl) nodeEngine.getOperationService();
+        Collection<SessionRegistry> registries = new ArrayList<SessionRegistry>(this.registries.values());
+
+        for (final SessionRegistry registry : registries) {
+            final RaftGroupId groupId = registry.groupId();
+            operationService.execute(new PartitionSpecificRunnableAdaptor(new Runnable() {
+                @Override
+                public void run() {
+                    Set<Long> activeSessionIds = new HashSet<Long>();
+                    for (SessionAwareService service : nodeEngine.getServices(SessionAwareService.class)) {
+                        activeSessionIds.addAll(service.getActiveSessions(groupId));
+                    }
+
+                    Set<Long> inactiveSessionIds = new HashSet<Long>();
+                    for (SessionInfo session : registry.getSessions()) {
+                        if (!activeSessionIds.contains(session.id())
+                                && session.creationTime() + getSessionTTLMillis() < Clock.currentTimeMillis()) {
+                            inactiveSessionIds.add(session.id());
+                        }
+                    }
+
+                    if (inactiveSessionIds.size() > 0) {
+                        response.put(groupId, inactiveSessionIds);
+                    }
+
+                    semaphore.release();
+                }
+            }, nodeEngine.getPartitionService().getPartitionId(groupId)));
+        }
+
+        try {
+            semaphore.tryAcquire(registries.size(), 5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        return response;
+    }
+
+    private class CheckExpiredSessions implements Runnable {
         @Override
         public void run() {
             Map<RaftGroupId, Collection<Tuple2<Long, Long>>> expiredSessions = getExpiredSessions();
@@ -258,6 +333,29 @@ public class RaftSessionService
                     }
                 }
             }
+        }
+    }
+
+    private class CheckInactiveSessions implements Runnable {
+        @Override
+        public void run() {
+            Map<RaftGroupId, Collection<Long>> inactiveSessions = getInactiveSessions();
+            for (Entry<RaftGroupId, Collection<Long>> entry : inactiveSessions.entrySet()) {
+                RaftGroupId groupId = entry.getKey();
+                RaftNode raftNode = raftService.getRaftNode(groupId);
+                if (raftNode != null) {
+                    Collection<Long> sessions = entry.getValue();
+                    try {
+                        ICompletableFuture f = raftNode.replicate(new CloseInactiveSessionsOp(sessions));
+                        f.get();
+                    } catch (Exception e) {
+                        if (logger.isFineEnabled()) {
+                            logger.fine("Could not close inactive sessions: " + sessions + " of " + groupId, e);
+                        }
+                    }
+                }
+            }
+
         }
     }
 }

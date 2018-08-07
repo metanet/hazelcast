@@ -147,6 +147,12 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
     }
 
     @Override
+    public final Collection<Long> getActiveSessions(RaftGroupId groupId) {
+        RR registry = getRegistryOrNull(groupId);
+        return registry != null ? registry.getActiveSessions() : Collections.<Long>emptyList();
+    }
+
+    @Override
     public final void onGroupDestroy(final RaftGroupId groupId) {
         ResourceRegistry<W, R> registry = registries.get(groupId);
         if (registry != null) {
@@ -224,7 +230,7 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
         completeFutures(groupId, indices, result);
     }
 
-    protected final void completeFutures(RaftGroupId groupId, Collection<Long> indices, Object result) {
+    private void completeFutures(RaftGroupId groupId, Collection<Long> indices, Object result) {
         if (!indices.isEmpty()) {
             RaftNodeImpl raftNode = (RaftNodeImpl) raftService.getRaftNode(groupId);
             for (Long index : indices) {
