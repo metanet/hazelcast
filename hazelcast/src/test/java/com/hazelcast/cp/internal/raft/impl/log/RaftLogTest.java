@@ -16,6 +16,7 @@
 
 package com.hazelcast.cp.internal.raft.impl.log;
 
+import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.test.HazelcastSerialClassRunner;
 import com.hazelcast.test.annotation.ParallelJVMTest;
 import com.hazelcast.test.annotation.QuickTest;
@@ -148,7 +149,7 @@ public class RaftLogTest {
                 new LogEntry(1, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         LogEntry last = new LogEntry(1, 4, null);
         log.appendEntries(last);
@@ -165,7 +166,7 @@ public class RaftLogTest {
                 new LogEntry(1, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         LogEntry last = new LogEntry(2, 4, null);
         log.appendEntries(last);
@@ -182,7 +183,7 @@ public class RaftLogTest {
                 new LogEntry(2, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         exception.expect(IllegalArgumentException.class);
         log.appendEntries(new LogEntry(1, 4, null));
@@ -196,7 +197,7 @@ public class RaftLogTest {
                 new LogEntry(2, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         exception.expect(IllegalArgumentException.class);
         log.appendEntries(new LogEntry(2, 2, null));
@@ -210,7 +211,7 @@ public class RaftLogTest {
                 new LogEntry(2, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         exception.expect(IllegalArgumentException.class);
         log.appendEntries(new LogEntry(2, 3, null));
@@ -224,7 +225,7 @@ public class RaftLogTest {
                 new LogEntry(2, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(2, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         exception.expect(IllegalArgumentException.class);
         log.appendEntries(new LogEntry(2, 5, null));
@@ -254,7 +255,7 @@ public class RaftLogTest {
                 new LogEntry(1, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         log.appendEntries(new LogEntry(1, 4, null));
         log.appendEntries(new LogEntry(1, 5, null));
@@ -308,7 +309,7 @@ public class RaftLogTest {
                 new LogEntry(1, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         LogEntry[] result = log.getEntriesBetween(3, 3);
         assertArrayEquals(Arrays.copyOfRange(entries, 2, 3), result);
@@ -322,7 +323,7 @@ public class RaftLogTest {
                 new LogEntry(1, 3, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         exception.expect(IllegalArgumentException.class);
         log.getEntriesBetween(2, 3);
@@ -358,7 +359,7 @@ public class RaftLogTest {
                 new LogEntry(1, 4, null)
         };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         List<LogEntry> truncated = log.truncateEntriesFrom(3);
         assertEquals(2, truncated.size());
@@ -388,7 +389,7 @@ public class RaftLogTest {
                 new LogEntry(1, 3, null),
                 };
         log.appendEntries(entries);
-        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         exception.expect(IllegalArgumentException.class);
         log.truncateEntriesFrom(1);
@@ -399,7 +400,7 @@ public class RaftLogTest {
         LogEntry[] entries = new LogEntry[] { new LogEntry(1, 1, null) };
         log.appendEntries(entries);
         Object snapshot = new Object();
-        log.setSnapshot(new SnapshotEntry(1, 1, snapshot, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 1, snapshot, 0, Collections.<RaftEndpoint>emptySet()));
 
         LogEntry lastLogEntry = log.lastLogOrSnapshotEntry();
         assertEquals(1, lastLogEntry.index());
@@ -426,7 +427,7 @@ public class RaftLogTest {
                 };
         log.appendEntries(entries);
 
-        log.setSnapshot(new SnapshotEntry(1, 5, null, 0, Collections.emptySet()));
+        log.setSnapshot(new SnapshotEntry(1, 5, null, 0, Collections.<RaftEndpoint>emptySet()));
 
         LogEntry lastLogEntry = log.lastLogOrSnapshotEntry();
         assertEquals(5, lastLogEntry.index());
@@ -451,7 +452,7 @@ public class RaftLogTest {
                 };
         log.appendEntries(entries);
 
-        int truncated = log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.emptySet()));
+        int truncated = log.setSnapshot(new SnapshotEntry(1, 3, null, 0, Collections.<RaftEndpoint>emptySet()));
         assertEquals(3, truncated);
 
         for (int i = 1; i <= 3 ; i++) {
@@ -487,7 +488,7 @@ public class RaftLogTest {
                 };
         log.appendEntries(entries);
 
-        int truncated = log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.emptySet()));
+        int truncated = log.setSnapshot(new SnapshotEntry(1, 2, null, 0, Collections.<RaftEndpoint>emptySet()));
         assertEquals(2, truncated);
 
         for (int i = 1; i <= 2 ; i++) {
@@ -500,7 +501,7 @@ public class RaftLogTest {
         }
 
         Object snapshot = new Object();
-        truncated = log.setSnapshot(new SnapshotEntry(1, 4, snapshot, 0, Collections.emptySet()));
+        truncated = log.setSnapshot(new SnapshotEntry(1, 4, snapshot, 0, Collections.<RaftEndpoint>emptySet()));
         assertEquals(2, truncated);
 
         for (int i = 1; i <= 4 ; i++) {
