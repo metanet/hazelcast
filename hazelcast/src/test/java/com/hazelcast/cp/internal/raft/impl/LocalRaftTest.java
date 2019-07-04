@@ -94,7 +94,7 @@ public class LocalRaftTest extends HazelcastTestSupport {
         group.start();
         group.waitUntilLeaderElected();
 
-        Endpoint leaderEndpoint = group.getLeaderEndpoint();
+        RaftEndpoint leaderEndpoint = group.getLeaderEndpoint();
         assertNotNull(leaderEndpoint);
 
         int leaderIndex = group.getLeaderIndex();
@@ -488,7 +488,7 @@ public class LocalRaftTest extends HazelcastTestSupport {
         int nodeCount = 5;
         group = new LocalRaftGroup(nodeCount);
         group.start();
-        Endpoint leaderEndpoint = group.waitUntilLeaderElected().getLocalMember();
+        RaftEndpoint leaderEndpoint = group.waitUntilLeaderElected().getLocalMember();
 
         int[] split = group.createMajoritySplitIndexes(false);
         group.split(split);

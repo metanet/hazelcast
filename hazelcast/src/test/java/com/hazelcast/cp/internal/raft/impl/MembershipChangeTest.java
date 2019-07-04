@@ -17,7 +17,6 @@
 package com.hazelcast.cp.internal.raft.impl;
 
 import com.hazelcast.config.cp.RaftAlgorithmConfig;
-import com.hazelcast.cluster.Endpoint;
 import com.hazelcast.cp.exception.CannotReplicateException;
 import com.hazelcast.cp.internal.raft.MembershipChangeMode;
 import com.hazelcast.cp.internal.raft.exception.MemberAlreadyExistsException;
@@ -33,6 +32,7 @@ import com.hazelcast.cp.internal.raft.impl.state.RaftGroupMembers;
 import com.hazelcast.cp.internal.raft.impl.testing.LocalRaftGroup;
 import com.hazelcast.cp.internal.raft.impl.testing.RaftRunnable;
 import com.hazelcast.cp.internal.raft.impl.util.PostponedResponse;
+import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelJVMTest;
@@ -431,11 +431,14 @@ public class MembershipChangeTest extends HazelcastTestSupport {
 
         group.terminateNode(leader.getLocalMember());
 
-        assertTrueEventually(() -> {
-            for (RaftNodeImpl follower : followers) {
-                Endpoint newLeaderEndpoint = getLeaderMember(follower);
-                assertNotNull(newLeaderEndpoint);
-                assertNotEquals(leader.getLocalMember(), newLeaderEndpoint);
+        assertTrueEventually(new AssertTask() {
+            @Override
+            public void run() {
+                for (RaftNodeImpl follower : followers) {
+                    RaftEndpoint newLeaderEndpoint = getLeaderMember(follower);
+                    assertNotNull(newLeaderEndpoint);
+                    assertNotEquals(leader.getLocalMember(), newLeaderEndpoint);
+                }
             }
         });
 

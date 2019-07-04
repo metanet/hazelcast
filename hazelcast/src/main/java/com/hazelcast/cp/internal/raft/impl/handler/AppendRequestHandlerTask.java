@@ -159,6 +159,7 @@ public class AppendRequestHandlerTask extends RaftNodeStatusAwareTask implements
                     raftNode.invalidateFuturesFrom(reqEntry.index());
                     revertPreAppliedRaftGroupCmd(truncatedEntries);
                     newEntries = Arrays.copyOfRange(req.entries(), i, req.entryCount());
+                    raftLog.flush();
                     break;
                 }
             }
@@ -180,6 +181,7 @@ public class AppendRequestHandlerTask extends RaftNodeStatusAwareTask implements
                 }
 
                 raftLog.appendEntries(newEntries);
+                raftLog.flush();
             }
         }
 

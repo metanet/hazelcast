@@ -14,21 +14,24 @@
  * limitations under the License.
  */
 
-package com.hazelcast.cp.internal.raft.exception;
-
-import com.hazelcast.cp.exception.CPSubsystemException;
-import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
+package com.hazelcast.cp.internal.raft.impl;
 
 /**
- * A {@code CPSubsystemException} which is thrown when a member, which is
- * requested to be added to a CP group, is already member of that group.
- * Handled internally.
+ * Represents an endpoint that runs the Raft consensus algorithm as a member of
+ * a Raft group.
+ * <p>
+ * From the Raft consensus algorithm's point of view, the only important
+ * property of a Raft endpoint is its identity. All other properties are
+ * implementation details of a Raft endpoint and can be handled inside the
+ * {@link RaftIntegration} abstraction.
  */
-public class MemberAlreadyExistsException extends CPSubsystemException {
+public interface RaftEndpoint {
 
-    private static final long serialVersionUID = -4895279676261366826L;
+    /**
+     * Returns the UUID of this Raft endpoint
+     *
+     * @return the UUID of this Raft endpoint
+     */
+    String getUuid();
 
-    public MemberAlreadyExistsException(RaftEndpoint member) {
-        super("Member already exists: " + member, null);
-    }
 }

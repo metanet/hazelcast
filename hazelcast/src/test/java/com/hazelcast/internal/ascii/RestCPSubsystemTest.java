@@ -27,7 +27,6 @@ import com.hazelcast.cp.CPGroup;
 import com.hazelcast.cp.CPGroup.CPGroupStatus;
 import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.exception.CPGroupDestroyedException;
-import com.hazelcast.cp.internal.CPGroupInfo;
 import com.hazelcast.cp.internal.RaftGroupId;
 import com.hazelcast.cp.session.CPSession;
 import com.hazelcast.instance.impl.HazelcastInstanceFactory;
@@ -115,7 +114,7 @@ public class RestCPSubsystemTest extends HazelcastTestSupport {
         for (JsonValue val : responseArr) {
             JsonObject obj = (JsonObject) val;
             String name = obj.getString("name", "");
-            if (CPGroupInfo.DEFAULT_GROUP_NAME.equals(name)) {
+            if (CPGroup.DEFAULT_GROUP_NAME.equals(name)) {
                 defaultCPGroupExists = true;
             } else if (METADATA_CP_GROUP_NAME.equals(name)) {
                 metadataCPGroupExists = true;
@@ -430,7 +429,7 @@ public class RestCPSubsystemTest extends HazelcastTestSupport {
 
         assertTrueEventually(new AssertTask() {
             @Override
-            public void run() {
+            public void run() throws Exception {
                 assertNotNull(instance2.getCPSubsystem().getLocalCPMember());
             }
         });

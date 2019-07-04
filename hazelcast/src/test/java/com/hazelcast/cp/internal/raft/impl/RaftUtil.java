@@ -17,13 +17,12 @@
 package com.hazelcast.cp.internal.raft.impl;
 
 import com.hazelcast.config.cp.RaftAlgorithmConfig;
-import com.hazelcast.cluster.Endpoint;
 import com.hazelcast.cp.internal.raft.impl.dataservice.RaftDataService;
 import com.hazelcast.cp.internal.raft.impl.log.LogEntry;
 import com.hazelcast.cp.internal.raft.impl.state.LeaderState;
 import com.hazelcast.cp.internal.raft.impl.state.RaftGroupMembers;
 import com.hazelcast.cp.internal.raft.impl.testing.LocalRaftGroup;
-import com.hazelcast.cp.internal.raft.impl.testing.TestRaftMember;
+import com.hazelcast.cp.internal.raft.impl.testing.TestRaftEndpoint;
 import com.hazelcast.nio.Address;
 import com.hazelcast.internal.util.ExceptionUtil;
 import com.hazelcast.internal.util.UuidUtil;
@@ -45,8 +44,13 @@ public class RaftUtil {
         return readRaftState(node, task);
     }
 
-    public static <T extends Endpoint> T getLeaderMember(RaftNodeImpl node) {
-        Callable<Endpoint> task = () -> node.state().leader();
+    public static <T extends RaftEndpoint> T getLeaderMember(final RaftNodeImpl node) {
+        Callable<RaftEndpoint> task = new Callable<RaftEndpoint>() {
+            @Override
+            public RaftEndpoint call() {
+                return node.state().leader();
+            }
+        };
         return (T) readRaftState(node, task);
     }
 
@@ -74,7 +78,7 @@ public class RaftUtil {
         return readRaftState(node, task);
     }
 
-    public static long getMatchIndex(RaftNodeImpl leader, Endpoint follower) {
+    public static long getMatchIndex(RaftNodeImpl leader, RaftEndpoint follower) {
         Callable<Long> task = () -> {
             LeaderState leaderState = leader.state().leaderState();
             return leaderState.getFollowerState(follower).matchIndex();
@@ -125,8 +129,8 @@ public class RaftUtil {
         }
     }
 
-    public static TestRaftMember newRaftMember(int port) {
-        return new TestRaftMember(UuidUtil.newUnsecureUUID(), port);
+    public static TestRaftEndpoint newRaftMember(int port) {
+        return new TestRaftEndpoint(randomString(), port);
     }
 
     public static Address newAddress(int port) {
