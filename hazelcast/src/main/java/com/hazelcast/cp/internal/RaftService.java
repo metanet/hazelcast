@@ -670,8 +670,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         int partitionId = getCPGroupPartitionId(groupId);
         RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, localCPMember, partitionId);
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
-        RaftNodeImpl node = new RaftNodeImpl(groupId, localCPMember, members, null, raftAlgorithmConfig,
-                integration);
+        RaftNodeImpl node = RaftNodeImpl.newRaftNode(groupId, localCPMember, members, raftAlgorithmConfig, integration);
 
         if (nodes.putIfAbsent(groupId, node) == null) {
             if (destroyedGroupIds.contains(groupId)) {

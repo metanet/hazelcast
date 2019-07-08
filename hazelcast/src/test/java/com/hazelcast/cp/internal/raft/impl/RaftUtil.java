@@ -16,12 +16,12 @@
 
 package com.hazelcast.cp.internal.raft.impl;
 
-import com.hazelcast.config.cp.RaftAlgorithmConfig;
-import com.hazelcast.cp.internal.raft.impl.dataservice.RaftDataService;
 import com.hazelcast.cp.internal.raft.impl.log.LogEntry;
+import com.hazelcast.cp.internal.raft.impl.persistence.RaftStateStore;
+import com.hazelcast.cp.internal.raft.impl.persistence.RestoredRaftState;
 import com.hazelcast.cp.internal.raft.impl.state.LeaderState;
 import com.hazelcast.cp.internal.raft.impl.state.RaftGroupMembers;
-import com.hazelcast.cp.internal.raft.impl.testing.LocalRaftGroup;
+import com.hazelcast.cp.internal.raft.impl.testing.InMemoryRaftStateStore;
 import com.hazelcast.cp.internal.raft.impl.testing.TestRaftEndpoint;
 import com.hazelcast.nio.Address;
 import com.hazelcast.internal.util.ExceptionUtil;
@@ -32,7 +32,6 @@ import java.net.UnknownHostException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
 
-import static com.hazelcast.cp.internal.raft.impl.dataservice.RaftDataService.SERVICE_NAME;
 import static com.hazelcast.test.HazelcastTestSupport.assertTrueEventually;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
@@ -69,6 +68,16 @@ public class RaftUtil {
     public static long getCommitIndex(RaftNodeImpl node) {
         Callable<Long> task = () -> node.state().commitIndex();
 
+        return readRaftState(node, task);
+    }
+
+    public static long getLastApplied(final RaftNodeImpl node) {
+        Callable<Long> task = new Callable<Long>() {
+            @Override
+            public Long call() {
+                return node.state().lastApplied();
+            }
+        };
         return readRaftState(node, task);
     }
 
@@ -150,11 +159,25 @@ public class RaftUtil {
         return count - majority(count);
     }
 
-    public static LocalRaftGroup newGroupWithService(int nodeCount, RaftAlgorithmConfig raftAlgorithmConfig) {
-        return newGroupWithService(nodeCount, raftAlgorithmConfig, false);
+    public static RestoredRaftState getRestoredState(final RaftNodeImpl node) {
+        Callable<RestoredRaftState> task = new Callable<RestoredRaftState>() {
+            @Override
+            public RestoredRaftState call() {
+                InMemoryRaftStateStore store = (InMemoryRaftStateStore) node.state().stateStore();
+                return store.toRestoredRaftState();
+            }
+        };
+
+        return readRaftState(node, task);
     }
 
-    public static LocalRaftGroup newGroupWithService(int nodeCount, RaftAlgorithmConfig raftAlgorithmConfig, boolean appendNopEntryOnLeaderElection) {
-        return new LocalRaftGroup(nodeCount, raftAlgorithmConfig, SERVICE_NAME, RaftDataService.class, appendNopEntryOnLeaderElection);
+    public static <T extends RaftStateStore> T getRaftStateStore(final RaftNodeImpl node) {
+        Callable<RaftStateStore> task = new Callable<RaftStateStore>() {
+            @Override
+            public RaftStateStore call() {
+                return node.state().stateStore();
+            }
+        };
+        return (T) readRaftState(node, task);
     }
 }

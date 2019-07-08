@@ -365,7 +365,7 @@ public class LocalRaftIntegration implements RaftIntegration {
     }
 
     void shutdown() {
-        scheduledExecutor.shutdown();
+        scheduledExecutor.shutdownNow();
     }
 
     boolean isShutdown() {
