@@ -87,7 +87,7 @@ public class VoteRequestHandlerTask extends RaftNodeStatusAwareTask implements R
             return;
         }
 
-        if (state.lastVoteTerm() == req.term() && state.votedFor() != null) {
+        if (state.votedFor() != null) {
             boolean granted = (req.candidate().equals(state.votedFor()));
             if (granted) {
                 logger.info("Vote granted for duplicate" + req);

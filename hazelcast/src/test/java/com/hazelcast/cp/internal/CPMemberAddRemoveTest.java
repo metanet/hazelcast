@@ -26,7 +26,6 @@ import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.CPSubsystemManagementService;
 import com.hazelcast.cp.IAtomicLong;
 import com.hazelcast.cp.exception.CPGroupDestroyedException;
-import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.cp.internal.raft.impl.RaftNodeImpl;
 import com.hazelcast.cp.internal.raft.impl.command.UpdateRaftGroupMembersCmd;
 import com.hazelcast.cp.internal.raftop.metadata.GetActiveCPMembersOp;
@@ -241,9 +240,9 @@ public class CPMemberAddRemoveTest extends HazelcastRaftTestSupport {
         MembershipChangeSchedule schedule = invocationManager.<MembershipChangeSchedule>query(metadataGroupId,
                 new GetMembershipChangeScheduleOp(), LINEARIZABLE).get();
         assertNull(schedule);
-        CPGroupInfo group = invocationManager.<CPGroupInfo>query(metadataGroupId, new GetRaftGroupOp(metadataGroupId), LINEARIZABLE).join();
-        assertEquals(2, group.memberCount());
-        for (RaftEndpoint member : group.members()) {
+        CPGroup group = invocationManager.<CPGroup>invoke(metadataGroupId, new GetRaftGroupOp(metadataGroupId)).join();
+        assertEquals(2, group.members().size());
+        for (CPMember member : group.members()) {
             assertNotEquals(shutdownCPMember, member);
         }
     }
