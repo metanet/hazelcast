@@ -19,6 +19,7 @@ package com.hazelcast.cp.internal.raft.impl;
 import com.hazelcast.config.cp.RaftAlgorithmConfig;
 import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.cp.CPGroupId;
+import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.exception.LeaderDemotedException;
 import com.hazelcast.cp.exception.NotLeaderException;
 import com.hazelcast.cp.exception.StaleAppendRequestException;
@@ -163,8 +164,6 @@ public final class RaftNodeImpl implements RaftNode {
         this.state = restoreRaftState(groupId, restoredState, logCapacity, stateStore);
         this.logger = getLogger(RaftNode.class);
         this.appendRequestBackoffResetTask = new AppendRequestBackoffResetTask();
-        restoreStateMachine();
-        replayLogEntries();
     }
 
     public static RaftNodeImpl newRaftNode(CPGroupId groupId, RaftEndpoint localMember, Collection<RaftEndpoint> members,
@@ -265,6 +264,7 @@ public final class RaftNodeImpl implements RaftNode {
         raftIntegration.execute(new Runnable() {
             @Override
             public void run() {
+                restoreStateMachine();
                 try {
                     state.initPersistence();
                 } catch (IOException e) {
@@ -946,11 +946,8 @@ public final class RaftNodeImpl implements RaftNode {
                 logger.info("Snapshot is restored at commitIndex=" + snapshot.index());
             }
         }
-    }
 
-    private void replayLogEntries() {
         RaftLog log = state.log();
-        SnapshotEntry snapshot = log.snapshot();
         LogEntry committedEntry = null;
         LogEntry lastAppliedEntry = null;
 
@@ -991,7 +988,8 @@ public final class RaftNodeImpl implements RaftNode {
                 .append("} [");
 
         for (RaftEndpoint member : state.members()) {
-            sb.append("\n\t").append(member);
+            CPMember cpMember = raftIntegration.getCpMember(member);
+            sb.append("\n\t").append(cpMember != null ? cpMember : member);
             if (state.localEndpoint().equals(member)) {
                 sb.append(" - ").append(state.role()).append(" this");
             } else if (member.equals(state.leader())) {

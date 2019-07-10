@@ -16,6 +16,7 @@
 
 package com.hazelcast.cp.internal.raft.impl;
 
+import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendFailureResponse;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendRequest;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendSuccessResponse;
@@ -200,6 +201,11 @@ public interface RaftIntegration {
      * the linearizable read optimization.
      */
     boolean isLinearizableReadOptimizationEnabled();
+
+    /**
+     * TODO
+     */
+    CPMember getCpMember(RaftEndpoint target);
 
     /**
      * Called when RaftNode status changes.

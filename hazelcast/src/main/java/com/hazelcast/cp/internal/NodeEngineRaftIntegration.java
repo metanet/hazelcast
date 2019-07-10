@@ -16,8 +16,8 @@
 
 package com.hazelcast.cp.internal;
 
-import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.cp.CPGroupId;
+import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.internal.operation.integration.AppendFailureResponseOp;
 import com.hazelcast.cp.internal.operation.integration.AppendRequestOp;
 import com.hazelcast.cp.internal.operation.integration.AppendSuccessResponseOp;
@@ -28,6 +28,7 @@ import com.hazelcast.cp.internal.operation.integration.PreVoteResponseOp;
 import com.hazelcast.cp.internal.operation.integration.VoteRequestOp;
 import com.hazelcast.cp.internal.operation.integration.VoteResponseOp;
 import com.hazelcast.cp.internal.raft.SnapshotAwareService;
+import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.cp.internal.raft.impl.RaftIntegration;
 import com.hazelcast.cp.internal.raft.impl.RaftNodeStatus;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendFailureResponse;
@@ -148,7 +149,7 @@ final class NodeEngineRaftIntegration implements RaftIntegration {
 
     @Override
     public boolean isReachable(RaftEndpoint target) {
-        CPMemberInfo targetMember = invocationManager.getCPMember(target);
+        CPMember targetMember = getCpMember(target);
         return targetMember != null && nodeEngine.getClusterService().getMember(targetMember.getAddress()) != null;
     }
 
@@ -234,7 +235,7 @@ final class NodeEngineRaftIntegration implements RaftIntegration {
     }
 
     private boolean send(AsyncRaftOp operation, RaftEndpoint target) {
-        CPMemberInfo targetMember = invocationManager.getCPMember(target);
+        CPMember targetMember = getCpMember(target);
         if (targetMember == null || localAddress.equals(targetMember.getAddress())) {
             if (localCPMember.getUuid().equals(target.getUuid())) {
                 throw new IllegalStateException("Cannot send " + operation + " to "
@@ -246,6 +247,11 @@ final class NodeEngineRaftIntegration implements RaftIntegration {
 
         operation.setTargetEndpoint(target).setPartitionId(partitionId);
         return operationService.send(operation, targetMember.getAddress());
+    }
+
+    @Override
+    public CPMember getCpMember(RaftEndpoint target) {
+        return invocationManager.getCPMember(target);
     }
 
     @Override
