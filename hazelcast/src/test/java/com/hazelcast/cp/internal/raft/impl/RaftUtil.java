@@ -139,7 +139,7 @@ public class RaftUtil {
     }
 
     public static TestRaftEndpoint newRaftMember(int port) {
-        return new TestRaftEndpoint(randomString(), port);
+        return new TestRaftEndpoint(UuidUtil.newUnsecureUUID(), port);
     }
 
     public static Address newAddress(int port) {

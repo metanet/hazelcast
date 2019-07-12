@@ -39,7 +39,6 @@ import static com.hazelcast.cp.internal.raft.impl.RaftUtil.majority;
 import static com.hazelcast.cp.internal.raft.impl.RaftUtil.newRaftMember;
 import static com.hazelcast.cp.internal.raft.impl.state.RaftState.newRaftState;
 import static com.hazelcast.test.HazelcastTestSupport.randomName;
-import static com.hazelcast.test.HazelcastTestSupport.randomString;
 import static java.util.Arrays.asList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

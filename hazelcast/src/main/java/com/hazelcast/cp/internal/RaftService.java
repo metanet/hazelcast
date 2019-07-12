@@ -417,7 +417,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
                     }
                 }
                 if (cpMemberToRemove == null) {
-                    complete(future, new IllegalArgumentException("No CPMember found with uuid: " + cpMemberUuid));
+                    complete(future, new IllegalArgumentException("No CPMember found with uuid: " + cpMemberUuidString));
                     return;
                 } else {
                     Member member = clusterService.getMember(cpMemberToRemove.getAddress());
@@ -1160,7 +1160,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
                         logger.warning("Removing " + missingMember + " since it is absent for " + missingTimeSeconds
                                 + " seconds.");
 
-                        removeCPMember(missingMember.getUuid()).get();
+                        removeCPMember(missingMember.getUuid().toString()).get();
 
                         logger.info("Auto-removal of " + missingMember + " is successful.");
 

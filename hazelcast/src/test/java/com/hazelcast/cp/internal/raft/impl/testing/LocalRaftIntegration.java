@@ -18,12 +18,11 @@ package com.hazelcast.cp.internal.raft.impl.testing;
 
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.CPMember;
-import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.cp.internal.raft.SnapshotAwareService;
+import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.cp.internal.raft.impl.RaftIntegration;
 import com.hazelcast.cp.internal.raft.impl.RaftNodeImpl;
 import com.hazelcast.cp.internal.raft.impl.RaftNodeStatus;
-import com.hazelcast.cp.internal.raft.impl.RaftUtil;
 import com.hazelcast.cp.internal.raft.impl.dataservice.RestoreSnapshotRaftRunnable;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendFailureResponse;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendRequest;
@@ -52,6 +51,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
+import static com.hazelcast.cp.internal.raft.impl.RaftUtil.newAddress;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.sameInstance;
@@ -89,7 +89,8 @@ public class LocalRaftIntegration implements RaftIntegration {
     }
 
     private MemberImpl getThisMember(TestRaftEndpoint localEndpoint) {
-        return new MemberImpl(RaftUtil.newAddress(localEndpoint.getPort()), MemberVersion.of(Versions.CURRENT_CLUSTER_VERSION.toString()), true, localEndpoint.getUuid());
+        MemberVersion version = MemberVersion.of(Versions.CURRENT_CLUSTER_VERSION.toString());
+        return new MemberImpl(newAddress(localEndpoint.getPort()), version, true, localEndpoint.getUuid().toString());
     }
 
     void discoverNode(RaftNodeImpl node) {
