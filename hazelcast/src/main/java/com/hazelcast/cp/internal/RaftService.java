@@ -82,6 +82,7 @@ import com.hazelcast.spi.impl.NodeEngine;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.operationservice.Operation;
 import com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl;
+import com.hazelcast.spi.impl.operationservice.impl.RaftInvocationContext;
 import com.hazelcast.spi.impl.servicemanager.ServiceInfo;
 
 import java.io.File;
@@ -161,8 +162,8 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         Address address = nodeEngine.getClusterService().getLocalMember().getAddress();
         cpDir = new File("CP", IOUtil.toFileName(address.getHost() + "-" + address.getPort()));
 
-        this.metadataGroupManager = new MetadataRaftGroupManager(nodeEngine, this, config, cpDir);
         this.invocationManager = new RaftInvocationManager(nodeEngine, this);
+        this.metadataGroupManager = new MetadataRaftGroupManager(nodeEngine, this, config, cpDir);
     }
 
     @Override
@@ -198,7 +199,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
             nodeEngine.getExecutionService().execute(ASYNC_EXECUTOR, new Runnable() {
                 @Override
                 public void run() {
-                    restoreRaftNode(groupDir);
+                    restoreRaftNode(groupDir, getGroupId(groupDir));
                 }
             });
         }
@@ -732,36 +733,51 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         }
     }
 
-    private void restoreRaftNode(File dir) {
+    private RaftGroupId getGroupId(File dir) {
         String[] split = dir.getName().split("@");
         assert split.length == 3;
 
-        RaftGroupId groupId = new RaftGroupId(split[0], Long.parseLong(split[1]), Long.parseLong(split[2]));
+        return new RaftGroupId(split[0], Long.parseLong(split[1]), Long.parseLong(split[2]));
+    }
 
+    private void restoreRaftNode(File dir, RaftGroupId groupId) {
         try {
-            RestoredRaftState restoredRaftState = new SimpleRaftStateLoader(dir).load();
+            RestoredRaftState restoredState = new SimpleRaftStateLoader(dir).load();
 
-            RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, restoredRaftState.localEndpoint());
+            RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, restoredState.localEndpoint());
             RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
-            RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(groupId, restoredRaftState, raftAlgorithmConfig,
-                    integration, new SimpleRaftStateStore(dir));
+            RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(groupId, restoredState, raftAlgorithmConfig, integration,
+                    new SimpleRaftStateStore(dir));
 
             nodes.put(groupId, node);
-            if (groupId.name().equals(METADATA_CP_GROUP_NAME)) {
-                for (LogEntry entry : restoredRaftState.entries()) {
-                    if (entry.operation() instanceof InitMetadataRaftGroupOp) {
-                        List<CPMemberInfo> discoveredCPMembers =
-                                ((InitMetadataRaftGroupOp) entry.operation()).getDiscoveredCPMembers();
-                        metadataGroupManager.updateInvocationManagerMembers(groupId.seed(), entry.index(), discoveredCPMembers);
-                        break;
-                    }
-                }
-            }
+            extractInitiallyDiscoveredCPMembers(groupId, restoredState);
+
             node.start();
             logger.info("RaftNode[" + groupId + "] is restored.");
         } catch (IOException e) {
             throw new HazelcastException(e);
         }
+    }
+
+    private void extractInitiallyDiscoveredCPMembers(RaftGroupId groupId, RestoredRaftState restoredState) {
+        if (!groupId.name().equals(METADATA_CP_GROUP_NAME)) {
+            return;
+        }
+
+        for (LogEntry entry : restoredState.entries()) {
+            if (entry.operation() instanceof InitMetadataRaftGroupOp) {
+                List<CPMemberInfo> discoveredCPMembers = ((InitMetadataRaftGroupOp) entry.operation()).getDiscoveredCPMembers();
+                updateInvocationManagerMembers(groupId.seed(), entry.index(), discoveredCPMembers);
+                return;
+            }
+        }
+
+        throw new IllegalStateException("No initially discovered CP members found!");
+    }
+
+    void updateInvocationManagerMembers(long groupIdSeed, long membersCommitIndex, Collection<CPMemberInfo> members) {
+        RaftInvocationContext context = invocationManager.getRaftInvocationContext();
+        context.setMembers(groupIdSeed, membersCommitIndex, members);
     }
 
     public void destroyRaftNode(CPGroupId groupId) {
