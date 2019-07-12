@@ -480,7 +480,7 @@ public class MetadataRaftGroupTest extends HazelcastRaftTestSupport {
         }
         assertEquals(otherRaftGroupSize, endpoints.size());
 
-        List<RaftEndpointImpl> groupEndpoints = new ArrayList<RaftEndpointImpl>();
+        List<RaftEndpoint> groupEndpoints = new ArrayList<RaftEndpoint>();
         for (CPMemberInfo member : endpoints) {
             groupEndpoints.add(member.toRaftEndpoint());
         }

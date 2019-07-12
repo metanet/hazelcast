@@ -136,7 +136,7 @@ public class RaftInvocationManager {
                 members.sort(new CPMemberReachabilityComparator());
                 members = members.subList(0, groupSize);
 
-                List<RaftEndpointImpl> groupEndpoints = new ArrayList<RaftEndpointImpl>();
+                List<RaftEndpoint> groupEndpoints = new ArrayList<RaftEndpoint>();
                 for (CPMemberInfo member : members) {
                     groupEndpoints.add(member.toRaftEndpoint());
 
@@ -176,7 +176,7 @@ public class RaftInvocationManager {
     }
 
     <T> InternalCompletableFuture<T> changeMembership(CPGroupId groupId, long membersCommitIndex,
-                                                      RaftEndpointImpl member, MembershipChangeMode membershipChangeMode) {
+                                                      RaftEndpoint member, MembershipChangeMode membershipChangeMode) {
         InternalCompletableFuture<T> completedFuture = completeExceptionallyIfCPSubsystemNotAvailable();
         if (completedFuture != null) {
             return completedFuture;
