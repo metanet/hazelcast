@@ -78,6 +78,9 @@ public class RaftInvocationContext {
     }
 
     public CPMemberInfo getCPMember(String leaderUuid) {
+        if (leaderUuid == null) {
+            return null;
+        }
         return getCPMember(UUID.fromString(leaderUuid));
     }
 
