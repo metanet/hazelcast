@@ -52,6 +52,7 @@ import com.hazelcast.cp.internal.raftop.metadata.GetRaftGroupIdsOp;
 import com.hazelcast.cp.internal.raftop.metadata.GetRaftGroupOp;
 import com.hazelcast.cp.internal.raftop.metadata.InitMetadataRaftGroupOp;
 import com.hazelcast.cp.internal.raftop.metadata.PublishActiveCPMembersOp;
+import com.hazelcast.cp.internal.raftop.metadata.PublishRestoredCPMembersOp;
 import com.hazelcast.cp.internal.raftop.metadata.RaftServicePreJoinOp;
 import com.hazelcast.cp.internal.raftop.metadata.RemoveCPMemberOp;
 import com.hazelcast.cp.internal.raftop.metadata.TriggerDestroyRaftGroupOp;
@@ -115,6 +116,7 @@ public final class RaftServiceDataSerializerHook implements DataSerializerHook {
     public static final int UNSAFE_SNAPSHOT_REPLICATE_OP = 45;
     public static final int CP_ENDPOINT = 46;
     public static final int CP_GROUP_SUMMARY = 47;
+    public static final int PUBLISH_RESTORED_CP_MEMBERS_OP = 48;
 
     @Override
     public int getFactoryId() {
@@ -219,6 +221,8 @@ public final class RaftServiceDataSerializerHook implements DataSerializerHook {
                     return new RaftEndpointImpl();
                 case CP_GROUP_SUMMARY:
                     return new CPGroupSummary();
+                case PUBLISH_RESTORED_CP_MEMBERS_OP:
+                    return new PublishRestoredCPMembersOp();
                 default:
                     throw new IllegalArgumentException("Undefined type: " + typeId);
             }
