@@ -48,7 +48,6 @@ import com.hazelcast.spi.impl.operationservice.impl.RaftInvocationContext;
 import com.hazelcast.internal.util.Clock;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -102,7 +101,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
     private static final long DISCOVER_INITIAL_CP_MEMBERS_TASK_LOGGING_DELAY_MILLIS = 5000;
     private static final long BROADCAST_ACTIVE_CP_MEMBERS_TASK_PERIOD_SECONDS = 10;
 
-    private final NodeEngine nodeEngine;
+    private final NodeEngineImpl nodeEngine;
     private final RaftService raftService;
     private final RaftGroupMembershipManager membershipManager;
     private final ILogger logger;
@@ -128,14 +127,14 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
     private final Set<CPMemberInfo> initializedCPMembers = newSetFromMap(new ConcurrentHashMap<>());
     private final Set<Long> initializationCommitIndices = newSetFromMap(new ConcurrentHashMap<>());
 
-    MetadataRaftGroupManager(NodeEngine nodeEngine, RaftService raftService, CPSubsystemConfig config, File cpDir) {
+    MetadataRaftGroupManager(NodeEngineImpl nodeEngine, RaftService raftService, CPSubsystemConfig config) {
         this.nodeEngine = nodeEngine;
         this.raftService = raftService;
         this.membershipManager = new RaftGroupMembershipManager(nodeEngine, raftService);
         this.logger = nodeEngine.getLogger(getClass());
         this.config = config;
         this.cpSubsystemEnabled = raftService.isCpSubsystemEnabled();
-        this.metadataStore = new CPMemberMetadataStore(cpDir);
+        this.metadataStore = nodeEngine.getNode().getNodeExtension().getCPMemberMetadataStore();
     }
 
     boolean init() {
@@ -1053,6 +1052,8 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             this.terminateOnDiscoveryFailure = terminateOnDiscoveryFailure;
             state = DiscoveryTaskState.SCHEDULED;
             try {
+                // TODO [basri] hot restart cluster start hasn't started yet
+                // TODO [basri] should we delay this until cluster start completes?
                 this.markedAPMember = metadataStore.isMarkedAPMember();
                 this.cpMember = metadataStore.readLocalMember(nodeEngine.getThisAddress());
             } catch (IOException e) {
@@ -1233,7 +1234,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         }
 
         private void terminateNode() {
-            ((NodeEngineImpl) nodeEngine).getNode().shutdown(true);
+            nodeEngine.getNode().shutdown(true);
         }
 
         @SuppressWarnings("checkstyle:magicnumber")

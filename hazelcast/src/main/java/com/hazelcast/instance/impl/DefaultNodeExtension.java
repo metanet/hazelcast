@@ -25,6 +25,11 @@ import com.hazelcast.config.SerializationConfig;
 import com.hazelcast.config.SymmetricEncryptionConfig;
 import com.hazelcast.core.HazelcastInstanceAware;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
+import com.hazelcast.cp.internal.RaftGroupId;
+import com.hazelcast.cp.internal.persistence.CPMemberMetadataStore;
+import com.hazelcast.cp.internal.persistence.NopCPMemberMetadataStore;
+import com.hazelcast.cp.internal.raft.impl.persistence.NopRaftStateStore;
+import com.hazelcast.cp.internal.raft.impl.persistence.RaftStateStore;
 import com.hazelcast.hotrestart.HotRestartService;
 import com.hazelcast.hotrestart.InternalHotRestartService;
 import com.hazelcast.hotrestart.NoOpHotRestartService;
@@ -496,6 +501,16 @@ public class DefaultNodeExtension implements NodeExtension {
     @Override
     public boolean isClientFailoverSupported() {
         return false;
+    }
+
+    @Override
+    public CPMemberMetadataStore getCPMemberMetadataStore() {
+        return NopCPMemberMetadataStore.INSTANCE;
+    }
+
+    @Override
+    public RaftStateStore createRaftStateStore(RaftGroupId groupId) {
+        return NopRaftStateStore.INSTANCE;
     }
 
     protected void createAndSetPhoneHome() {
