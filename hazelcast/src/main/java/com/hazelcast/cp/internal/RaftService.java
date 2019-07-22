@@ -611,7 +611,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
 
     public RaftNode getOrInitRaftNode(CPGroupId groupId) {
         RaftNode node = nodes.get(groupId);
-        if (node == null && metadataGroupManager.isDiscoveryCompleted() && !destroyedGroupIds.contains(groupId)) {
+        if (node == null && isStartCompleted() && isDiscoveryCompleted() && !isRaftGroupDestroyed(groupId)) {
             logger.fine("RaftNode[" + groupId + "] does not exist. Asking to the METADATA CP group...");
             nodeEngine.getExecutionService().execute(ASYNC_EXECUTOR, new InitializeRaftNodeTask(groupId));
         }
@@ -637,6 +637,10 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         return node;
     }
 
+    private boolean isStartCompleted() {
+        return nodeEngine.getNode().getNodeExtension().isStartCompleted();
+    }
+
     public boolean isRaftGroupDestroyed(CPGroupId groupId) {
         return destroyedGroupIds.contains(groupId);
     }
@@ -660,7 +664,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
     }
 
     void createRaftNode(CPGroupId groupId, Collection<RaftEndpoint> members, RaftEndpoint localCPMember) {
-        if (nodes.containsKey(groupId)) {
+        if (nodes.containsKey(groupId) || !isStartCompleted()) {
             return;
         }
 
@@ -700,7 +704,9 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         RaftStateStore stateStore = nodeEngine.getNode().getNodeExtension().createRaftStateStore(groupId);
         RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(groupId, restoredState, raftAlgorithmConfig, integration, stateStore);
 
-        nodes.put(groupId, node);
+        RaftNode prev = nodes.putIfAbsent(groupId, node);
+        checkState(prev == null, "Could not restore " + groupId + " because its Raft node already exists!");
+
         node.start();
         logger.info("RaftNode[" + groupId + "] is restored.");
 
