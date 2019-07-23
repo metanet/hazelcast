@@ -45,7 +45,6 @@ import com.hazelcast.cp.internal.raft.impl.dto.PreVoteRequest;
 import com.hazelcast.cp.internal.raft.impl.dto.PreVoteResponse;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteRequest;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteResponse;
-import com.hazelcast.cp.internal.raft.impl.log.LogEntry;
 import com.hazelcast.cp.internal.raft.impl.persistence.LogFileStructure;
 import com.hazelcast.cp.internal.raft.impl.persistence.RaftStateStore;
 import com.hazelcast.cp.internal.raft.impl.persistence.RestoredRaftState;
@@ -57,8 +56,6 @@ import com.hazelcast.cp.internal.raftop.metadata.GetActiveRaftGroupByNameOp;
 import com.hazelcast.cp.internal.raftop.metadata.GetActiveRaftGroupIdsOp;
 import com.hazelcast.cp.internal.raftop.metadata.GetRaftGroupIdsOp;
 import com.hazelcast.cp.internal.raftop.metadata.GetRaftGroupOp;
-import com.hazelcast.cp.internal.raftop.metadata.InitMetadataRaftGroupOp;
-import com.hazelcast.cp.internal.raftop.metadata.PublishRestoredCPMembersOp;
 import com.hazelcast.cp.internal.raftop.metadata.RaftServicePreJoinOp;
 import com.hazelcast.cp.internal.raftop.metadata.RemoveCPMemberOp;
 import com.hazelcast.internal.cluster.ClusterService;
@@ -88,7 +85,6 @@ import com.hazelcast.spi.impl.servicemanager.ServiceInfo;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
@@ -699,7 +695,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         }
     }
 
-    public void restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState, LogFileStructure logFileStructure) {
+    public RaftNodeImpl restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState, LogFileStructure logFileStructure) {
         RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, restoredState.localEndpoint());
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
         RaftStateStore stateStore =
@@ -712,56 +708,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
 
         node.start();
         logger.info("RaftNode[" + groupId + "] is restored.");
-
-        restoreInitiallyDiscoveredCPMembers(groupId, node, restoredState);
-    }
-
-    private void restoreInitiallyDiscoveredCPMembers(RaftGroupId groupId, RaftNodeImpl node, RestoredRaftState restoredState) {
-        if (!groupId.name().equals(METADATA_CP_GROUP_NAME)) {
-            return;
-        }
-
-        for (LogEntry entry : restoredState.entries()) {
-            if (entry.operation() instanceof InitMetadataRaftGroupOp) {
-                List<CPMemberInfo> discoveredCPMembers = ((InitMetadataRaftGroupOp) entry.operation()).getDiscoveredCPMembers();
-                updateInvocationManagerMembers(groupId.seed(), entry.index(), discoveredCPMembers);
-                if (logger.isFineEnabled()) {
-                    logger.fine("Restored seed: " + groupId.seed() + ", members commit index: " + entry.index()
-                            + ", CP member list: " + discoveredCPMembers);
-                }
-
-                // Suppose that we have CP members: [A, B, C].
-                // Each CP member will commit InitMetadataRaftGroupOp<A, B, C>
-                // Say that we commit these operations on A and B. C is a slow one and hasn't learnt these commits yet.
-                // If we shutdown and recover only A and C, C won't be able to restore the CP member list for its invocation
-                // manager, and A and C won't be able to elect a leader. Because of this, if a node restores the CP member list,
-                // it broadcasts its list to others until the Metadata CP group elects its leader.
-
-                Operation op = new PublishRestoredCPMembersOp(groupId, entry.index(), discoveredCPMembers);
-                while (node.getLeader() == null) {
-                    if (logger.isFineEnabled()) {
-                        logger.fine("Broadcasting restored CP members list...");
-                    }
-
-                    for (Member member : nodeEngine.getClusterService().getMembers(NON_LOCAL_MEMBER_SELECTOR)) {
-                        nodeEngine.getOperationService().send(op, member.getAddress());
-                    }
-
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-
-                return;
-            }
-        }
-
-        if (logger.isFineEnabled()) {
-            logger.warning("No CP member list restored...");
-        }
+        return node;
     }
 
     public boolean updateInvocationManagerMembers(long groupIdSeed, long membersCommitIndex, Collection<CPMemberInfo> members) {
