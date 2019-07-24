@@ -46,6 +46,7 @@ import com.hazelcast.cp.internal.raft.impl.dto.PreVoteResponse;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteRequest;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteResponse;
 import com.hazelcast.cp.internal.raft.impl.log.LogEntry;
+import com.hazelcast.cp.internal.raft.impl.persistence.LogFileStructure;
 import com.hazelcast.cp.internal.raft.impl.persistence.RaftStateStore;
 import com.hazelcast.cp.internal.raft.impl.persistence.RestoredRaftState;
 import com.hazelcast.cp.internal.raftop.GetInitialRaftGroupMembersIfCurrentGroupMemberOp;
@@ -676,14 +677,14 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
                 logger.fine("Not creating RaftNode[" + groupId + "] since the local CP member is already stepped down");
                 return;
             }
-
             steppedDownGroupIds.remove(groupId);
         }
 
         int partitionId = getCPGroupPartitionId(groupId);
         RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, localCPMember, partitionId);
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
-        RaftStateStore stateStore = nodeEngine.getNode().getNodeExtension().createRaftStateStore((RaftGroupId) groupId);
+        RaftStateStore stateStore = nodeEngine.getNode().getNodeExtension()
+                                              .createRaftStateStore((RaftGroupId) groupId, null);
         RaftNodeImpl node = newRaftNode(groupId, localCPMember, members, raftAlgorithmConfig, integration, stateStore);
 
         if (nodes.putIfAbsent(groupId, node) == null) {
@@ -698,11 +699,13 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         }
     }
 
-    public void restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState) {
+    public void restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState, LogFileStructure logFileStructure) {
         RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, restoredState.localEndpoint());
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
-        RaftStateStore stateStore = nodeEngine.getNode().getNodeExtension().createRaftStateStore(groupId);
-        RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(groupId, restoredState, raftAlgorithmConfig, integration, stateStore);
+        RaftStateStore stateStore =
+                nodeEngine.getNode().getNodeExtension().createRaftStateStore(groupId, logFileStructure);
+        RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(
+                groupId, restoredState, raftAlgorithmConfig, integration, stateStore);
 
         RaftNode prev = nodes.putIfAbsent(groupId, node);
         checkState(prev == null, "Could not restore " + groupId + " because its Raft node already exists!");
