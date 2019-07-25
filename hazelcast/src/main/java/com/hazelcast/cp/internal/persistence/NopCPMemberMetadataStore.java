@@ -16,7 +16,8 @@ public class NopCPMemberMetadataStore implements CPMemberMetadataStore {
     }
 
     @Override
-    public void markAPMember() {
+    public boolean tryMarkAPMember() {
+        return false;
     }
 
     @Override
