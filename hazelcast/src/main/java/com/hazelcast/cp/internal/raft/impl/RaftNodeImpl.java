@@ -63,6 +63,7 @@ import com.hazelcast.cp.internal.raft.impl.task.ReplicateTask;
 import com.hazelcast.cp.internal.raft.impl.util.PostponedResponse;
 import com.hazelcast.internal.util.BiTuple;
 import com.hazelcast.internal.util.SimpleCompletableFuture;
+import com.hazelcast.internal.util.SimpleCompletedFuture;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.internal.util.Clock;
 import com.hazelcast.internal.util.RandomPicker;
@@ -362,7 +363,8 @@ public final class RaftNodeImpl implements RaftNode {
 
     @Override
     public ICompletableFuture transferLeadership(RaftEndpoint endpoint) {
-        return null;
+        // TODO:
+        return new SimpleCompletedFuture(new UnsupportedOperationException());
     }
 
     // It reads the volatile status field
