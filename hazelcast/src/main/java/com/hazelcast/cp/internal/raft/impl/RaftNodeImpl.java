@@ -360,6 +360,11 @@ public final class RaftNodeImpl implements RaftNode {
         return resultFuture;
     }
 
+    @Override
+    public ICompletableFuture transferLeadership(RaftEndpoint endpoint) {
+        return null;
+    }
+
     // It reads the volatile status field
     @Override
     public boolean isTerminatedOrSteppedDown() {
