@@ -710,7 +710,9 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
     }
 
     public RaftNodeImpl restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState, LogFileStructure logFileStructure) {
-        RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, restoredState.localEndpoint());
+        int partitionId = getCPGroupPartitionId(groupId);
+        RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId,
+                restoredState.localEndpoint(), partitionId);
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
         RaftStateStore stateStore =
                 nodeEngine.getNode().getNodeExtension().createRaftStateStore(groupId, logFileStructure);
@@ -947,6 +949,11 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
     @Override
     public void onRaftNodeSteppedDown(CPGroupId groupId) {
         stepDownRaftNode(groupId);
+    }
+
+    public int getCPGroupPartitionId(CPGroupId groupId) {
+        assert groupId.id() >= 0 : "Invalid groupId: " + groupId;
+        return (int) (groupId.id() % nodeEngine.getPartitionService().getPartitionCount());
     }
 
     // TODO: rename!
