@@ -1079,6 +1079,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             }
         }
 
+        @SuppressWarnings("checkstyle:npathcomplexity")
         @Override
         public void run() {
             state = DiscoveryTaskState.RUNNING;
