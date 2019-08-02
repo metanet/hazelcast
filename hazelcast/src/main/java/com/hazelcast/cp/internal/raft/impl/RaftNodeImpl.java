@@ -424,8 +424,9 @@ public final class RaftNodeImpl implements RaftNode {
     }
 
     /**
-     * Returns true if a new entry with the operation is allowed to be replicated.
-     * This method can be invoked only when the local Raft node is the leader.
+     * Returns true if a new entry with the operation is currently allowed to
+     * be replicated. This method can be invoked only when the local Raft node
+     * is the leader.
      * <p>
      * Replication is not allowed, when;
      * <ul>
@@ -434,7 +435,8 @@ public final class RaftNodeImpl implements RaftNode {
      * See {@link RaftAlgorithmConfig#getUncommittedEntryCountToRejectNewAppends()}.</li>
      * <li>The operation is a {@link RaftGroupCmd} and there's an ongoing membership change in group.</li>
      * <li>The operation is a membership change operation and there's no committed entry in this term yet.
-     * See {@link RaftIntegration#getAppendedEntryOnLeaderElection()} ()}.</li>
+     * See {@link RaftIntegration#getAppendedEntryOnLeaderElection()}.</li>
+     * <li>There is an ongoing leadership transfer.</li>
      * </ul>
      */
     public boolean canReplicateNewEntry(Object operation) {
