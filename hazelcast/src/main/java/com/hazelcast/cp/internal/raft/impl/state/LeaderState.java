@@ -93,9 +93,11 @@ public class LeaderState {
         return queryState.queryRound();
     }
 
-    public void flushedLogIndex(long flushedLogIndex) {
+    public long flushedLogIndex(long flushedLogIndex) {
         assert flushedLogIndex > this.flushedLogIndex;
+        long prev = this.flushedLogIndex;
         this.flushedLogIndex = flushedLogIndex;
+        return flushedLogIndex - prev;
     }
 
     public long flushedLogIndex() {

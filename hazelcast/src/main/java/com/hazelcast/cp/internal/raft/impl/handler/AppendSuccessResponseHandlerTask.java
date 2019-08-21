@@ -70,6 +70,11 @@ public class AppendSuccessResponseHandlerTask extends AbstractResponseHandlerTas
         if (updateFollowerIndices(state)) {
             if (!raftNode.tryAdvanceCommitIndex()) {
                 trySendAppendRequest(state);
+            } else {
+                if (raftNode.flushTaskRunCount2 > 1) {
+                    logger.warning("FLUSH COUNT TILL COMMIT: " + raftNode.flushTaskRunCount2);
+                }
+                raftNode.flushTaskRunCount2 = 0;
             }
         } else {
             raftNode.tryRunQueries();

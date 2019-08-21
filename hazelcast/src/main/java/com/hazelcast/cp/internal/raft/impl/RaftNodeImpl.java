@@ -122,8 +122,14 @@ public final class RaftNodeImpl implements RaftNode {
 
     private long lastAppendEntriesTimestamp;
     private boolean appendRequestBackoffResetTaskScheduled;
-    private boolean flushTaskSubmitted;
     private volatile RaftNodeStatus status = ACTIVE;
+    private long flushTaskSubmissionTime;
+    private long totalFlushTaskDelay;
+    private long totalFlushDelay;
+    private int flushTaskRunCount;
+    private long totalFlushLogIndexAdvanceCount;
+    public int flushTaskRunCount2;
+    private FlushTaskStatus flushTaskStatus = FlushTaskStatus.NOT_SUBMITTED;
 
     private RaftNodeImpl(CPGroupId groupId, RaftEndpoint localMember, Collection<RaftEndpoint> members, RaftStateStore stateStore,
                          RaftAlgorithmConfig raftAlgorithmConfig, RaftIntegration raftIntegration) {
@@ -147,12 +153,7 @@ public final class RaftNodeImpl implements RaftNode {
         this.state = newRaftState(groupId, localMember, members, logCapacity, stateStore);
         this.logger = getLogger(RaftNode.class);
         this.appendRequestBackoffResetTask = new AppendRequestBackoffResetTask();
-        if (stateStore instanceof NopRaftStateStore) {
-           this.flushTask = null;
-           this.flushTaskSubmitted = true;
-        } else {
-            this.flushTask = new FlushTask();
-        }
+        this.flushTask = stateStore instanceof NopRaftStateStore ? null : new FlushTask();
     }
 
     private RaftNodeImpl(CPGroupId groupId, RestoredRaftState restoredState, RaftStateStore stateStore,
@@ -175,12 +176,7 @@ public final class RaftNodeImpl implements RaftNode {
         this.state = restoreRaftState(groupId, restoredState, logCapacity, stateStore);
         this.logger = getLogger(RaftNode.class);
         this.appendRequestBackoffResetTask = new AppendRequestBackoffResetTask();
-        if (stateStore instanceof NopRaftStateStore) {
-            this.flushTask = null;
-            this.flushTaskSubmitted = true;
-        } else {
-            this.flushTask = new FlushTask();
-        }
+        this.flushTask = stateStore instanceof NopRaftStateStore ? null : new FlushTask();
     }
 
     /**
@@ -554,7 +550,6 @@ public final class RaftNodeImpl implements RaftNode {
      * Schedules periodic heartbeat task when a new leader is elected.
      */
     private void scheduleHeartbeat() {
-        broadcastAppendRequest();
         schedule(new HeartbeatTask(), heartbeatPeriodInMillis);
     }
 
@@ -691,13 +686,7 @@ public final class RaftNodeImpl implements RaftNode {
 
         raftIntegration.send(request, follower);
 
-        if (entries.length > 0 && entries[entries.length - 1].index() > leaderState.flushedLogIndex()) {
-            // if I am sending any non-flushed entry to the follower, I should trigger the flush task.
-            // I hope that I will flush before receiving append responses from half of the followers...
-            // This is a very critical optimization because
-            // it makes the leader and followers flush in parallel...
-            submitFlushTask();
-        }
+        submitFlushTask(leaderState, entries);
 
         if (shouldBackoff) {
             followerState.setAppendRequestBackoff();
@@ -1128,13 +1117,22 @@ public final class RaftNodeImpl implements RaftNode {
         schedule(appendRequestBackoffResetTask, appendRequestBackoffTimeoutInMillis);
     }
 
-    private void submitFlushTask() {
-        if (flushTaskSubmitted) {
+    private void submitFlushTask(LeaderState leaderState, LogEntry[] entries) {
+        if (flushTask == null || flushTaskStatus != FlushTaskStatus.NOT_SUBMITTED) {
             return;
         }
 
-        flushTaskSubmitted = true;
+        // If I am sending any non-flushed entry to the follower, I should trigger the flush task.
+        // I hope that I will flush before receiving append responses from half of the followers...
+        // This is a very critical optimization because it makes the leader and followers flush in parallel...
+        if (entries.length == 0 || entries[entries.length - 1].index() <= leaderState.flushedLogIndex()) {
+            return;
+        }
+
         raftIntegration.submit(flushTask);
+        flushTaskStatus = FlushTaskStatus.SUBMITTED;
+//        logger.severe("flush task submitted");
+//        flushTaskSubmissionTime = System.nanoTime();
     }
 
     /**
@@ -1184,8 +1182,11 @@ public final class RaftNodeImpl implements RaftNode {
      */
     public void toLeader() {
         state.toLeader();
-        appendEntryAfterLeaderElection();
+        flushTaskStatus = FlushTaskStatus.NOT_SUBMITTED;
+        logger.severe("moving flush task status to " + flushTaskStatus + " because I now the leader!");
         printMemberState();
+        appendEntryAfterLeaderElection();
+        broadcastAppendRequest();
         scheduleHeartbeat();
     }
 
@@ -1240,6 +1241,21 @@ public final class RaftNodeImpl implements RaftNode {
         if (logger.isFineEnabled()) {
             logger.fine("Setting commit index: " + commitIndex);
         }
+
+        if (flushTask != null && state.leaderState() != null) {
+            if (flushTaskStatus == FlushTaskStatus.EXECUTED) {
+                // entries are already flushed before the commit index moves forward
+                // so another flush task can be submitted from now on
+                flushTaskStatus = FlushTaskStatus.NOT_SUBMITTED;
+            } else if (flushTaskStatus == FlushTaskStatus.SUBMITTED) {
+                // entries are committed before the flush task runs
+                // so we will make the flush task to set the status to
+                // NOT_SUBMITTED when it runs
+                flushTaskStatus = FlushTaskStatus.COMMITTED;
+            }
+//            logger.severe("commit entries moves flush task status to " + flushTaskStatus);
+        }
+
         state.commitIndex(commitIndex);
 
         if (status == ACTIVE) {
@@ -1394,6 +1410,10 @@ public final class RaftNodeImpl implements RaftNode {
         }
     }
 
+    private enum FlushTaskStatus {
+        NOT_SUBMITTED, SUBMITTED, EXECUTED, COMMITTED
+    }
+
     private class FlushTask extends RaftNodeStatusAwareTask {
         FlushTask() {
             super(RaftNodeImpl.this);
@@ -1401,11 +1421,52 @@ public final class RaftNodeImpl implements RaftNode {
 
         @Override
         protected void innerRun() {
-            flushTaskSubmitted = false;
+//            long now = System.nanoTime();
+//            totalFlushTaskDelay += now - flushTaskSubmissionTime;
+
             RaftLog log = state.log();
             log.flush();
-            state.leaderState().flushedLogIndex(log.lastLogOrSnapshotIndex());
-            tryAdvanceCommitIndex();
+
+            LeaderState leaderState = state.leaderState();
+            if (leaderState == null) {
+                // I am no longer the leader...
+                logger.severe("flush task moves flush task status to " + flushTaskStatus + " because I am not the leader");
+                flushTaskStatus = FlushTaskStatus.NOT_SUBMITTED;
+                return;
+            }
+
+            flushTaskStatus = FlushTaskStatus.EXECUTED;
+//            logger.severe("flush task moves flush task status to " + flushTaskStatus);
+
+
+//            totalFlushDelay += System.nanoTime() - now;
+            totalFlushLogIndexAdvanceCount += leaderState.flushedLogIndex(log.lastLogOrSnapshotIndex());
+
+            flushTaskRunCount2++;
+
+            if (tryAdvanceCommitIndex()) {
+                if (flushTaskRunCount2 > 1) {
+                    logger.warning("FLUSH COUNT TILL COMMIT: " + flushTaskRunCount2);
+                }
+                flushTaskRunCount2 = 0;
+            } else if (flushTaskStatus == FlushTaskStatus.COMMITTED) {
+                // I couldn't move the commit index now but it seems that
+                // it has moved forward earlier so I can allow a new flush task to be submitted
+                flushTaskStatus = FlushTaskStatus.NOT_SUBMITTED;
+//                logger.severe("flush task moves flush task status to " + flushTaskStatus + " because already committed!");
+            }
+
+//            if (++flushTaskRunCount % 5000 == 0) {
+//                long avgFlushTaskDelay = totalFlushTaskDelay / flushTaskRunCount;
+//                long avgFlushLogIndexAdvanceCount = totalFlushLogIndexAdvanceCount / flushTaskRunCount;
+//                long avgFlushDelay = totalFlushDelay / flushTaskRunCount;
+//                totalFlushTaskDelay = 0;
+//                totalFlushLogIndexAdvanceCount = 0;
+//                flushTaskRunCount = 0;
+//                totalFlushDelay = 0;
+//                logger.severe("AVG FLUSH TASK DELAY: " + avgFlushTaskDelay + " AVG FLUSH LOG INDEX ADVANCE COUNT: "
+//                            + avgFlushLogIndexAdvanceCount + " AVG FLUSH DELAY: " + avgFlushDelay);
+//            }
         }
     }
 
