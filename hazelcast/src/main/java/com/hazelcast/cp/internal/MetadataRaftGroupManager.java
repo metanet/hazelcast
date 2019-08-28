@@ -157,7 +157,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             return;
         }
         try {
-            metadataStore.persistLocalMember(member);
+            metadataStore.persistLocalCPMember(member);
         } catch (IOException e) {
             throw new HazelcastException(e);
         }
@@ -907,7 +907,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
                 && localCPMember.toRaftEndpoint().equals(raftNode.getLeader());
     }
 
-    public void updateMember(long commitIndex, CPMemberInfo member) {
+    public void updateMemberAddress(long commitIndex, CPMemberInfo member) {
         checkNotNull(member);
         checkMetadataGroupInitSuccessful();
 
@@ -1130,7 +1130,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
                 return;
             }
 
-            cpMember = raftService.getCpPersistenceService().getLocalMember();
+            cpMember = raftService.getCpPersistenceService().getLocalCPMember();
 
             if (cpMember != null) {
                 logger.fine("CP member is already set: " + cpMember);
@@ -1276,7 +1276,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
                 // - While promoting a member to CP when Hot Restart is enabled, CP member doesn't use the AP member's UUID
                 // but instead generates a new UUID.
                 localCPMember.set(localCPMemberCandidate);
-                metadataStore.persistLocalMember(localCPMemberCandidate);
+                metadataStore.persistLocalCPMember(localCPMemberCandidate);
             } catch (Exception e) {
                 logger.severe("Could not initialize METADATA CP group with CP members: " + metadataMembers, e);
                 raftService.destroyRaftNode(metadataGroupId);

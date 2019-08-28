@@ -40,11 +40,11 @@ public final class NopCPMemberMetadataStore implements CPMemberMetadataStore {
     }
 
     @Override
-    public void persistLocalMember(CPMember member) {
+    public void persistLocalCPMember(CPMember member) {
     }
 
     @Override
-    public CPMember readLocalMember(Address address) {
+    public CPMember readLocalCPMember() {
         return null;
     }
 
