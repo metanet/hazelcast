@@ -1081,6 +1081,13 @@ public final class GroupProperty {
             = new HazelcastProperty("raft.linearizable.read.optimization.enabled", true);
 
     /**
+     * !!! ONLY FOR INTERNAL USAGE AND TESTING !!!
+     * If enabled, a node tries to pick its own persistence directory if it discovers multiple directories.
+     */
+    public static final HazelcastProperty FAVOR_OWN_PERSISTENCE_DIRECTORY
+            = new HazelcastProperty("persistence.favor.own.directory", true);
+
+    /**
      * Defines whether Moby Names should be used for instance name generating when it is not provided by user.
      * </p>
      * Moby Name is a short human-readable name consisting of randomly chosen adjective and the surname of a famous person.
