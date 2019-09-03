@@ -80,6 +80,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.ACTIVE;
+import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.INITIAL;
 import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.STEPPED_DOWN;
 import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.TERMINATED;
 import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.TERMINATING;
@@ -124,7 +125,7 @@ public final class RaftNodeImpl implements RaftNode {
     private long lastAppendEntriesTimestamp;
     private boolean appendRequestBackoffResetTaskScheduled;
     private boolean flushTaskSubmitted;
-    private volatile RaftNodeStatus status = ACTIVE;
+    private volatile RaftNodeStatus status = INITIAL;
 
     private RaftNodeImpl(CPGroupId groupId, RaftEndpoint localMember, Collection<RaftEndpoint> members, RaftStateStore stateStore,
                          RaftAlgorithmConfig raftAlgorithmConfig, RaftIntegration raftIntegration) {
@@ -307,6 +308,12 @@ public final class RaftNodeImpl implements RaftNode {
      * Starts the periodic tasks, such as voting, leader failure-detection, snapshot handling.
      */
     public void start() {
+        if (status == ACTIVE) {
+            return;
+        } else if (status != INITIAL) {
+            throw new IllegalStateException("Cannot start RaftNode when " + status);
+        }
+
         if (!raftIntegration.isReady()) {
             raftIntegration.schedule(this::start, RAFT_NODE_INIT_DELAY_MILLIS, MILLISECONDS);
             return;
@@ -320,6 +327,12 @@ public final class RaftNodeImpl implements RaftNode {
         raftIntegration.execute(new Runnable() {
             @Override
             public void run() {
+                if (status == ACTIVE) {
+                    return;
+                } else if (status != INITIAL) {
+                    throw new IllegalStateException("Cannot start RaftNode when " + status);
+                }
+
                 initRestoredState();
                 try {
                     state.init();
@@ -328,10 +341,13 @@ public final class RaftNodeImpl implements RaftNode {
                 }
 
                 new PreVoteTask(RaftNodeImpl.this, 0).run();
+                scheduleLeaderFailureDetection();
+                if (status == INITIAL) {
+                    setStatus(ACTIVE);
+                }
+
             }
         });
-
-        scheduleLeaderFailureDetection();
     }
 
     private void closeStateStore() {
