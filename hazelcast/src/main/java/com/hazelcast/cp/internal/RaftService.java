@@ -31,6 +31,7 @@ import com.hazelcast.cp.internal.datastructures.spi.RaftManagedService;
 import com.hazelcast.cp.internal.datastructures.spi.RaftRemoteService;
 import com.hazelcast.cp.internal.exception.CannotRemoveCPMemberException;
 import com.hazelcast.cp.internal.operation.RestartCPMemberOp;
+import com.hazelcast.cp.internal.persistence.CPPersistenceService;
 import com.hazelcast.cp.internal.raft.SnapshotAwareService;
 import com.hazelcast.cp.internal.raft.impl.RaftEndpoint;
 import com.hazelcast.cp.internal.raft.impl.RaftIntegration;
@@ -62,12 +63,10 @@ import com.hazelcast.cp.internal.raftop.metadata.GetRaftGroupOp;
 import com.hazelcast.cp.internal.raftop.metadata.RaftServicePreJoinOp;
 import com.hazelcast.cp.internal.raftop.metadata.RemoveCPMemberOp;
 import com.hazelcast.internal.cluster.ClusterService;
-import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.diagnostics.MetricsPlugin;
 import com.hazelcast.internal.metrics.MetricsRegistry;
 import com.hazelcast.internal.metrics.Probe;
 import com.hazelcast.internal.metrics.ProbeLevel;
-import com.hazelcast.internal.nio.IOUtil;
 import com.hazelcast.internal.services.GracefulShutdownAwareService;
 import com.hazelcast.internal.services.ManagedService;
 import com.hazelcast.internal.services.MemberAttributeServiceEvent;
@@ -80,14 +79,12 @@ import com.hazelcast.internal.util.SimpleCompletableFuture;
 import com.hazelcast.internal.util.SimpleCompletedFuture;
 import com.hazelcast.internal.util.executor.ManagedExecutorService;
 import com.hazelcast.logging.ILogger;
-import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.spi.impl.InternalCompletableFuture;
 import com.hazelcast.spi.impl.NodeEngine;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.spi.impl.operationservice.Operation;
 import com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl;
-import com.hazelcast.spi.impl.operationservice.impl.RaftInvocationContext;
 import com.hazelcast.spi.impl.servicemanager.ServiceInfo;
 
 import java.util.ArrayList;
@@ -198,7 +195,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
 
     @Override
     public void shutdown(boolean terminate) {
-        if (getCpPersistenceService().isEnabled()) {
+        if (getCPPersistenceService().isEnabled()) {
             for (RaftNode raftNode : nodes.values()) {
                 raftNode.forceSetTerminatedStatus();
             }
@@ -311,7 +308,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
             // we should clear the current raft state before resetting the metadata manager
             resetLocalRaftState();
 
-            getCpPersistenceService().reset();
+            getCPPersistenceService().reset();
             metadataGroupManager.restart(seed);
             logger.info("CP state is reset with groupId seed: " + seed);
         } finally {
@@ -483,6 +480,12 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
             return true;
         }
 
+        if (getCPPersistenceService().isEnabled()) {
+            // When persistence is enabled, we do not remove this member from CP subsystem.
+            // Because it is supposed to recover by restoring disk data.
+            return true;
+        }
+
         logger.fine("Triggering remove member procedure for " + localMember);
 
         if (ensureCPMemberRemoved(localMember, unit.toNanos(timeout))) {
@@ -554,8 +557,8 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
     }
 
     void updateMissingMembers() {
-        // TODO [basri] disable this logic before start completed...
-        if (config.getMissingCPMemberAutoRemovalSeconds() == 0 || !metadataGroupManager.isDiscoveryCompleted()) {
+        if (config.getMissingCPMemberAutoRemovalSeconds() == 0 || !metadataGroupManager.isDiscoveryCompleted()
+                || !isStartCompleted()) {
             return;
         }
 
@@ -740,11 +743,11 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
                 steppedDownGroupIds.remove(groupId);
             }
 
-        int partitionId = getCPGroupPartitionId(groupId);
-        RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, localCPMember, partitionId);
-        RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
-        RaftStateStore stateStore = getCpPersistenceService().createRaftStateStore((RaftGroupId) groupId, null);
-        RaftNodeImpl node = newRaftNode(groupId, localCPMember, members, raftAlgorithmConfig, integration, stateStore);
+            int partitionId = getCPGroupPartitionId(groupId);
+            RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, localCPMember, partitionId);
+            RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
+            RaftStateStore stateStore = getCPPersistenceService().createRaftStateStore((RaftGroupId) groupId, null);
+            RaftNodeImpl node = newRaftNode(groupId, localCPMember, members, raftAlgorithmConfig, integration, stateStore);
 
             if (nodes.putIfAbsent(groupId, node) == null) {
                 if (destroyedGroupIds.contains(groupId)) {
@@ -762,13 +765,16 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         }
     }
 
+    CPPersistenceService getCPPersistenceService() {
+        return nodeEngine.getNode().getNodeExtension().getCPPersistenceService();
+    }
+
     public RaftNodeImpl restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState, LogFileStructure logFileStructure) {
         int partitionId = getCPGroupPartitionId(groupId);
         RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId,
                 restoredState.localEndpoint(), partitionId);
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
-        RaftStateStore stateStore =
-                nodeEngine.getNode().getNodeExtension().createRaftStateStore(groupId, logFileStructure);
+        RaftStateStore stateStore = getCPPersistenceService().createRaftStateStore(groupId, logFileStructure);
         RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(
                 groupId, restoredState, raftAlgorithmConfig, integration, stateStore);
 

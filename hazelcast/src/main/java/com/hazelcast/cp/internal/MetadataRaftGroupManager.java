@@ -138,7 +138,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         this.logger = nodeEngine.getLogger(getClass());
         this.config = config;
         this.cpSubsystemEnabled = raftService.isCpSubsystemEnabled();
-        this.metadataStore = raftService.getCpPersistenceService().getCPMemberMetadataStore();
+        this.metadataStore = raftService.getCPPersistenceService().getCPMemberMetadataStore();
     }
 
     boolean init() {
@@ -1281,7 +1281,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
                 discoveryCompleted.set(true);
                 try {
                     boolean marked = metadataStore.tryMarkAPMember();
-                    assert marked || !raftService.getCpPersistenceService().isEnabled();
+                    assert marked || !raftService.getCPPersistenceService().isEnabled();
                 } catch (IOException e) {
                     throw new HazelcastException(e);
                 }
