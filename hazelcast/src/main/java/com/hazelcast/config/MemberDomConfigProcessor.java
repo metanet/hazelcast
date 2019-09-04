@@ -2793,6 +2793,8 @@ class MemberDomConfigProcessor extends AbstractDomConfigProcessor {
                     cpSubsystemConfig.setPersistenceEnabled(Boolean.parseBoolean(value));
                 } else if ("base-dir".equals(nodeName)) {
                     cpSubsystemConfig.setBaseDir(new File(value).getAbsoluteFile());
+                } else if ("data-load-timeout-seconds".equals(nodeName)) {
+                    cpSubsystemConfig.setDataLoadTimeoutSeconds(Integer.parseInt(value));
                 }
             }
         }
