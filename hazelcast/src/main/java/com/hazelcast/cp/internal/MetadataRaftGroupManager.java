@@ -171,6 +171,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         membershipManager.init();
     }
 
+    @SuppressFBWarnings("JLM_JSR166_UTILCONCURRENT_MONITORENTER")
     void restart(long seed) {
         // reset order:
         // 1. active members
@@ -273,6 +274,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         return metadataGroupIdRef.get();
     }
 
+    @SuppressFBWarnings("JLM_JSR166_UTILCONCURRENT_MONITORENTER")
     public void restoreMetadataGroupId(RaftGroupId restoredMetadataGroupId) {
         if (raftService.isStartCompleted()) {
             throw new IllegalStateException("Cannot set metadata groupId after start process is completed!");
@@ -901,6 +903,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         return activeMembers;
     }
 
+    @SuppressFBWarnings("JLM_JSR166_UTILCONCURRENT_MONITORENTER")
     public void handleMetadataGroupId(RaftGroupId newMetadataGroupId) {
         checkNotNull(newMetadataGroupId);
         RaftGroupId metadataGroupId = getMetadataGroupId();
