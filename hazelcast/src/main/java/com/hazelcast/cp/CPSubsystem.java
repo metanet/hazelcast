@@ -330,9 +330,9 @@ import com.hazelcast.cp.session.CPSessionManagementService;
 public interface CPSubsystem {
 
     /**
-     * Returns a proxy for an {@link IAtomicLong} instance created on the CP
-     * subsystem. Hazelcast's {@link IAtomicLong} is a distributed version of
-     * <code>java.util.concurrent.atomic.AtomicLong</code>. If no group name is
+     * Returns a proxy for an {@link IAtomicLong} instance created on CP
+     * Subsystem. Hazelcast's {@link IAtomicLong} is a distributed version of
+     * <tt>java.util.concurrent.atomic.AtomicLong</tt>. If no group name is
      * given within the "name" parameter, then the {@link IAtomicLong} instance
      * will be created on the DEFAULT CP group. If a group name is given, like
      * {@code .getAtomicLong("myLong@group1")}, the given group will be
@@ -347,14 +347,14 @@ public interface CPSubsystem {
      *
      * @param name name of the {@link IAtomicLong} proxy
      * @return {@link IAtomicLong} proxy for the given name
-     * @throws HazelcastException if the CP subsystem is not enabled
+     * @throws HazelcastException if CP Subsystem is not enabled
      */
     IAtomicLong getAtomicLong(String name);
 
     /**
      * Returns a proxy for an {@link IAtomicReference} instance created on
-     * the CP subsystem. Hazelcast's {@link IAtomicReference} is a distributed
-     * version of <code>java.util.concurrent.atomic.AtomicLong</code>. If no group
+     * CP Subsystem. Hazelcast's {@link IAtomicReference} is a distributed
+     * version of <tt>java.util.concurrent.atomic.AtomicLong</tt>. If no group
      * name is given within the "name" parameter, then
      * the {@link IAtomicReference} instance will be created on the DEFAULT CP
      * group. If a group name is given, like
@@ -370,14 +370,14 @@ public interface CPSubsystem {
      *
      * @param name name of the {@link IAtomicReference} proxy
      * @return {@link IAtomicReference} proxy for the given name
-     * @throws HazelcastException if the CP subsystem is not enabled
+     * @throws HazelcastException if CP Subsystem is not enabled
      */
     <E> IAtomicReference<E> getAtomicReference(String name);
 
     /**
      * Returns a proxy for an {@link ICountDownLatch} instance created on
-     * the CP subsystem. Hazelcast's {@link ICountDownLatch} is a distributed
-     * version of <code>java.util.concurrent.CountDownLatch</code>. If no group
+     * CP Subsystem. Hazelcast's {@link ICountDownLatch} is a distributed
+     * version of <tt>java.util.concurrent.CountDownLatch</tt>. If no group
      * name is given within the "name" parameter, then
      * the {@link ICountDownLatch} instance will be created on the DEFAULT CP
      * group. If a group name is given, like
@@ -393,14 +393,14 @@ public interface CPSubsystem {
      *
      * @param name name of the {@link ICountDownLatch} proxy
      * @return {@link ICountDownLatch} proxy for the given name
-     * @throws HazelcastException if the CP subsystem is not enabled
+     * @throws HazelcastException if CP Subsystem is not enabled
      */
     ICountDownLatch getCountDownLatch(String name);
 
     /**
-     * Returns a proxy for an {@link FencedLock} instance created on the CP
-     * subsystem. Hazelcast's {@link FencedLock} is a distributed version of
-     * <code>java.util.concurrent.locks.Lock</code>. If no group name is given
+     * Returns a proxy for an {@link FencedLock} instance created on CP
+     * Subsystem. Hazelcast's {@link FencedLock} is a distributed version of
+     * <tt>java.util.concurrent.locks.Lock</tt>. If no group name is given
      * within the "name" parameter, then the {@link FencedLock} instance will
      * be created on the DEFAULT CP group. If a group name is given, like
      * {@code .getLock("myLock@group1")}, the given group will be initialized
@@ -417,14 +417,14 @@ public interface CPSubsystem {
      *
      * @param name name of the {@link FencedLock} proxy
      * @return {@link FencedLock} proxy for the given name
-     * @throws HazelcastException if the CP subsystem is not enabled
+     * @throws HazelcastException if CP Subsystem is not enabled
      */
     FencedLock getLock(String name);
 
     /**
-     * Returns a proxy for an {@link ISemaphore} instance created on the CP
-     * subsystem. Hazelcast's {@link ISemaphore} is a distributed version of
-     * <code>java.util.concurrent.Semaphore</code>. If no group name is given
+     * Returns a proxy for an {@link ISemaphore} instance created on CP
+     * Subsystem. Hazelcast's {@link ISemaphore} is a distributed version of
+     * <tt>java.util.concurrent.Semaphore</tt>. If no group name is given
      * within the "name" parameter, then the {@link ISemaphore} instance will
      * be created on the DEFAULT CP group. If a group name is given, like
      * {@code .getSemaphore("mySemaphore@group1")}, the given group will be
@@ -441,20 +441,20 @@ public interface CPSubsystem {
      *
      * @param name name of the {@link ISemaphore} proxy
      * @return {@link ISemaphore} proxy for the given name
-     * @throws HazelcastException if the CP subsystem is not enabled
+     * @throws HazelcastException if CP Subsystem is not enabled
      */
     ISemaphore getSemaphore(String name);
 
     /**
      * Returns the local CP member if this Hazelcast member is part of
-     * the CP subsystem, returns null otherwise.
+     * CP Subsystem, returns null otherwise.
      * <p>
      * This method is a shortcut for {@link CPSubsystemManagementService#getLocalCPMember()}
      * method. Calling this method is equivalent to calling
      * <code>getCPSubsystemManagementService().getLocalCPMember()</code>.
      *
      * @return local CP member if available, null otherwise
-     * @throws HazelcastException if the CP subsystem is not enabled
+     * @throws HazelcastException if CP Subsystem is not enabled
      * @see CPSubsystemManagementService#getLocalCPMember()
      */
     CPMember getLocalCPMember();
