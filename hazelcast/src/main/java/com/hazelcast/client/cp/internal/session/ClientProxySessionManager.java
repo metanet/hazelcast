@@ -134,5 +134,4 @@ public class ClientProxySessionManager extends AbstractProxySessionManager {
             remainingTimeNanos -= MILLISECONDS.toNanos(SHUTDOWN_WAIT_SLEEP_MILLIS);
         }
     }
-
 }
