@@ -193,7 +193,6 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         if (discoveryTask != null) {
             discoveryTask.cancelAndAwaitCompletion();
         }
-        // TODO: metadataStore reset
         discoveryCompleted.set(false);
 
         synchronized (metadataGroupIdRef) {
@@ -1164,9 +1163,9 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             } catch (Exception e) {
                 throw new HazelcastException(e);
             }
+            state = DiscoveryTaskState.SCHEDULED;
         }
 
-        @SuppressWarnings("checkstyle:npathcomplexity")
         @Override
         public void run() {
             state = DiscoveryTaskState.RUNNING;
@@ -1179,6 +1178,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             }
         }
 
+        @SuppressWarnings("checkstyle:npathcomplexity")
         private void doRun() {
             if (shouldRescheduleOrSkip()) {
                 return;
