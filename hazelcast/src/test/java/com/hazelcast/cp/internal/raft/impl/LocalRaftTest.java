@@ -787,7 +787,7 @@ public class LocalRaftTest extends HazelcastTestSupport {
 
     @Test
     public void when_leaderStaysInMinority_then_itDemotesItselfToFollower() throws ExecutionException, InterruptedException {
-        group = newGroupWithService(2, new RaftAlgorithmConfig());
+        group = newGroup(3);
         group.start();
 
         RaftNodeImpl leader = group.waitUntilLeaderElected();
