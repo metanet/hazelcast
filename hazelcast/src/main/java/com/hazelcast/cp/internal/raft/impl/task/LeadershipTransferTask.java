@@ -26,7 +26,7 @@ import com.hazelcast.cp.internal.raft.impl.state.LeadershipTransferState;
 import com.hazelcast.cp.internal.raft.impl.state.RaftState;
 import com.hazelcast.logging.ILogger;
 
-import static com.hazelcast.util.Preconditions.checkTrue;
+import static com.hazelcast.internal.util.Preconditions.checkTrue;
 import static java.lang.Math.max;
 
 /**

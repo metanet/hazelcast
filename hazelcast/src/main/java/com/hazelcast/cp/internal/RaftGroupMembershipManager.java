@@ -42,10 +42,11 @@ import com.hazelcast.cp.internal.raftop.metadata.GetRaftGroupOp;
 import com.hazelcast.internal.util.BiTuple;
 import com.hazelcast.internal.util.SimpleCompletedFuture;
 import com.hazelcast.logging.ILogger;
-import com.hazelcast.spi.impl.executionservice.ExecutionService;
 import com.hazelcast.spi.impl.InternalCompletableFuture;
 import com.hazelcast.spi.impl.NodeEngine;
+import com.hazelcast.spi.impl.executionservice.ExecutionService;
 import com.hazelcast.spi.impl.operationservice.OperationService;
+import com.hazelcast.spi.properties.HazelcastProperty;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -504,8 +505,8 @@ class RaftGroupMembershipManager {
             Set<CPMember> handledMembers = new HashSet<CPMember>(members.size());
             Map<CPMember, Collection<CPGroupId>> leaderships = getLeadershipsMap(members);
 
-            for (; ; ) {
-                Tuple2<CPMember, Integer> from = getEndpointWithMaxLeaderships(leaderships, avgGroupsPerMember, handledMembers);
+            for (; ;) {
+                BiTuple<CPMember, Integer> from = getEndpointWithMaxLeaderships(leaderships, avgGroupsPerMember, handledMembers);
                 if (from.element1 == null) {
                     // nothing to transfer
                     logger.info("CPGroup leadership balance is fine, cannot rebalance further...");
@@ -530,7 +531,7 @@ class RaftGroupMembershipManager {
                 } else {
                     maxLeaderships = avgGroupsPerMember;
                 }
-                Tuple2<CPMember, CPGroupId> to = getEndpointWithMinLeaderships(groups, leaderships, maxLeaderships);
+                BiTuple<CPMember, CPGroupId> to = getEndpointWithMinLeaderships(groups, leaderships, maxLeaderships);
                 if (to.element1 == null) {
                     logger.info("No candidate could be found to get leadership from " + from.element1 + ". Skipping to next...");
                     // could not found target member to transfer membership
@@ -586,7 +587,7 @@ class RaftGroupMembershipManager {
             return memberGroups;
         }
 
-        private Tuple2<CPMember, CPGroupId> getEndpointWithMinLeaderships(Collection<CPGroupSummary> groups,
+        private BiTuple<CPMember, CPGroupId> getEndpointWithMinLeaderships(Collection<CPGroupSummary> groups,
                                                                           Map<CPMember, Collection<CPGroupId>> leaderships,
                                                                           int maxLeaderships) {
             CPMember to = null;
@@ -603,11 +604,11 @@ class RaftGroupMembershipManager {
                     }
                 }
             }
-            return Tuple2.of(to, groupId);
+            return BiTuple.of(to, groupId);
         }
 
-        private Tuple2<CPMember, Integer> getEndpointWithMaxLeaderships(Map<CPMember, Collection<CPGroupId>> leaderships,
-                int minLeaderships, Set<CPMember> excludeSet) {
+        private BiTuple<CPMember, Integer> getEndpointWithMaxLeaderships(Map<CPMember, Collection<CPGroupId>> leaderships,
+                                                                         int minLeaderships, Set<CPMember> excludeSet) {
             CPMember from = null;
             int max = minLeaderships;
             for (Entry<CPMember, Collection<CPGroupId>> entry : leaderships.entrySet()) {
@@ -620,7 +621,7 @@ class RaftGroupMembershipManager {
                     max = count;
                 }
             }
-            return Tuple2.of(from, max);
+            return BiTuple.of(from, max);
         }
 
         private boolean transferLeadership(CPMember from, CPMember to, CPGroupId groupId) {

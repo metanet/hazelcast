@@ -17,7 +17,6 @@
 package com.hazelcast.cp.internal.persistence;
 
 import com.hazelcast.cp.CPMember;
-import com.hazelcast.nio.Address;
 import com.hazelcast.cp.internal.RaftGroupId;
 
 import java.io.IOException;

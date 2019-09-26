@@ -16,6 +16,7 @@
 
 package com.hazelcast.cp.internal.raft.impl.testing;
 
+import com.hazelcast.cluster.impl.MemberImpl;
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.internal.raft.SnapshotAwareService;
@@ -34,7 +35,6 @@ import com.hazelcast.cp.internal.raft.impl.dto.TriggerLeaderElection;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteRequest;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteResponse;
 import com.hazelcast.instance.BuildInfoProvider;
-import com.hazelcast.cluster.impl.MemberImpl;
 import com.hazelcast.internal.cluster.Versions;
 import com.hazelcast.internal.util.SimpleCompletableFuture;
 import com.hazelcast.logging.ILogger;
@@ -91,7 +91,7 @@ public class LocalRaftIntegration implements RaftIntegration {
 
     private MemberImpl getThisMember(TestRaftEndpoint localEndpoint) {
         MemberVersion version = MemberVersion.of(Versions.CURRENT_CLUSTER_VERSION.toString());
-        return new MemberImpl(newAddress(localEndpoint.getPort()), version, true, localEndpoint.getUuid().toString());
+        return new MemberImpl(newAddress(localEndpoint.getPort()), version, true, localEndpoint.getUuid());
     }
 
     void discoverNode(RaftNodeImpl node) {
@@ -357,13 +357,7 @@ public class LocalRaftIntegration implements RaftIntegration {
     }
 
     void allowAllMessagesToEndpoint(RaftEndpoint endpoint) {
-        Iterator<EndpointDropEntry> iter = endpointDropRules.iterator();
-        while (iter.hasNext()) {
-            EndpointDropEntry entry = iter.next();
-            if (endpoint.equals(entry.endpoint)) {
-                iter.remove();
-            }
-        }
+        endpointDropRules.removeIf(entry -> endpoint.equals(entry.endpoint));
     }
 
     void dropMessagesToAll(Class messageType) {

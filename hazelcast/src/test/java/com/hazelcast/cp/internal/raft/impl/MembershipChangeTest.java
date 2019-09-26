@@ -282,7 +282,7 @@ public class MembershipChangeTest extends HazelcastTestSupport {
 
         assertTrueEventually(() -> {
             for (RaftNodeImpl raftNode : followers) {
-                Endpoint newLeader = getLeaderMember(raftNode);
+                RaftEndpoint newLeader = getLeaderMember(raftNode);
                 assertNotNull(newLeader);
                 assertNotEquals(leader.getLocalMember(), newLeader);
             }

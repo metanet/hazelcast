@@ -130,10 +130,6 @@ public class RaftInvocationContext {
         return membersContainer.get().membersMap.get(memberUid);
     }
 
-    int getCPGroupPartitionId(CPGroupId groupId) {
-        return raftService.getCPGroupPartitionId(groupId);
-    }
-
     CPMember getKnownLeader(CPGroupId groupId) {
         return knownLeaders.get(groupId);
     }

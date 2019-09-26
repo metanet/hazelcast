@@ -437,7 +437,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
                     }
                 }
                 if (cpMemberToRemove == null) {
-                    complete(future, new IllegalArgumentException("No CPMember found with uuid: " + cpMemberUuidString));
+                    complete(future, new IllegalArgumentException("No CPMember found with uuid: " + cpMemberUuid));
                     return;
                 } else {
                     Member member = clusterService.getMember(cpMemberToRemove.getAddress());
@@ -1136,11 +1136,6 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
         stepDownRaftNode(groupId);
     }
 
-    public int getCPGroupPartitionId(CPGroupId groupId) {
-        assert groupId.id() >= 0 : "Invalid groupId: " + groupId;
-        return (int) (groupId.id() % nodeEngine.getPartitionService().getPartitionCount());
-    }
-
     // TODO: rename!
     public Collection<CPGroupId> getLeadershipGroups() {
         Collection<CPGroupId> groupIds = new ArrayList<CPGroupId>();
@@ -1326,7 +1321,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
                         logger.warning("Removing " + missingMember + " since it is absent for " + missingTimeSeconds
                                 + " seconds.");
 
-                        removeCPMember(missingMember.getUuid().toString()).get();
+                        removeCPMember(missingMember.getUuid()).get();
 
                         logger.info("Auto-removal of " + missingMember + " is successful.");
 

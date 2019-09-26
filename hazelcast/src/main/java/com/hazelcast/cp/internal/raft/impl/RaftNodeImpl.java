@@ -64,13 +64,12 @@ import com.hazelcast.cp.internal.raft.impl.task.RaftNodeStatusAwareTask;
 import com.hazelcast.cp.internal.raft.impl.task.ReplicateTask;
 import com.hazelcast.cp.internal.raft.impl.util.PostponedResponse;
 import com.hazelcast.internal.util.BiTuple;
-import com.hazelcast.internal.util.SimpleCompletableFuture;
-import com.hazelcast.logging.ILogger;
 import com.hazelcast.internal.util.Clock;
 import com.hazelcast.internal.util.RandomPicker;
+import com.hazelcast.internal.util.SimpleCompletableFuture;
 import com.hazelcast.internal.util.collection.Long2ObjectHashMap;
+import com.hazelcast.logging.ILogger;
 
-import java.util.Arrays;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -287,7 +286,7 @@ public final class RaftNodeImpl implements RaftNode {
                     invalidateFuturesFrom(state.commitIndex() + 1);
                     LeaderState leaderState = state.leaderState();
                     if (leaderState != null) {
-                        for (Tuple2<Object, SimpleCompletableFuture> t : leaderState.queryState().operations()) {
+                        for (BiTuple<Object, SimpleCompletableFuture> t : leaderState.queryState().operations()) {
                             t.element2.setResult(new LeaderDemotedException(state.localEndpoint(), null));
                         }
                     }
@@ -1285,14 +1284,14 @@ public final class RaftNodeImpl implements RaftNode {
             return true;
         }
 
-        Collection<Tuple2<Object, SimpleCompletableFuture>> operations = queryState.operations();
+        Collection<BiTuple<Object, SimpleCompletableFuture>> operations = queryState.operations();
 
         if (logger.isFineEnabled()) {
             logger.fine("Running " + operations.size() + " queries at commit index: " + commitIndex
                     + ", query round: " + queryState.queryRound());
         }
 
-        for (Tuple2<Object, SimpleCompletableFuture> t : operations) {
+        for (BiTuple<Object, SimpleCompletableFuture> t : operations) {
             runQuery(t.element1, t.element2);
         }
 

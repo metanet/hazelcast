@@ -74,7 +74,7 @@ public class CPGroupSummary implements CPGroup, IdentifiedDataSerializable {
     }
 
     @Override
-    public int getId() {
+    public int getClassId() {
         return RaftServiceDataSerializerHook.CP_GROUP_SUMMARY;
     }
 
