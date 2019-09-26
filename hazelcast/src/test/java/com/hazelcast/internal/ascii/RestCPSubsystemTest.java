@@ -388,7 +388,7 @@ public class RestCPSubsystemTest extends HazelcastTestSupport {
 
         assertClusterSizeEventually(2, instance1, instance2);
 
-        ConnectionResponse response = new HTTPCommunicator(instance1).removeCPMember(crashedCPMember.getUuid(), groupName, groupPassword);
+        ConnectionResponse response = new HTTPCommunicator(instance1).removeCPMember(crashedCPMember.getUuid(), clusterName, groupPassword);
 
         assertEquals(200, response.responseCode);
     }
@@ -417,7 +417,7 @@ public class RestCPSubsystemTest extends HazelcastTestSupport {
         Hazelcast.newHazelcastInstance(config);
         Hazelcast.newHazelcastInstance(config);
 
-        ConnectionResponse response = new HTTPCommunicator(instance1).removeCPMember(newUnsecureUUID(), groupName, groupPassword);
+        ConnectionResponse response = new HTTPCommunicator(instance1).removeCPMember(newUnsecureUUID(), clusterName, groupPassword);
 
         assertEquals(400, response.responseCode);
     }
@@ -438,7 +438,7 @@ public class RestCPSubsystemTest extends HazelcastTestSupport {
         CPMember crashedCPMember = instance2.getCPSubsystem().getLocalCPMember();
         instance2.getLifecycleService().terminate();
 
-        ConnectionResponse response = new HTTPCommunicator(instance3).removeCPMember(crashedCPMember.getUuid(), groupName, groupPassword);
+        ConnectionResponse response = new HTTPCommunicator(instance3).removeCPMember(crashedCPMember.getUuid(), clusterName, groupPassword);
 
         assertEquals(200, response.responseCode);
     }
