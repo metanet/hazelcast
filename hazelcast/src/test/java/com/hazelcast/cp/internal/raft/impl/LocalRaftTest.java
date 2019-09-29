@@ -28,7 +28,6 @@ import com.hazelcast.cp.internal.raft.impl.dto.AppendRequest;
 import com.hazelcast.cp.internal.raft.impl.dto.AppendSuccessResponse;
 import com.hazelcast.cp.internal.raft.impl.dto.VoteRequest;
 import com.hazelcast.cp.internal.raft.impl.testing.LocalRaftGroup;
-import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.ParallelJVMTest;
@@ -658,14 +657,11 @@ public class LocalRaftTest extends HazelcastTestSupport {
         // followerWithLongestLog has 2 entries, other 3 followers have 1 entry
         // and those 3 followers will elect a leader among themselves
 
-        assertTrueEventually(new AssertTask() {
-            @Override
-            public void run() {
-                for (RaftNodeImpl raftNode : followers) {
-                    RaftEndpoint newLeader = getLeaderMember(raftNode);
-                    assertNotEquals(leader.getLocalMember(), newLeader);
-                    assertNotEquals(followerWithLongestLog.getLocalMember(), newLeader);
-                }
+        assertTrueEventually(() -> {
+            for (RaftNodeImpl raftNode : followers) {
+                RaftEndpoint newLeader1 = getLeaderMember(raftNode);
+                assertNotEquals(leader.getLocalMember(), newLeader1);
+                assertNotEquals(followerWithLongestLog.getLocalMember(), newLeader1);
             }
         });
 
@@ -710,14 +706,11 @@ public class LocalRaftTest extends HazelcastTestSupport {
         RaftNodeImpl[] followers = group.getNodesExcept(leader.getLocalMember());
         group.split(leader.getLocalMember());
 
-        assertTrueEventually(new AssertTask() {
-            @Override
-            public void run() {
-                for (RaftNodeImpl raftNode : followers) {
-                    RaftEndpoint leaderEndpoint = getLeaderMember(raftNode);
-                    assertNotNull(leaderEndpoint);
-                    assertNotEquals(leader.getLocalMember(), leaderEndpoint);
-                }
+        assertTrueEventually(() -> {
+            for (RaftNodeImpl raftNode : followers) {
+                RaftEndpoint leaderEndpoint = getLeaderMember(raftNode);
+                assertNotNull(leaderEndpoint);
+                assertNotEquals(leader.getLocalMember(), leaderEndpoint);
             }
         });
 

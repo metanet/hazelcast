@@ -134,7 +134,7 @@ public class RaftInvocationManager {
                 members.sort(new CPMemberReachabilityComparator());
                 members = members.subList(0, groupSize);
 
-                List<RaftEndpoint> groupEndpoints = new ArrayList<RaftEndpoint>();
+                List<RaftEndpoint> groupEndpoints = new ArrayList<>();
                 for (CPMemberInfo member : members) {
                     groupEndpoints.add(member.toRaftEndpoint());
 

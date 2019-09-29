@@ -72,12 +72,12 @@ public class LocalRaftIntegration implements RaftIntegration {
     private final SnapshotAwareService service;
     private final boolean appendNopEntryOnLeaderElection;
     private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
-    private final ConcurrentMap<RaftEndpoint, RaftNodeImpl> nodes = new ConcurrentHashMap<RaftEndpoint, RaftNodeImpl>();
+    private final ConcurrentMap<RaftEndpoint, RaftNodeImpl> nodes = new ConcurrentHashMap<>();
     private final LoggingServiceImpl loggingService;
 
-    private final Set<EndpointDropEntry> endpointDropRules = Collections.newSetFromMap(new ConcurrentHashMap<EndpointDropEntry, Boolean>());
-    private final Map<RaftEndpoint, Function<Object, Object>> alterRPCRules = new ConcurrentHashMap<RaftEndpoint, Function<Object, Object>>();
-    private final Set<Class> dropAllRules = Collections.newSetFromMap(new ConcurrentHashMap<Class, Boolean>());
+    private final Set<EndpointDropEntry> endpointDropRules = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Map<RaftEndpoint, Function<Object, Object>> alterRPCRules = new ConcurrentHashMap<>();
+    private final Set<Class> dropAllRules = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     LocalRaftIntegration(TestRaftEndpoint localEndpoint, CPGroupId groupId, SnapshotAwareService service,
                          boolean appendNopEntryOnLeaderElection) {

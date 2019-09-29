@@ -115,7 +115,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
     // all fields below are state of the Metadata CP group and put into Metadata snapshot and reset while restarting...
     // these fields are accessed outside of Raft while restarting or local querying, etc.
     @Probe
-    private final ConcurrentMap<CPGroupId, CPGroupInfo> groups = new ConcurrentHashMap<CPGroupId, CPGroupInfo>();
+    private final ConcurrentMap<CPGroupId, CPGroupInfo> groups = new ConcurrentHashMap<>();
     // activeMembers must be an ordered non-null collection
     @Probe
     private volatile Collection<CPMemberInfo> activeMembers = Collections.emptySet();
@@ -134,7 +134,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         this.logger = nodeEngine.getLogger(getClass());
         this.config = config;
         this.cpSubsystemEnabled = raftService.isCpSubsystemEnabled();
-        this.metadataStore = raftService.getCPPersistenceService().getCPMemberMetadataStore();
+        this.metadataStore = raftService.getCPPersistenceService().getCPMetadataStore();
     }
 
     boolean init() {
@@ -394,7 +394,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             failMetadataRaftGroupInitializationIfNotCompletedAndThrow(msg);
         }
 
-        List<RaftEndpoint> discoveredMetadataEndpoints = new ArrayList<RaftEndpoint>();
+        List<RaftEndpoint> discoveredMetadataEndpoints = new ArrayList<>();
         for (CPMemberInfo member : discoveredCPMembers) {
             if (discoveredMetadataEndpoints.size() == config.getGroupSize()) {
                 break;
@@ -441,7 +441,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             logger.fine("METADATA " + metadataGroup + " initialization is completed with: " + initializedCPMembers);
 
             initializationStatus = MetadataRaftGroupInitStatus.SUCCESSFUL;
-            Collection<Long> completed = new ArrayList<Long>(initializationCommitIndices);
+            Collection<Long> completed = new ArrayList<>(initializationCommitIndices);
             initializedCPMembers.clear();
             initializationCommitIndices.clear();
             raftService.updateInvocationManagerMembers(groupIdSeed, commitIndex, activeMembers);
@@ -518,7 +518,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
 
         Map<UUID, CPMemberInfo> activeMembersMap = getActiveMembersMap();
 
-        List<CPMemberInfo> members = new ArrayList<CPMemberInfo>();
+        List<CPMemberInfo> members = new ArrayList<>();
         for (RaftEndpoint member : group.members()) {
             members.add(activeMembersMap.get(member.getUuid()));
         }
@@ -543,7 +543,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
     }
 
     private Map<UUID, CPMemberInfo> getActiveMembersMap() {
-        Map<UUID, CPMemberInfo> map = new HashMap<UUID, CPMemberInfo>();
+        Map<UUID, CPMemberInfo> map = new HashMap<>();
         for (CPMemberInfo member : activeMembers) {
             map.put(member.getUuid(), member);
         }
@@ -659,7 +659,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         Map<UUID, CPMemberInfo> activeMembersMap = getActiveMembersMap();
         RaftEndpoint localEndpoint = getLocalCPMember().toRaftEndpoint();
         OperationService operationService = nodeEngine.getOperationService();
-        Operation op = new DestroyRaftNodesOp(Collections.<CPGroupId>singleton(group.id()));
+        Operation op = new DestroyRaftNodesOp(Collections.singleton(group.id()));
         for (RaftEndpoint endpoint : group.members())  {
             if (endpoint.equals(localEndpoint)) {
                 raftService.destroyRaftNode(group.id());
@@ -967,7 +967,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         checkNotNull(member);
         checkMetadataGroupInitSuccessful();
 
-        Collection<CPMemberInfo> newMembers = new LinkedHashSet<CPMemberInfo>(activeMembers.size());
+        Collection<CPMemberInfo> newMembers = new LinkedHashSet<>(activeMembers.size());
         boolean found = false;
 
         for (CPMemberInfo existingMember : activeMembers) {
@@ -1314,7 +1314,7 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             RaftGroupId metadataGroupId = getMetadataGroupId();
             try {
                 if (metadataMembers.contains(localCPMemberCandidate)) {
-                    List<RaftEndpoint> metadataEndpoints = new ArrayList<RaftEndpoint>();
+                    List<RaftEndpoint> metadataEndpoints = new ArrayList<>();
                     for (CPMemberInfo member : metadataMembers) {
                         metadataEndpoints.add(member.toRaftEndpoint());
                     }

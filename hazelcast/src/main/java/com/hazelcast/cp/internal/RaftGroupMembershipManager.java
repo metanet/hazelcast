@@ -24,7 +24,7 @@ import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.CPMember;
 import com.hazelcast.cp.exception.CPGroupDestroyedException;
 import com.hazelcast.cp.internal.MembershipChangeSchedule.CPGroupMembershipChange;
-import com.hazelcast.cp.internal.operation.GetLeadershipGroupsOp;
+import com.hazelcast.cp.internal.operation.GetLeadedGroupsOp;
 import com.hazelcast.cp.internal.operation.TransferLeadershipOp;
 import com.hazelcast.cp.internal.raft.MembershipChangeMode;
 import com.hazelcast.cp.internal.raft.exception.MismatchingGroupMembersCommitIndexException;
@@ -493,7 +493,7 @@ class RaftGroupMembershipManager {
             final int avgGroupsPerMember = groupIds.size() / members.size();
             final boolean overAvgAllowed = groupIds.size() % members.size() != 0;
 
-            Collection<CPGroupSummary> allGroups = new ArrayList<CPGroupSummary>(groupIds.size());
+            Collection<CPGroupSummary> allGroups = new ArrayList<>(groupIds.size());
             for (CPGroupId groupId : groupIds) {
                 CPGroupSummary group = getCpGroup(groupId);
                 allGroups.add(group);
@@ -502,7 +502,7 @@ class RaftGroupMembershipManager {
             logger.info("Searching for leadership imbalance in " + groupIds.size() + " CPGroups, "
                     + "average groups per member is " + avgGroupsPerMember);
 
-            Set<CPMember> handledMembers = new HashSet<CPMember>(members.size());
+            Set<CPMember> handledMembers = new HashSet<>(members.size());
             Map<CPMember, Collection<CPGroupId>> leaderships = getLeadershipsMap(members);
 
             for (; ;) {
@@ -550,12 +550,12 @@ class RaftGroupMembershipManager {
         }
 
         private Map<CPMember, Collection<CPGroupId>> getLeadershipsMap(Map<RaftEndpoint, CPMember> members) {
-            Map<CPMember, Collection<CPGroupId>> leaderships = new HashMap<CPMember, Collection<CPGroupId>>();
+            Map<CPMember, Collection<CPGroupId>> leaderships = new HashMap<>();
             OperationService operationService = nodeEngine.getOperationService();
             StringBuilder s = new StringBuilder("Current leadership claims:");
             for (CPMember member : members.values()) {
                 Collection<CPGroupId> groups =
-                        operationService.<Collection<CPGroupId>>invokeOnTarget(null, new GetLeadershipGroupsOp(),
+                        operationService.<Collection<CPGroupId>>invokeOnTarget(null, new GetLeadedGroupsOp(),
                                 member.getAddress()).join();
                 leaderships.put(member, groups);
                 if (logger.isFineEnabled()) {
@@ -571,7 +571,7 @@ class RaftGroupMembershipManager {
 
         private Collection<CPGroupSummary> getLeaderGroupsOf(CPMember member, Collection<CPGroupId> leaderships,
                 Collection<CPGroupSummary> groups) {
-            List<CPGroupSummary> memberGroups = new ArrayList<CPGroupSummary>();
+            List<CPGroupSummary> memberGroups = new ArrayList<>();
             for (CPGroupSummary group : groups) {
                 if (CPGroup.METADATA_CP_GROUP_NAME.equals(group.id().name())) {
                     // ignore metadata group, we don't expect any significant load on metadata
@@ -640,7 +640,7 @@ class RaftGroupMembershipManager {
         private Map<RaftEndpoint, CPMember> getMembers() {
             InternalCompletableFuture<Collection<CPMemberInfo>> future = queryMetadata(new GetActiveCPMembersOp());
             Collection<CPMemberInfo> members = future.join();
-            Map<RaftEndpoint, CPMember> map = new HashMap<RaftEndpoint, CPMember>(members.size());
+            Map<RaftEndpoint, CPMember> map = new HashMap<>(members.size());
             for (CPMemberInfo member : members) {
                 map.put(member.toRaftEndpoint(), member);
             }

@@ -30,20 +30,19 @@ import java.util.Collection;
 import java.util.Collections;
 
 /**
- * TODO
+ * Returns the CP groups that this local CP member is the Raft group leader.
  */
-// TODO: rename!
-public class GetLeadershipGroupsOp extends Operation implements RaftSystemOperation, IdentifiedDataSerializable {
+public class GetLeadedGroupsOp extends Operation implements RaftSystemOperation, IdentifiedDataSerializable {
 
     private transient Collection<CPGroupId> groups = Collections.emptyList();
 
-    public GetLeadershipGroupsOp() {
+    public GetLeadedGroupsOp() {
     }
 
     @Override
     public void run() throws Exception {
         RaftService service = getService();
-        groups = service.getLeadershipGroups();
+        groups = service.getLeadedGroups();
     }
 
     @Override
@@ -76,6 +75,6 @@ public class GetLeadershipGroupsOp extends Operation implements RaftSystemOperat
 
     @Override
     public int getClassId() {
-        return RaftServiceDataSerializerHook.GET_LEADERSHIP_GROUPS_OP;
+        return RaftServiceDataSerializerHook.GET_LEADED_GROUPS;
     }
 }

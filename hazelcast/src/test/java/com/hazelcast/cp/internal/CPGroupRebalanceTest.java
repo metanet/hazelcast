@@ -20,7 +20,7 @@ import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.CPMember;
-import com.hazelcast.cp.internal.operation.GetLeadershipGroupsOp;
+import com.hazelcast.cp.internal.operation.GetLeadedGroupsOp;
 import com.hazelcast.spi.impl.InternalCompletableFuture;
 import com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl;
 import com.hazelcast.test.HazelcastSerialClassRunner;
@@ -85,9 +85,8 @@ public class CPGroupRebalanceTest extends HazelcastRaftTestSupport {
     private void createRaftGroups(HazelcastInstance[] instances, int groupCount) {
         RaftInvocationManager invocationManager = getRaftInvocationManager(instances[0]);
 
-        Collection<CPGroupId> groupIds = new ArrayList<CPGroupId>(groupCount);
-        Collection<InternalCompletableFuture<RaftGroupId>> futures
-                = new ArrayList<InternalCompletableFuture<RaftGroupId>>(groupCount);
+        Collection<CPGroupId> groupIds = new ArrayList<>(groupCount);
+        Collection<InternalCompletableFuture<RaftGroupId>> futures = new ArrayList<>(groupCount);
 
         for (int i = 0; i < groupCount; i++) {
             InternalCompletableFuture<RaftGroupId> f = invocationManager.createRaftGroup("group-" + i);
@@ -113,11 +112,11 @@ public class CPGroupRebalanceTest extends HazelcastRaftTestSupport {
 
     private Map<CPMember, Collection<CPGroupId>> getLeadershipsMap(HazelcastInstance instance, Collection<CPMember> members) {
         OperationServiceImpl operationService = getOperationService(instance);
-        Map<CPMember, Collection<CPGroupId>> leaderships = new HashMap<CPMember, Collection<CPGroupId>>();
+        Map<CPMember, Collection<CPGroupId>> leaderships = new HashMap<>();
 
         for (CPMember member : members) {
             Collection<CPGroupId> groups =
-                    operationService.<Collection<CPGroupId>>invokeOnTarget(null, new GetLeadershipGroupsOp(),
+                    operationService.<Collection<CPGroupId>>invokeOnTarget(null, new GetLeadedGroupsOp(),
                             member.getAddress()).join();
             leaderships.put(member, groups);
         }

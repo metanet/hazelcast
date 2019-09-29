@@ -273,32 +273,29 @@ public final class RaftNodeImpl implements RaftNode {
             return resultFuture;
         }
 
-        execute(new Runnable() {
-            @Override
-            public void run() {
-                Object result = null;
-                try {
-                    if (isTerminatedOrSteppedDown()) {
-                        resultFuture.complete(null);
-                        return;
-                    }
-
-                    invalidateFuturesFrom(state.commitIndex() + 1);
-                    LeaderState leaderState = state.leaderState();
-                    if (leaderState != null) {
-                        for (BiTuple<Object, SimpleCompletableFuture> t : leaderState.queryState().operations()) {
-                            t.element2.setResult(new LeaderDemotedException(state.localEndpoint(), null));
-                        }
-                    }
-                    state.completeLeadershipTransfer(new LeaderDemotedException(state.localEndpoint(), null));
-                    closeStateStore();
-                } catch (Exception e) {
-                    logger.severe("Failure during force-termination", e);
-                    result = e;
-                } finally {
-                    setStatus(TERMINATED);
-                    resultFuture.complete(result);
+        execute(() -> {
+            Object result = null;
+            try {
+                if (isTerminatedOrSteppedDown()) {
+                    resultFuture.complete(null);
+                    return;
                 }
+
+                invalidateFuturesFrom(state.commitIndex() + 1);
+                LeaderState leaderState = state.leaderState();
+                if (leaderState != null) {
+                    for (BiTuple<Object, SimpleCompletableFuture> t : leaderState.queryState().operations()) {
+                        t.element2.setResult(new LeaderDemotedException(state.localEndpoint(), null));
+                    }
+                }
+                state.completeLeadershipTransfer(new LeaderDemotedException(state.localEndpoint(), null));
+                closeStateStore();
+            } catch (Exception e) {
+                logger.severe("Failure during force-termination", e);
+                result = e;
+            } finally {
+                setStatus(TERMINATED);
+                resultFuture.complete(result);
             }
         });
 
@@ -323,27 +320,24 @@ public final class RaftNodeImpl implements RaftNode {
                     + " members: " + state.members());
         }
 
-        execute(new Runnable() {
-            @Override
-            public void run() {
-                if (status != INITIAL) {
-                    throw new IllegalStateException("Cannot start RaftNode when " + status);
-                }
-
-                initRestoredState();
-                try {
-                    state.init();
-                } catch (IOException e) {
-                    logger.severe(e);
-                }
-
-                new PreVoteTask(RaftNodeImpl.this, 0).run();
-                scheduleLeaderFailureDetection();
-                if (status == INITIAL) {
-                    setStatus(ACTIVE);
-                }
-
+        execute(() -> {
+            if (status != INITIAL) {
+                throw new IllegalStateException("Cannot start RaftNode when " + status);
             }
+
+            initRestoredState();
+            try {
+                state.init();
+            } catch (IOException e) {
+                logger.severe(e);
+            }
+
+            new PreVoteTask(RaftNodeImpl.this, 0).run();
+            scheduleLeaderFailureDetection();
+            if (status == INITIAL) {
+                setStatus(ACTIVE);
+            }
+
         });
     }
 
