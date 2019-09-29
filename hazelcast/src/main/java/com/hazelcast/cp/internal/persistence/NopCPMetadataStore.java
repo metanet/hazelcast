@@ -17,7 +17,6 @@
 package com.hazelcast.cp.internal.persistence;
 
 import com.hazelcast.cp.CPMember;
-import com.hazelcast.nio.Address;
 import com.hazelcast.cp.internal.RaftGroupId;
 
 /**
@@ -37,6 +36,11 @@ public final class NopCPMetadataStore implements CPMetadataStore {
 
     @Override
     public boolean tryMarkAPMember() {
+        return false;
+    }
+
+    @Override
+    public boolean hasMetadata() {
         return false;
     }
 

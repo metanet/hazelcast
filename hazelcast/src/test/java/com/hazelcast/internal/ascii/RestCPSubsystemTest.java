@@ -359,7 +359,7 @@ public class RestCPSubsystemTest extends HazelcastTestSupport {
         Hazelcast.newHazelcastInstance(config);
         Hazelcast.newHazelcastInstance(config);
 
-        ConnectionResponse response = new HTTPCommunicator(instance1).forceDestroyCPGroup(METADATA_CP_GROUP_NAME, clusterName, groupPassword);
+        ConnectionResponse  response = new HTTPCommunicator(instance1).forceDestroyCPGroup(METADATA_CP_GROUP_NAME, clusterName, groupPassword);
 
         assertEquals(400, response.responseCode);
     }

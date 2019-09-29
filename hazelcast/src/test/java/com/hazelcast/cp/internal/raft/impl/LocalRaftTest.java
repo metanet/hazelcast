@@ -16,7 +16,6 @@
 
 package com.hazelcast.cp.internal.raft.impl;
 
-import com.hazelcast.cluster.Endpoint;
 import com.hazelcast.config.cp.RaftAlgorithmConfig;
 import com.hazelcast.core.ICompletableFuture;
 import com.hazelcast.cp.exception.CannotReplicateException;
@@ -445,7 +444,7 @@ public class LocalRaftTest extends HazelcastTestSupport {
 
         assertTrueEventually(() -> {
             for (RaftNodeImpl raftNode : followers) {
-                Endpoint newLeader = getLeaderMember(raftNode);
+                RaftEndpoint newLeader = getLeaderMember(raftNode);
                 assertNotNull(newLeader);
                 assertNotEquals(leaderNode.getLocalMember(), newLeader);
             }
@@ -490,7 +489,7 @@ public class LocalRaftTest extends HazelcastTestSupport {
 
         assertTrueEventually(() -> {
             for (int ix : split) {
-                Endpoint newLeader = getLeaderMember(group.getNode(ix));
+                RaftEndpoint newLeader = getLeaderMember(group.getNode(ix));
                 assertNotNull(newLeader);
                 assertNotEquals(leaderEndpoint, newLeader);
             }

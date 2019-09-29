@@ -64,7 +64,6 @@ import java.util.concurrent.TimeUnit;
 import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.STEPPED_DOWN;
 import static com.hazelcast.cp.internal.raft.impl.RaftNodeStatus.TERMINATED;
 import static com.hazelcast.spi.impl.executionservice.ExecutionService.ASYNC_EXECUTOR;
-import static com.hazelcast.spi.properties.GroupProperty.RAFT_LINEARIZABLE_READ_OPTIMIZATION_ENABLED;
 
 /**
  * The integration point of the Raft algorithm implementation and

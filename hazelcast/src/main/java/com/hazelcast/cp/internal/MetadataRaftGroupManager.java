@@ -903,7 +903,14 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
         checkNotNull(newMetadataGroupId);
         RaftGroupId metadataGroupId = getMetadataGroupId();
 
-        if (!raftService.isStartCompleted()) {
+        // During pre-join, CP data restore process won't be started yet.
+        // If persistence enabled and this member has CP data persisted
+        // then it has to wait until CP restore process completes
+        // before processing metadataGroupId update.
+        // So, during pre-join we skip the update.
+        // If this member does not have any persisted CP data,
+        // then it's ok to process the update even though persistence is enabled.
+        if (!raftService.isStartCompleted() && metadataStore.hasMetadata()) {
             if (!metadataGroupId.equals(newMetadataGroupId)) {
                 logger.severe("Restored METADATA groupId: " + metadataGroupId + " is different than received METADATA groupId: "
                         + newMetadataGroupId + ". There must have been a CP Subsystem reset while this member was down...");
@@ -1067,7 +1074,6 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
     }
 
     void broadcastActiveCPMembers() {
-        // TODO [basri] should we check if start completed?
         if (!(isDiscoveryCompleted() && isMetadataGroupLeader())) {
             return;
         }
@@ -1159,7 +1165,6 @@ public class MetadataRaftGroupManager implements SnapshotAwareService<MetadataRa
             } catch (Exception e) {
                 throw new HazelcastException(e);
             }
-            state = DiscoveryTaskState.SCHEDULED;
         }
 
         @Override

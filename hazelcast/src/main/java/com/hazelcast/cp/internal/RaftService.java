@@ -572,7 +572,7 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
 
     void updateMissingMembers() {
         if (config.getMissingCPMemberAutoRemovalSeconds() == 0 || !metadataGroupManager.isDiscoveryCompleted()
-                || !isStartCompleted()) {
+                || (!isStartCompleted() && getCPPersistenceService().getCPMemberMetadataStore().hasMetadata())) {
             return;
         }
 
@@ -780,12 +780,11 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
 
     public RaftNodeImpl restoreRaftNode(RaftGroupId groupId, RestoredRaftState restoredState, LogFileStructure logFileStructure) {
         int partitionId = getCPGroupPartitionId(groupId);
-        RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId,
-                restoredState.localEndpoint(), partitionId);
+        RaftIntegration integration = new NodeEngineRaftIntegration(nodeEngine, groupId, restoredState.localEndpoint(),
+                partitionId);
         RaftAlgorithmConfig raftAlgorithmConfig = config.getRaftAlgorithmConfig();
         RaftStateStore stateStore = getCPPersistenceService().createRaftStateStore(groupId, logFileStructure);
-        RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(
-                groupId, restoredState, raftAlgorithmConfig, integration, stateStore);
+        RaftNodeImpl node = RaftNodeImpl.restoreRaftNode(groupId, restoredState, raftAlgorithmConfig, integration, stateStore);
 
         // no need to lock here...
         RaftNode prev = nodes.putIfAbsent(groupId, node);
@@ -1026,7 +1025,6 @@ public class RaftService implements ManagedService, SnapshotAwareService<Metadat
     @SuppressWarnings({"checkstyle:npathcomplexity", "checkstyle:cyclomaticcomplexity"})
     public void handleActiveCPMembers(RaftGroupId receivedMetadataGroupId, long membersCommitIndex,
                                       Collection<CPMemberInfo> members) {
-        // TODO [basri] should we check anything related to isStartCompleted() ?
         if (!metadataGroupManager.isDiscoveryCompleted()) {
             if (logger.isFineEnabled()) {
                 logger.fine("Ignoring received active CP members: " + members + " since discovery is in progress.");
