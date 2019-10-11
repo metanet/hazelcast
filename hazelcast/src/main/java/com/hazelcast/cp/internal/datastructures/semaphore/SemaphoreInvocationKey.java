@@ -16,8 +16,9 @@
 
 package com.hazelcast.cp.internal.datastructures.semaphore;
 
-import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKey;
 import com.hazelcast.cluster.Address;
+import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
+import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKey;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
@@ -26,29 +27,27 @@ import java.io.IOException;
 import java.util.UUID;
 
 import static com.hazelcast.internal.util.Preconditions.checkNotNull;
-import static com.hazelcast.internal.util.Preconditions.checkTrue;
 
 /**
- * Represents acquire() invocation of a semaphore endpoint.
- * A SemaphoreInvocationKey either holds some permits or resides
- * in the wait queue. Combination of a session id and a thread id a
+ * Represents acquire(), release(), drain(), change() invocations of
+ * a semaphore endpoint. A SemaphoreInvocationKey either holds some permits or
+ * resides in the wait queue. Combination of a session id and a thread id a
  * single-threaded unique entity. When it sends a request X, it can either
  * retry this request X, or send a new request Y. After it sends request Y,
  * it will not retry request X anymore.
  */
-public class AcquireInvocationKey extends WaitKey implements IdentifiedDataSerializable {
+public class SemaphoreInvocationKey extends WaitKey implements IdentifiedDataSerializable {
 
     private SemaphoreEndpoint endpoint;
     private int permits;
 
-    AcquireInvocationKey() {
+    SemaphoreInvocationKey() {
     }
 
-    public AcquireInvocationKey(long commitIndex, UUID invocationUid, Address callerAddress, long callId,
-                                SemaphoreEndpoint endpoint, int permits) {
+    public SemaphoreInvocationKey(long commitIndex, UUID invocationUid, Address callerAddress, long callId,
+                                  SemaphoreEndpoint endpoint, int permits) {
         super(commitIndex, invocationUid, callerAddress, callId);
         checkNotNull(endpoint);
-        checkTrue(permits > 0, "permits must be positive");
         this.endpoint = endpoint;
         this.permits = permits;
     }
@@ -66,8 +65,18 @@ public class AcquireInvocationKey extends WaitKey implements IdentifiedDataSeria
         return permits;
     }
 
-    boolean isDifferentInvocationOf(SemaphoreEndpoint endpoint, UUID invocationUid) {
-        return endpoint().equals(endpoint) && !invocationUid().equals(invocationUid);
+    boolean isOlderInvocationOf(SemaphoreEndpoint endpoint, UUID invocationUid, long callId) {
+        boolean isDifferent = endpoint().equals(endpoint) && !invocationUid().equals(invocationUid);
+        if (isDifferent && this.callId > callId) {
+            // Currently we have another ongoing invocation of the semaphore
+            // endpoint with a greater call id than the given one. It means
+            // that the given operation is not valid anymore and we don't need
+            // to process it.
+            throw new WaitKeyCancelledException("Invocation: " + invocationUid + " with call id: " + callId
+                    + " cannot be processed because a more recent call: " + this + " is currently in progress!");
+        }
+
+        return isDifferent;
     }
 
     @Override
@@ -77,7 +86,7 @@ public class AcquireInvocationKey extends WaitKey implements IdentifiedDataSeria
 
     @Override
     public int getClassId() {
-        return SemaphoreDataSerializerHook.ACQUIRE_INVOCATION_KEY;
+        return SemaphoreDataSerializerHook.SEMAPHORE_INVOCATION_KEY;
     }
 
     @Override
@@ -104,7 +113,7 @@ public class AcquireInvocationKey extends WaitKey implements IdentifiedDataSeria
             return false;
         }
 
-        AcquireInvocationKey that = (AcquireInvocationKey) o;
+        SemaphoreInvocationKey that = (SemaphoreInvocationKey) o;
 
         if (commitIndex != that.commitIndex) {
             return false;

@@ -35,8 +35,7 @@ import static com.hazelcast.internal.util.ExceptionUtil.rethrow;
 /**
  * Contains Raft-based count down latch instances
  */
-public class CountDownLatchService
-        extends AbstractBlockingService<AwaitInvocationKey, CountDownLatch, CountDownLatchRegistry> {
+public class CountDownLatchService extends AbstractBlockingService<AwaitInvocationKey, CountDownLatch, CountDownLatchRegistry> {
 
     /**
      * Name of the service

@@ -16,9 +16,11 @@
 
 package com.hazelcast.cp.internal.datastructures.spi.blocking;
 
+import com.hazelcast.cluster.Address;
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.internal.RaftNodeLifecycleAwareService;
 import com.hazelcast.cp.internal.RaftService;
+import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.spi.AbstractCPMigrationAwareService;
 import com.hazelcast.cp.internal.datastructures.spi.RaftManagedService;
 import com.hazelcast.cp.internal.datastructures.spi.RaftRemoteService;
@@ -33,7 +35,6 @@ import com.hazelcast.internal.util.BiTuple;
 import com.hazelcast.internal.util.Clock;
 import com.hazelcast.internal.util.collection.Long2ObjectHashMap;
 import com.hazelcast.logging.ILogger;
-import com.hazelcast.cluster.Address;
 import com.hazelcast.spi.exception.DistributedObjectDestroyedException;
 import com.hazelcast.spi.impl.NodeEngine;
 import com.hazelcast.spi.impl.executionservice.ExecutionService;
@@ -243,18 +244,15 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
             return;
         }
 
-        List<W> expired = new ArrayList<>();
+        List<Long> expiredWaitKeyCommitIndices = new ArrayList<>();
         for (BiTuple<String, UUID> key : keys) {
-            registry.expireWaitKey(key.element1, key.element2, expired);
+            W expiredWaitKey = registry.expireWaitKey(key.element1, key.element2);
+            if (expiredWaitKey != null) {
+                expiredWaitKeyCommitIndices.add(expiredWaitKey.commitIndex());
+            }
         }
 
-        List<Long> commitIndices = new ArrayList<>();
-        for (W key : expired) {
-            commitIndices.add(key.commitIndex());
-            registry.removeLiveOperation(key);
-        }
-
-        completeFutures(groupId, commitIndices, expiredWaitKeyResponse());
+        completeFutures(groupId, expiredWaitKeyCommitIndices, expiredWaitKeyResponse());
     }
 
     public final RR getRegistryOrNull(CPGroupId groupId) {
@@ -316,6 +314,14 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
         completeFutures(groupId, indices, result);
     }
 
+    protected final void notifyCancelledWaitKey(CPGroupId groupId, String name, W key) {
+        if (key == null) {
+            return;
+        }
+
+        notifyWaitKeys(groupId, name, Collections.singleton(key), new WaitKeyCancelledException());
+    }
+
     private void completeFutures(CPGroupId groupId, Collection<Long> indices, Object result) {
         if (!indices.isEmpty()) {
             if (!raftService.completeFutures(groupId, indices, result)) {
@@ -342,7 +348,7 @@ public abstract class AbstractBlockingService<W extends WaitKey, R extends Block
         }
     }
 
-    protected Set<CPGroupId> getGroupIdSet() {
+    private Set<CPGroupId> getGroupIdSet() {
         return registries.keySet();
     }
 

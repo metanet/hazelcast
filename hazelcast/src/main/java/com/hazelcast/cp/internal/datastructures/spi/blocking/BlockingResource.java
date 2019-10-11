@@ -31,6 +31,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 
+import static com.hazelcast.internal.util.Preconditions.checkNotNull;
+import static com.hazelcast.internal.util.Preconditions.checkTrue;
+
 /**
  * Operations on a {@link BlockingResource} may not return a response
  * at commit-time. Such operations register {@link WaitKey} instances.
@@ -43,8 +46,8 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
 
     private CPGroupId groupId;
     private String name;
-    // Should be an insertion ordered map to ensure fairness
-    private final Map<Object, WaitKeyContainer<W>> waitKeys = new LinkedHashMap<>();
+    // Should respect insertion order to ensure fairness
+    private final Map<Object, W> waitKeys = new LinkedHashMap<>();
 
     protected BlockingResource() {
     }
@@ -63,7 +66,7 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
     }
 
     // only for testing purposes
-    public final Map<Object, WaitKeyContainer<W>> getInternalWaitKeysMap() {
+    public final Map<Object, W> getInternalWaitKeysMap() {
         return waitKeys;
     }
 
@@ -81,15 +84,24 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
     protected abstract Collection<Long> getActivelyAttachedSessions();
 
     protected final void addWaitKey(Object waitKeyId, W waitKey) {
-        WaitKeyContainer<W> container = waitKeys.get(waitKeyId);
-        if (container != null) {
-            container.addRetry(waitKey);
-        } else {
-            waitKeys.put(waitKeyId, new WaitKeyContainer<>(waitKey));
-        }
+        checkNotNull(waitKey);
+        // Ignore the given wait key if it has smaller call id than
+        // the existing one. It is because if there is a greater call id
+        // already, it means that the caller has stopped waiting for
+        // the response of the given call id.
+        waitKeys.merge(waitKeyId, waitKey, this::getWaitKeyWithGreaterCallId);
     }
 
-    protected final WaitKeyContainer<W> getWaitKeyContainer(Object waitKeyId) {
+    private W getWaitKeyWithGreaterCallId(W waitKey1, W waitKey2) {
+        checkTrue(waitKey1.sessionId() == waitKey2.sessionId(), waitKey1 + " and " + waitKey2
+                + " does not belong to the same session!");
+        checkTrue(waitKey1.invocationUid().equals(waitKey2.invocationUid()), waitKey1 + " and " + waitKey2
+                + " does not belong to the same invocation!");
+
+        return waitKey2.callId() > waitKey1.callId() ? waitKey2 : waitKey1;
+    }
+
+    protected final W getWaitKey(Object waitKeyId) {
         return waitKeys.get(waitKeyId);
     }
 
@@ -98,31 +110,27 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
     }
 
     protected final Collection<W> getAllWaitKeys() {
-        List<W> all = new ArrayList<>(waitKeys.size());
-        for (WaitKeyContainer<W> container : waitKeys.values()) {
-            all.addAll(container.keyAndRetries());
-        }
-
-        return all;
+        return new ArrayList<>(waitKeys.values());
     }
 
-    final void expireWaitKeys(UUID invocationUid, List<W> expired) {
-        Iterator<WaitKeyContainer<W>> iter = waitKeys.values().iterator();
+    final W expireWaitKey(UUID invocationUid) {
+        Iterator<W> iter = waitKeys.values().iterator();
         while (iter.hasNext()) {
-            WaitKeyContainer<W> container = iter.next();
-            if (container.invocationUid().equals(invocationUid)) {
-                expired.addAll(container.keyAndRetries());
+            W key = iter.next();
+            if (key.invocationUid().equals(invocationUid)) {
                 iter.remove();
-                onWaitKeyExpire(container.key());
-                return;
+                onWaitKeyExpire(key);
+                return key;
             }
         }
+
+        return null;
     }
 
     protected void onWaitKeyExpire(W waitKey) {
     }
 
-    protected final Iterator<WaitKeyContainer<W>> waitKeyContainersIterator() {
+    protected final Iterator<W> waitKeyIterator() {
         return waitKeys.values().iterator();
     }
 
@@ -131,14 +139,11 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
     }
 
     final void closeSession(long sessionId, List<Long> expiredWaitKeys, Map<Long, Object> result) {
-        Iterator<WaitKeyContainer<W>> iter = waitKeys.values().iterator();
+        Iterator<W> iter = waitKeys.values().iterator();
         while (iter.hasNext()) {
-            WaitKeyContainer<W> container = iter.next();
-            if (container.sessionId() == sessionId) {
-                for (W retry : container.keyAndRetries()) {
-                    expiredWaitKeys.add(retry.commitIndex());
-                }
-
+            W key = iter.next();
+            if (key.sessionId() == sessionId) {
+                expiredWaitKeys.add(key.commitIndex());
                 iter.remove();
             }
         }
@@ -148,7 +153,7 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
 
     final void collectAttachedSessions(Collection<Long> sessions) {
         sessions.addAll(getActivelyAttachedSessions());
-        for (WaitKeyContainer<W> key : waitKeys.values()) {
+        for (W key : waitKeys.values()) {
             sessions.add(key.sessionId());
         }
     }
@@ -164,7 +169,7 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
         out.writeObject(groupId);
         out.writeUTF(name);
         out.writeInt(waitKeys.size());
-        for (Entry<Object, WaitKeyContainer<W>> e : waitKeys.entrySet()) {
+        for (Entry<Object, W> e : waitKeys.entrySet()) {
             out.writeObject(e.getKey());
             out.writeObject(e.getValue());
         }
@@ -177,8 +182,8 @@ public abstract class BlockingResource<W extends WaitKey> implements DataSeriali
         int count = in.readInt();
         for (int i = 0; i < count; i++) {
             Object key = in.readObject();
-            WaitKeyContainer<W> container = in.readObject();
-            waitKeys.put(key, container);
+            W waitKey = in.readObject();
+            waitKeys.put(key, waitKey);
         }
     }
 

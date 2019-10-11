@@ -20,14 +20,12 @@ import com.hazelcast.config.cp.SemaphoreConfig;
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.ISemaphore;
 import com.hazelcast.cp.internal.RaftGroupId;
-import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.semaphore.proxy.SessionAwareSemaphoreProxy;
 import com.hazelcast.cp.internal.datastructures.semaphore.proxy.SessionlessSemaphoreProxy;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.AbstractBlockingService;
 import com.hazelcast.spi.impl.NodeEngine;
 
 import java.util.Collection;
-import java.util.UUID;
 
 import static com.hazelcast.cp.internal.RaftService.getObjectNameForProxy;
 import static com.hazelcast.cp.internal.RaftService.withoutDefaultGroupName;
@@ -39,7 +37,7 @@ import static com.hazelcast.internal.util.ExceptionUtil.rethrow;
 /**
  * Contains Raft-based semaphore instances
  */
-public class SemaphoreService extends AbstractBlockingService<AcquireInvocationKey, Semaphore, SemaphoreRegistry> {
+public class SemaphoreService extends AbstractBlockingService<SemaphoreInvocationKey, Semaphore, SemaphoreRegistry> {
 
     /**
      * Name of the service
@@ -56,7 +54,7 @@ public class SemaphoreService extends AbstractBlockingService<AcquireInvocationK
 
     public boolean initSemaphore(CPGroupId groupId, String name, int permits) {
         try {
-            Collection<AcquireInvocationKey> acquired = getOrInitRegistry(groupId).init(name, permits);
+            Collection<SemaphoreInvocationKey> acquired = getOrInitRegistry(groupId).init(name, permits);
             notifyWaitKeys(groupId, name, acquired, true);
 
             return true;
@@ -70,7 +68,7 @@ public class SemaphoreService extends AbstractBlockingService<AcquireInvocationK
         return registry != null ? registry.availablePermits(name) : 0;
     }
 
-    public AcquireResult acquirePermits(CPGroupId groupId, String name, AcquireInvocationKey key, long timeoutMs) {
+    public AcquireResult acquirePermits(CPGroupId groupId, String name, SemaphoreInvocationKey key, long timeoutMs) {
         heartbeatSession(groupId, key.sessionId());
         AcquireResult result = getOrInitRegistry(groupId).acquire(name, key, timeoutMs);
 
@@ -87,7 +85,7 @@ public class SemaphoreService extends AbstractBlockingService<AcquireInvocationK
             }
         }
 
-        notifyCancelledWaitKeys(groupId, name, result.cancelledWaitKeys());
+        notifyCancelledWaitKey(groupId, name, result.cancelledWaitKey());
 
         if (result.status() == WAIT_KEY_ADDED) {
             scheduleTimeout(groupId, name, key.invocationUid(), timeoutMs);
@@ -96,20 +94,20 @@ public class SemaphoreService extends AbstractBlockingService<AcquireInvocationK
         return result;
     }
 
-    public void releasePermits(CPGroupId groupId, long commitIndex, String name, SemaphoreEndpoint endpoint, UUID invocationUid,
-                               int permits) {
-        heartbeatSession(groupId, endpoint.sessionId());
-        ReleaseResult result = getOrInitRegistry(groupId).release(name, endpoint, invocationUid, permits);
-        notifyCancelledWaitKeys(groupId, name, result.cancelledWaitKeys());
+    public void releasePermits(CPGroupId groupId, String name, SemaphoreInvocationKey key) {
+        heartbeatSession(groupId, key.endpoint().sessionId());
+        ReleaseResult result = getOrInitRegistry(groupId).release(name, key);
+        notifyCancelledWaitKey(groupId, name, result.cancelledWaitKey());
         notifyWaitKeys(groupId, name, result.acquiredWaitKeys(), true);
 
         if (logger.isFineEnabled()) {
             if (result.success()) {
-                logger.fine("Semaphore[" + name + "] in " + groupId + " released permits: " + permits + " by <" + endpoint + ", "
-                        + invocationUid + "> at commit index: " + commitIndex + " new acquires: " + result.acquiredWaitKeys());
+                logger.fine("Semaphore[" + name + "] in " + groupId + " released permits: " + key.permits() + " by <"
+                        + key.endpoint() + ", " + key.invocationUid() + "> at commit index: " + key.commitIndex()
+                        + " new acquires: " + result.acquiredWaitKeys());
             } else {
-                logger.fine("Semaphore[" + name + "] in " + groupId + " not-released permits: " + permits + " by <" + endpoint
-                        + ", " + invocationUid + "> at commit index: " + commitIndex);
+                logger.fine("Semaphore[" + name + "] in " + groupId + " not-released permits: " + key.permits() + " by <" +
+                        key.endpoint() + ", " + key.invocationUid() + "> at commit index: " + key.commitIndex());
             }
         }
 
@@ -118,40 +116,32 @@ public class SemaphoreService extends AbstractBlockingService<AcquireInvocationK
         }
     }
 
-    public int drainPermits(CPGroupId groupId, String name, long commitIndex, SemaphoreEndpoint endpoint, UUID invocationUid) {
-        heartbeatSession(groupId, endpoint.sessionId());
-        AcquireResult result = getOrInitRegistry(groupId).drainPermits(name, endpoint, invocationUid);
-        notifyCancelledWaitKeys(groupId, name, result.cancelledWaitKeys());
+    public int drainPermits(CPGroupId groupId, String name, SemaphoreInvocationKey key) {
+        heartbeatSession(groupId, key.endpoint().sessionId());
+        AcquireResult result = getOrInitRegistry(groupId).drainPermits(name, key);
+        notifyCancelledWaitKey(groupId, name, result.cancelledWaitKey());
 
         if (logger.isFineEnabled()) {
             logger.fine("Semaphore[" + name + "] in " + groupId + " drained permits: " + result.permits()
-                    + " by <" + endpoint + ", " + invocationUid + "> at commit index: " + commitIndex);
+                    + " by <" + key.endpoint() + ", " + key.invocationUid() + "> at commit index: " + key.commitIndex());
         }
 
         return result.permits();
     }
 
-    public boolean changePermits(CPGroupId groupId, long commitIndex, String name, SemaphoreEndpoint endpoint, UUID invocationUid,
-                                 int permits) {
-        heartbeatSession(groupId, endpoint.sessionId());
-        ReleaseResult result = getOrInitRegistry(groupId).changePermits(name, endpoint, invocationUid, permits);
-        notifyCancelledWaitKeys(groupId, name, result.cancelledWaitKeys());
+    public boolean changePermits(CPGroupId groupId, String name, SemaphoreInvocationKey key) {
+        heartbeatSession(groupId, key.endpoint().sessionId());
+        ReleaseResult result = getOrInitRegistry(groupId).changePermits(name, key);
+        notifyCancelledWaitKey(groupId, name, result.cancelledWaitKey());
         notifyWaitKeys(groupId, name, result.acquiredWaitKeys(), true);
 
         if (logger.isFineEnabled()) {
-            logger.fine("Semaphore[" + name + "] in " + groupId + " changed permits: " + permits + " by <" + endpoint + ", "
-                    + invocationUid + "> at commit index: " + commitIndex + ". new acquires: " + result.acquiredWaitKeys());
+            logger.fine("Semaphore[" + name + "] in " + groupId + " changed permits: " + key.permits() + " by <" + key.endpoint()
+                    + ", " + key.invocationUid() + "> at commit index: " + key.commitIndex() + ". new acquires: "
+                    + result.acquiredWaitKeys());
         }
 
         return result.success();
-    }
-
-    private void notifyCancelledWaitKeys(CPGroupId groupId, String name, Collection<AcquireInvocationKey> keys) {
-        if (keys.isEmpty()) {
-            return;
-        }
-
-        notifyWaitKeys(groupId, name, keys, new WaitKeyCancelledException());
     }
 
     @Override

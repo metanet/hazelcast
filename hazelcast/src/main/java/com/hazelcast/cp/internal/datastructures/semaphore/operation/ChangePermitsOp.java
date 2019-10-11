@@ -16,8 +16,8 @@
 
 package com.hazelcast.cp.internal.datastructures.semaphore.operation;
 
-import com.hazelcast.cp.ISemaphore;
 import com.hazelcast.cp.CPGroupId;
+import com.hazelcast.cp.ISemaphore;
 import com.hazelcast.cp.internal.IndeterminateOperationStateAware;
 import com.hazelcast.cp.internal.datastructures.semaphore.Semaphore;
 import com.hazelcast.cp.internal.datastructures.semaphore.SemaphoreDataSerializerHook;
@@ -52,7 +52,7 @@ public class ChangePermitsOp extends AbstractSemaphoreOp implements Indeterminat
     @Override
     public Object run(CPGroupId groupId, long commitIndex) {
         SemaphoreService service = getService();
-        return service.changePermits(groupId, commitIndex, name, getSemaphoreEndpoint(), invocationUid, permits);
+        return service.changePermits(groupId, name, getSemaphoreInvocationKey(commitIndex, permits));
     }
 
     @Override

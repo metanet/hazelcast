@@ -22,50 +22,52 @@ import java.util.Collections;
 import static java.util.Collections.unmodifiableCollection;
 
 /**
- * Represents result of an ISemaphore.release() request
+ * Represents result of an ISemaphore.release() call
  */
 final class ReleaseResult {
 
     /**
-     * true if the release() request is successful
+     * true if the release() call is successful
      */
     private final boolean success;
 
     /**
-     * If the release() request is successful and permits are assigned to some other endpoints, contains their wait keys.
+     * If the release() call is successful and permits are assigned to some
+     * other endpoints, contains their wait keys.
      */
-    private final Collection<AcquireInvocationKey> acquiredWaitKeys;
+    private final Collection<SemaphoreInvocationKey> acquiredWaitKeys;
 
     /**
-     * Cancelled wait keys of the caller if there is any, independent of the release request is successful or not.
+     * Cancelled wait key of the caller if there is any, independent of
+     * the release() call is successful or not.
      */
-    private final Collection<AcquireInvocationKey> cancelledWaitKeys;
+    private final SemaphoreInvocationKey cancelledWaitKey;
 
-    private ReleaseResult(boolean success, Collection<AcquireInvocationKey> acquiredWaitKeys,
-                          Collection<AcquireInvocationKey> cancelledWaitKeys) {
+    private ReleaseResult(boolean success, Collection<SemaphoreInvocationKey> acquiredWaitKeys,
+                          SemaphoreInvocationKey cancelledWaitKey) {
         this.success = success;
         this.acquiredWaitKeys = unmodifiableCollection(acquiredWaitKeys);
-        this.cancelledWaitKeys = unmodifiableCollection(cancelledWaitKeys);
+        this.cancelledWaitKey = cancelledWaitKey;
     }
 
-    static ReleaseResult successful(Collection<AcquireInvocationKey> acquiredWaitKeys,
-                                            Collection<AcquireInvocationKey> cancelledWaitKeys) {
-        return new ReleaseResult(true, acquiredWaitKeys, cancelledWaitKeys);
+    static ReleaseResult successful(Collection<SemaphoreInvocationKey> acquiredWaitKeys,
+                                    SemaphoreInvocationKey cancelledWaitKey) {
+        return new ReleaseResult(true, acquiredWaitKeys, cancelledWaitKey);
     }
 
-    static ReleaseResult failed(Collection<AcquireInvocationKey> cancelledWaitKeys) {
-        return new ReleaseResult(false, Collections.<AcquireInvocationKey>emptyList(), cancelledWaitKeys);
+    static ReleaseResult failed(SemaphoreInvocationKey cancelledWaitKey) {
+        return new ReleaseResult(false, Collections.<SemaphoreInvocationKey>emptyList(), cancelledWaitKey);
     }
 
     public boolean success() {
         return success;
     }
 
-    public Collection<AcquireInvocationKey> acquiredWaitKeys() {
+    public Collection<SemaphoreInvocationKey> acquiredWaitKeys() {
         return acquiredWaitKeys;
     }
 
-    public Collection<AcquireInvocationKey> cancelledWaitKeys() {
-        return cancelledWaitKeys;
+    public SemaphoreInvocationKey cancelledWaitKey() {
+        return cancelledWaitKey;
     }
 }

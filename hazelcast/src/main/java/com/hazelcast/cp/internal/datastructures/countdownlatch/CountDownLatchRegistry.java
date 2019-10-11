@@ -61,8 +61,7 @@ public class CountDownLatchRegistry extends ResourceRegistry<AwaitInvocationKey,
     }
 
     BiTuple<Integer, Collection<AwaitInvocationKey>> countDown(String name, UUID invocationUuid, int expectedRound) {
-        CountDownLatch latch = getOrInitResource(name);
-        BiTuple<Integer, Collection<AwaitInvocationKey>> t = latch.countDown(invocationUuid, expectedRound);
+        BiTuple<Integer, Collection<AwaitInvocationKey>> t = getOrInitResource(name).countDown(invocationUuid, expectedRound);
         for (AwaitInvocationKey key : t.element2) {
             removeWaitKey(name, key);
         }

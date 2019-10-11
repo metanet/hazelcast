@@ -16,12 +16,8 @@
 
 package com.hazelcast.cp.internal.datastructures.semaphore;
 
-import java.util.Collection;
-
-import static java.util.Collections.unmodifiableCollection;
-
 /**
- * Represents result of an ISemaphore.acquire() request
+ * Represents result of an ISemaphore.acquire() call
  */
 public final class AcquireResult {
 
@@ -39,7 +35,7 @@ public final class AcquireResult {
         WAIT_KEY_ADDED,
 
         /**
-         * Denotes that an acquire() request has not acquired the requested
+         * Denotes that an acquire() call has not acquired the requested
          * number of permits because there is no enough permits available
          */
         FAILED
@@ -53,14 +49,15 @@ public final class AcquireResult {
     private final int permits;
 
     /**
-     * Cancelled wait keys of the caller if there is any, independent of the acquire request is successful or not.
+     * Cancelled wait key of the caller if there is any, independent of
+     * the acquire() call is successful or not.
      */
-    private final Collection<AcquireInvocationKey> cancelledWaitKeys;
+    private final SemaphoreInvocationKey cancelledWaitKey;
 
-    AcquireResult(AcquireStatus status, int permits, Collection<AcquireInvocationKey> cancelledWaitKeys) {
+    AcquireResult(AcquireStatus status, int permits, SemaphoreInvocationKey cancelledWaitKey) {
         this.status = status;
         this.permits = permits;
-        this.cancelledWaitKeys = unmodifiableCollection(cancelledWaitKeys);
+        this.cancelledWaitKey = cancelledWaitKey;
     }
 
     public AcquireStatus status() {
@@ -71,8 +68,8 @@ public final class AcquireResult {
         return permits;
     }
 
-    Collection<AcquireInvocationKey> cancelledWaitKeys() {
-        return cancelledWaitKeys;
+    SemaphoreInvocationKey cancelledWaitKey() {
+        return cancelledWaitKey;
     }
 
 }

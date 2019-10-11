@@ -21,20 +21,31 @@ import com.hazelcast.cp.ISemaphore;
 import com.hazelcast.cp.internal.HazelcastRaftTestSupport;
 import com.hazelcast.cp.internal.RaftGroupId;
 import com.hazelcast.cp.internal.RaftInvocationManager;
+import com.hazelcast.cp.internal.RaftService;
 import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.semaphore.operation.AcquirePermitsOp;
 import com.hazelcast.cp.internal.datastructures.semaphore.operation.DrainPermitsOp;
+import com.hazelcast.cp.internal.datastructures.spi.blocking.operation.ExpireWaitKeysOp;
+import com.hazelcast.cp.internal.raft.impl.RaftNodeImpl;
+import com.hazelcast.cp.internal.session.AbstractProxySessionManager;
 import com.hazelcast.cp.internal.session.ProxySessionManagerService;
 import com.hazelcast.cp.internal.session.SessionAwareProxy;
+import com.hazelcast.internal.util.BiTuple;
 import com.hazelcast.spi.impl.InternalCompletableFuture;
+import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.spi.impl.PartitionSpecificRunnable;
+import com.hazelcast.spi.impl.operationservice.impl.OperationServiceImpl;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.hazelcast.internal.util.UuidUtil.newUnsecureUUID;
+import static java.util.Collections.singleton;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.Assert.assertEquals;
@@ -42,6 +53,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeFalse;
+import static org.junit.Assume.assumeTrue;
 
 public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupport {
 
@@ -83,8 +95,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         return sessionManagerService.getOrCreateUniqueThreadId(groupId);
     }
 
-    @Test
-    public void testRetriedAcquireDoesNotCancelPendingAcquireRequestWhenAlreadyAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testRetriedAcquireDoesNotCancelWaitingAcquireRequestWhenNoPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
 
@@ -112,8 +124,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }, 10);
     }
 
-    @Test(timeout = 300000)
-    public void testNewAcquireCancelsPendingAcquireRequestWhenAlreadyAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testNewAcquireCancelsWaitingAcquireCallWhenNoPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
 
@@ -143,8 +155,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testNewAcquireCancelsPendingAcquireRequestWhenNotAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testNewAcquireCancelsWaitingAcquireCallWhenInsufficientPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
         semaphore.release();
@@ -176,8 +188,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testTryAcquireWithTimeoutCancelsPendingAcquireRequestWhenAlreadyAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testTryAcquireWithTimeoutCancelsWaitingAcquireCallWhenNoPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
 
@@ -207,8 +219,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testNewTryAcquireWithTimeoutCancelsPendingAcquireRequestWhenNotAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testNewTryAcquireWithTimeoutCancelsWaitingAcquireCallWhenInsufficientPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
         semaphore.release();
@@ -240,8 +252,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testNewTryAcquireWithoutTimeoutCancelsPendingAcquireRequestWhenAlreadyAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testNewTryAcquireWithoutTimeoutCancelsWaitingAcquireCallWhenNoPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
 
@@ -271,8 +283,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testNewTryAcquireWithoutTimeoutCancelsPendingAcquireRequestsWhenNotAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testNewTryAcquireWithoutTimeoutCancelsWaitingAcquireCallWhenInsufficientPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
         semaphore.release();
@@ -304,8 +316,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testReleaseCancelsPendingAcquireRequestWhenPermitsAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testReleaseCancelsWaitingAcquireCallWhenNoPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
 
@@ -337,8 +349,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test
-    public void testReleaseCancelsPendingAcquireRequestWhenNoPermitsAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testReleaseCancelsWaitingAcquireCallWhenInsufficientPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
         semaphore.release();
@@ -372,8 +384,8 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
-    public void testDrainCancelsPendingAcquireRequestWhenNotAcquired() throws InterruptedException {
+    @Test(timeout = 300_000)
+    public void testDrainCancelsWaitingAcquireCallWhenInsufficientPermitsAvailable() throws InterruptedException {
         semaphore.init(1);
         semaphore.acquire();
         semaphore.release();
@@ -404,7 +416,7 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         }
     }
 
-    @Test(timeout = 300000)
+    @Test(timeout = 300_000)
     public void testRetriedAcquireReceivesPermitsOnlyOnce() throws InterruptedException, ExecutionException {
         semaphore.init(1);
         semaphore.acquire();
@@ -417,7 +429,7 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         UUID invUid1 = newUnsecureUUID();
         RaftInvocationManager invocationManager = getRaftInvocationManager(proxyInstance);
 
-        InternalCompletableFuture<Object> f1 = invocationManager
+        invocationManager
                 .invoke(groupId, new AcquirePermitsOp(objectName, sessionId, threadId, invUid1, 2, MINUTES.toMillis(5)));
 
         assertTrueEventually(() -> {
@@ -453,14 +465,13 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
 
         spawn(() -> semaphore.increasePermits(3)).get();
 
-        f1.join();
-        f2.join();
+        f2.joinInternal();
 
         assertEquals(2, semaphore.availablePermits());
     }
 
-    @Test
-    public void testExpiredAndRetriedTryAcquireRequestReceivesFailureResponse() throws InterruptedException, ExecutionException {
+    @Test(timeout = 300_000)
+    public void testExpiredAndRetriedTryAcquireCallReceivesFailureResponse() throws InterruptedException, ExecutionException {
         assumeFalse(isJDKCompatible());
 
         semaphore.init(1);
@@ -475,18 +486,18 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         InternalCompletableFuture<Boolean> f1 = invocationManager.invoke(groupId,
                 new AcquirePermitsOp(objectName, sessionId, threadId, invUid, 1, SECONDS.toMillis(5)));
 
-        assertFalse(f1.join());
+        assertFalse(f1.joinInternal());
 
         spawn(() -> semaphore.release()).get();
 
         InternalCompletableFuture<Boolean> f2 = invocationManager.invoke(groupId,
                 new AcquirePermitsOp(objectName, sessionId, threadId, invUid, 1, SECONDS.toMillis(5)));
 
-        assertFalse(f2.join());
+        assertFalse(f2.joinInternal());
     }
 
-    @Test
-    public void testRetriedDrainRequestIsNotProcessedAgain() throws InterruptedException, ExecutionException {
+    @Test(timeout = 300_000)
+    public void testRetriedDrainCallReceivesPermitsOnlyOnce() throws InterruptedException, ExecutionException {
         assumeFalse(isJDKCompatible());
 
         semaphore.init(1);
@@ -501,17 +512,17 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         InternalCompletableFuture<Integer> f1 = invocationManager
                 .invoke(groupId, new DrainPermitsOp(objectName, sessionId, threadId, invUid));
 
-        assertEquals(0, (int) f1.join());
+        assertEquals(0, (int) f1.joinInternal());
 
         spawn(() -> semaphore.release()).get();
 
         InternalCompletableFuture<Integer> f2 = invocationManager
                 .invoke(groupId, new DrainPermitsOp(objectName, sessionId, threadId, invUid));
 
-        assertEquals(0, (int) f2.join());
+        assertEquals(0, (int) f2.joinInternal());
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testAcquireOnMultipleProxies() {
         HazelcastInstance otherInstance = instances[0] == proxyInstance ? instances[1] : instances[0];
         ISemaphore semaphore2 = otherInstance.getCPSubsystem().getSemaphore(semaphore.getName());
@@ -520,6 +531,174 @@ public abstract class AbstractSemaphoreFailureTest extends HazelcastRaftTestSupp
         semaphore.tryAcquire(1);
 
         assertFalse(semaphore2.tryAcquire());
+    }
+
+    @Test(timeout = 300_000)
+    public void testStaleRetryOfWaitingAcquireCallFails() {
+        assumeTrue(proxyInstance.getConfig().getCPSubsystemConfig().getCPMemberCount() > 0);
+        assumeFalse(isJDKCompatible());
+
+        CountDownLatch acquireLatch = new CountDownLatch(1);
+        CountDownLatch releaseLatch = new CountDownLatch(1);
+
+        semaphore.init(1);
+
+        spawn(() -> {
+            try {
+                semaphore.acquire();
+                acquireLatch.countDown();
+                releaseLatch.await(300, SECONDS);
+                semaphore.release();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+        assertOpenEventually(acquireLatch);
+
+        // there is a session id now
+
+        RaftGroupId groupId = getGroupId(semaphore);
+        long sessionId = getSessionManager().getSession(groupId);
+        RaftInvocationManager invocationManager = getRaftInvocationManager(proxyInstance);
+        UUID invUid1 = newUnsecureUUID();
+        UUID invUid2 = newUnsecureUUID();
+
+        invocationManager.invoke(groupId, new AcquirePermitsOp(objectName, sessionId, getThreadId(groupId), invUid1, 1, MINUTES.toMillis(5)));
+
+        NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
+        SemaphoreService service = nodeEngine.getService(SemaphoreService.SERVICE_NAME);
+
+        long[] firstCallId = new long[1];
+
+        assertTrueEventually(() -> {
+            SemaphoreRegistry registry = service.getRegistryOrNull(groupId);
+            assertNotNull(registry);
+            assertNotNull(registry.getResourceOrNull(objectName));
+            assertEquals(1, registry.getWaitTimeouts().size());
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            CountDownLatch latch = new CountDownLatch(1);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Semaphore semaphore = registry.getResourceOrNull(objectName);
+                    Map<Object, SemaphoreInvocationKey> waitKeys = semaphore.getInternalWaitKeysMap();
+                    assertEquals(1, waitKeys.size());
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            latch.await(60, SECONDS);
+        });
+
+        RaftNodeImpl leader = getLeaderNode(instances, groupId);
+        AcquirePermitsOp op = new AcquirePermitsOp(objectName, sessionId, getThreadId(groupId), invUid2, 1, MINUTES.toMillis(5));
+        op.setCaller(getAddress(proxyInstance), firstCallId[0] - 1);
+
+        InternalCompletableFuture f2 = leader.replicate(op);
+        try {
+            f2.joinInternal();
+            fail();
+        } catch (WaitKeyCancelledException ignored) {
+        }
+    }
+
+    @Test(timeout = 300_000)
+    public void testStaleRetryFails() {
+        assumeTrue(proxyInstance.getConfig().getCPSubsystemConfig().getCPMemberCount() > 0);
+        assumeFalse(isJDKCompatible());
+
+        CountDownLatch acquireLatch = new CountDownLatch(1);
+        CountDownLatch releaseLatch = new CountDownLatch(1);
+
+        semaphore.init(1);
+
+        spawn(() -> {
+            try {
+                semaphore.acquire();
+                acquireLatch.countDown();
+                releaseLatch.await(300, SECONDS);
+                semaphore.release();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+        assertOpenEventually(acquireLatch);
+
+        // there is a session id now
+
+        RaftGroupId groupId = getGroupId(semaphore);
+        long sessionId = getSessionManager().getSession(groupId);
+        RaftInvocationManager invocationManager = getRaftInvocationManager(proxyInstance);
+        UUID invUid1 = newUnsecureUUID();
+        UUID invUid2 = newUnsecureUUID();
+
+        InternalCompletableFuture<Boolean> f1 = invocationManager
+                .invoke(groupId, new AcquirePermitsOp(objectName, sessionId, getThreadId(groupId), invUid1, 1, MINUTES.toMillis(5)));
+
+        NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
+        SemaphoreService service = nodeEngine.getService(SemaphoreService.SERVICE_NAME);
+
+        long[] firstCallId = new long[1];
+
+        assertTrueEventually(() -> {
+            SemaphoreRegistry registry = service.getRegistryOrNull(groupId);
+            assertNotNull(registry);
+            assertNotNull(registry.getResourceOrNull(objectName));
+            assertEquals(1, registry.getWaitTimeouts().size());
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            CountDownLatch latch = new CountDownLatch(1);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Semaphore semaphore = registry.getResourceOrNull(objectName);
+                    Map<Object, SemaphoreInvocationKey> waitKeys = semaphore.getInternalWaitKeysMap();
+                    assertEquals(1, waitKeys.size());
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            latch.await(60, SECONDS);
+        });
+
+        invocationManager
+                .invoke(groupId, new ExpireWaitKeysOp(SemaphoreService.SERVICE_NAME, singleton(BiTuple.of(objectName, invUid1))))
+                .joinInternal();
+
+        boolean acquired = f1.joinInternal();
+        assertFalse(acquired);
+
+        RaftNodeImpl leader = getLeaderNode(instances, groupId);
+        AcquirePermitsOp op = new AcquirePermitsOp(objectName, sessionId, getThreadId(groupId), invUid2, 1, MINUTES.toMillis(5));
+        op.setCaller(getAddress(proxyInstance), firstCallId[0] - 1);
+
+        InternalCompletableFuture f2 = leader.replicate(op);
+        try {
+            f2.joinInternal();
+            fail();
+        } catch (WaitKeyCancelledException ignored) {
+        }
+    }
+
+    private AbstractProxySessionManager getSessionManager() {
+        return getNodeEngineImpl(proxyInstance).getService(ProxySessionManagerService.SERVICE_NAME);
     }
 
 }

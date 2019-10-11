@@ -17,10 +17,11 @@
 package com.hazelcast.cp.internal.datastructures.semaphore;
 
 import com.hazelcast.cp.CPGroupId;
+import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.AcquireStatus;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.BlockingResource;
-import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKeyContainer;
 import com.hazelcast.internal.util.BiTuple;
+import com.hazelcast.internal.util.collection.Long2LongHashMap;
 import com.hazelcast.internal.util.collection.Long2ObjectHashMap;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
@@ -42,20 +43,28 @@ import static com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.A
 import static com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.AcquireStatus.SUCCESSFUL;
 import static com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.AcquireStatus.WAIT_KEY_ADDED;
 import static com.hazelcast.cp.internal.session.AbstractProxySessionManager.NO_SESSION_ID;
+import static com.hazelcast.internal.util.Preconditions.checkPositive;
+import static com.hazelcast.internal.util.Preconditions.checkTrue;
 import static com.hazelcast.internal.util.UUIDSerializationUtil.readUUID;
 import static com.hazelcast.internal.util.UUIDSerializationUtil.writeUUID;
-import static com.hazelcast.internal.util.Preconditions.checkPositive;
 import static com.hazelcast.internal.util.UuidUtil.newUnsecureUUID;
 
 /**
  * State-machine implementation of the Raft-based semaphore.
  * Supports both sessionless and session-aware semaphore proxies.
  */
-public class Semaphore extends BlockingResource<AcquireInvocationKey> implements IdentifiedDataSerializable {
+public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implements IdentifiedDataSerializable {
 
     private boolean initialized;
+
     private int available;
-    private final Long2ObjectHashMap<SessionSemaphoreState> sessionStates = new Long2ObjectHashMap<>();
+
+    /**
+     * Responses of completed invocations for each semaphore endpoint. Used for
+     * preventing duplicate execution of acquire(), release(), drain() and
+     * change() calls.
+     */
+    private final Long2ObjectHashMap<SessionState> sessionStates = new Long2ObjectHashMap<>();
 
     Semaphore() {
     }
@@ -64,9 +73,9 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
         super(groupId, name);
     }
 
-    Collection<AcquireInvocationKey> init(int permits) {
+    Collection<SemaphoreInvocationKey> init(int permits) {
         if (initialized || available != 0) {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Semaphore already initialized!");
         }
 
         available = permits;
@@ -85,33 +94,43 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
     }
 
     /**
-     * Assigns permits to the endpoint, if sufficient number of permits are
-     * available. If there are no sufficient number of permits and the second
-     * argument is true, a wait key is created and added to the wait queue.
-     * Permits are not assigned if the acquire request is a retry of
-     * a successful acquire request of a session-aware proxy. Permits are
-     * assigned again if the acquire request is a retry of a successful acquire
-     * request of a sessionless proxy. If the acquire request is a retry of
-     * an endpoint that resides in the wait queue with the same invocation uid,
-     * a duplicate wait key is added to the wait queue because cancelling
-     * the previous wait key can cause the caller to fail. If the acquire
-     * request is a new request of an endpoint that resides in the wait queue
-     * with a different invocation uid, the existing wait key is cancelled
-     * because it means the caller has stopped waiting for response of
-     * the previous invocation.
+     * Assigns permits to the given semaphore endpoint, if sufficient number of
+     * permits are available. If there are no sufficient number of permits and
+     * the caller can wait, i.e., the "wait" argument is true, a wait key is
+     * created and added to the wait queue. Permits are not assigned if
+     * the acquire() call is a retry of a completed acquire() call of
+     * a session-aware proxy. Permits are assigned again if the acquire() call
+     * is a retry of a successful acquire call of a sessionless proxy.
+     * If the acquire() call is a retry of an endpoint that resides in the wait
+     * queue with the same invocation uid, the wait key is updated with the new
+     * call id. If the acquire() call is a new invocation of an endpoint that
+     * resides in the wait queue with a different invocation uid, the existing
+     * wait key is cancelled with {@link WaitKeyCancelledException} because it
+     * means the caller has stopped waiting for response of the previous
+     * invocation.
+     * <p>
+     * Deduplication is applied to prevent duplicate execution of retried
+     * invocations.
+     * <p>
+     * If an invocation with a call id that is smaller than the greatest call
+     * id of the given endpoint is received, it means that this invocation is
+     * not valid anymore, thus it fails with {@link WaitKeyCancelledException}.
      */
-    AcquireResult acquire(AcquireInvocationKey key, boolean wait) {
+    AcquireResult acquire(SemaphoreInvocationKey key, boolean wait) {
         SemaphoreEndpoint endpoint = key.endpoint();
-        SessionSemaphoreState state = sessionStates.get(key.sessionId());
-        if (state != null) {
-            Integer acquired = state.getInvocationResponse(endpoint.threadId(), key.invocationUid());
+
+        if (key.sessionId() != NO_SESSION_ID) {
+            SessionState state = getOrInitSessionSemaphoreState(key.sessionId());
+            Integer acquired = state.getMemoizedResponse(endpoint, key.invocationUid(), key.callId());
             if (acquired != null) {
                 AcquireStatus status = acquired > 0 ? SUCCESSFUL : FAILED;
-                return new AcquireResult(status, acquired, Collections.<AcquireInvocationKey>emptyList());
+                return new AcquireResult(status, acquired, null);
             }
         }
 
-        Collection<AcquireInvocationKey> cancelled = cancelWaitKeys(endpoint, key.invocationUid());
+        // If this is a stale request with an old call id,
+        // we will fail inside the cancelWaitKey() call...
+        SemaphoreInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, key.invocationUid(), key.callId());
 
         if (!isAvailable(key.permits())) {
             AcquireStatus status;
@@ -119,85 +138,94 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
                 addWaitKey(endpoint, key);
                 status = WAIT_KEY_ADDED;
             } else {
-                assignPermitsToInvocation(endpoint, key.invocationUid(), 0);
+                assignPermitsToInvocation(endpoint, key.invocationUid(), key.callId(), 0);
                 status = FAILED;
             }
 
-            return new AcquireResult(status, 0, cancelled);
+            return new AcquireResult(status, 0, cancelledWaitKey);
         }
 
-        assignPermitsToInvocation(endpoint, key.invocationUid(), key.permits());
+        assignPermitsToInvocation(endpoint, key.invocationUid(), key.callId(), key.permits());
 
-        return new AcquireResult(SUCCESSFUL, key.permits(), cancelled);
+        return new AcquireResult(SUCCESSFUL, key.permits(), cancelledWaitKey);
     }
 
-    private void assignPermitsToInvocation(SemaphoreEndpoint endpoint, UUID invocationUid, int permits) {
+    private void assignPermitsToInvocation(SemaphoreEndpoint endpoint, UUID invocationUid, long callId, int permits) {
         long sessionId = endpoint.sessionId();
         if (sessionId == NO_SESSION_ID) {
             available -= permits;
             return;
         }
 
-        SessionSemaphoreState state = sessionStates.get(sessionId);
-        if (state == null) {
-            state = new SessionSemaphoreState();
-            sessionStates.put(sessionId, state);
-        }
-
-        BiTuple<UUID, Integer> prev = state.invocationRefUids.put(endpoint.threadId(), BiTuple.of(invocationUid, permits));
+        SessionState sessionState = getOrInitSessionSemaphoreState(sessionId);
+        BiTuple<UUID, Integer> prev = sessionState.invocations.get(endpoint.threadId());
         if (prev == null || !prev.element1.equals(invocationUid)) {
-            state.acquiredPermits += permits;
+            // this is a new invocation, not a retry...
+            sessionState.acquiredPermits += permits;
             available -= permits;
         }
+
+        sessionState.memoize(endpoint.threadId(), invocationUid, callId, permits);
+    }
+
+    private SessionState getOrInitSessionSemaphoreState(long sessionId) {
+        checkTrue(sessionId != NO_SESSION_ID, "Cannot memorize results for sessionless semaphore");
+        return sessionStates.computeIfAbsent(sessionId, s -> new SessionState());
     }
 
     /**
-     * Releases the given number of permits.
-     * Permits are not released if it is a retry of a previous successful
-     * release request of a session-aware proxy. Permits are released again if
-     * it is a retry of a successful release request of a sessionless proxy.
-     * If the release request fails because the requesting endpoint does not
-     * hold the given number of permits, all wait keys of the endpoint are
-     * cancelled because that endpoint has stopped waiting for response of
-     * the previous acquire() invocation. Returns completed wait keys after
-     * successful release if there are any. Returns cancelled wait keys after
-     * failed release if there are any.
+     * Releases the given number of permits. Permits are not released if it is
+     * a retry of a previous successful release() call of a session-aware
+     * proxy. Permits are released again if it is a retry of a completed
+     * release() call of a sessionless proxy. If the release() call fails
+     * because the requesting endpoint does not hold the given number of
+     * permits, existing wait key of the endpoint is cancelled because a new
+     * release() call means that the endpoint has stopped waiting for response
+     * of its previous acquire() call.
+     * <p>
+     * Returns completed wait keys, i.e., new permit holders, after
+     * a successful release. Returns the cancelled wait key if there is any
+     * after a failed release() call.
+     * <p>
+     * If an invocation with a call id that is smaller than the greatest call
+     * id of the given endpoint is received, it means that this invocation is
+     * not valid anymore, thus it fails with {@link WaitKeyCancelledException}.
      */
-    ReleaseResult release(SemaphoreEndpoint endpoint, UUID invocationUid, int permits) {
+    ReleaseResult release(SemaphoreInvocationKey key) {
+        return release(key.endpoint(), key.invocationUid(), key.callId(), key.permits());
+    }
+
+    private ReleaseResult release(SemaphoreEndpoint endpoint, UUID invocationUid, long callId, int permits) {
         checkPositive(permits, "Permits should be positive!");
 
         long sessionId = endpoint.sessionId();
         if (sessionId != NO_SESSION_ID) {
-            SessionSemaphoreState state = sessionStates.get(sessionId);
-            if (state == null) {
-                return ReleaseResult.failed(cancelWaitKeys(endpoint, invocationUid));
-            }
-
-            Integer response = state.getInvocationResponse(endpoint.threadId(), invocationUid);
+            SessionState sessionState = getOrInitSessionSemaphoreState(sessionId);
+            Integer response = sessionState.getMemoizedResponse(endpoint, invocationUid, callId);
             if (response != null) {
                 if (response > 0) {
-                    return ReleaseResult.successful(Collections.emptyList(), Collections.emptyList());
+                    return ReleaseResult.successful(Collections.emptyList(), null);
                 } else {
-                    return ReleaseResult.failed(cancelWaitKeys(endpoint, invocationUid));
+                    return ReleaseResult.failed(null);
                 }
             }
 
-            if (state.acquiredPermits < permits) {
-                state.invocationRefUids.put(endpoint.threadId(), BiTuple.of(invocationUid, 0));
-                return ReleaseResult.failed(cancelWaitKeys(endpoint, invocationUid));
+            if (sessionState.acquiredPermits < permits) {
+                sessionState.memoize(endpoint.threadId(), invocationUid, callId, 0);
+                return ReleaseResult.failed(cancelWaitKey(endpoint, invocationUid, callId));
             }
 
-            state.acquiredPermits -= permits;
-            state.invocationRefUids.put(endpoint.threadId(), BiTuple.of(invocationUid, permits));
+            sessionState.acquiredPermits -= permits;
+            sessionState.memoize(endpoint.threadId(), invocationUid, callId, permits);
         }
 
         available += permits;
 
         // order is important...
-        Collection<AcquireInvocationKey> cancelled = cancelWaitKeys(endpoint, invocationUid);
-        Collection<AcquireInvocationKey> acquired = assignPermitsToWaitKeys();
+        SemaphoreInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, invocationUid, callId);
+        Collection<SemaphoreInvocationKey> acquiredWaitKeys = assignPermitsToWaitKeys();
 
-        return ReleaseResult.successful(acquired, cancelled);
+        return ReleaseResult.successful(acquiredWaitKeys, cancelledWaitKey);
     }
 
     Semaphore cloneForSnapshot() {
@@ -205,108 +233,116 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
         cloneForSnapshot(clone);
         clone.initialized = this.initialized;
         clone.available = this.available;
-        for (Entry<Long, SessionSemaphoreState> e : this.sessionStates.entrySet()) {
-            SessionSemaphoreState s = new SessionSemaphoreState();
+        for (Entry<Long, SessionState> e : this.sessionStates.entrySet()) {
+            SessionState s = new SessionState();
             s.acquiredPermits = e.getValue().acquiredPermits;
-            s.invocationRefUids.putAll(e.getValue().invocationRefUids);
+            s.invocations.putAll(e.getValue().invocations);
             clone.sessionStates.put(e.getKey(), s);
         }
 
         return clone;
     }
 
-    private Collection<AcquireInvocationKey> cancelWaitKeys(SemaphoreEndpoint endpoint, UUID invocationUid) {
-        Collection<AcquireInvocationKey> cancelled = null;
-        WaitKeyContainer<AcquireInvocationKey> container = getWaitKeyContainer(endpoint);
-        if (container != null && container.key().isDifferentInvocationOf(endpoint, invocationUid)) {
-            cancelled = container.keyAndRetries();
+    private SemaphoreInvocationKey cancelWaitKey(SemaphoreEndpoint endpoint, UUID invocationUid, long callId) {
+        SemaphoreInvocationKey key = getWaitKey(endpoint);
+        if (key != null && key.isOlderInvocationOf(endpoint, invocationUid, callId)) {
             removeWaitKey(endpoint);
+            return key;
         }
 
-        return cancelled != null ? cancelled : Collections.emptyList();
+        return null;
     }
 
-    private Collection<AcquireInvocationKey> assignPermitsToWaitKeys() {
-        List<AcquireInvocationKey> assigned = new ArrayList<>();
-        Iterator<WaitKeyContainer<AcquireInvocationKey>> iterator = waitKeyContainersIterator();
+    private Collection<SemaphoreInvocationKey> assignPermitsToWaitKeys() {
+        List<SemaphoreInvocationKey> acquiredWaitKeys = new ArrayList<>();
+        Iterator<SemaphoreInvocationKey> iterator = waitKeyIterator();
         while (iterator.hasNext() && available > 0) {
-            WaitKeyContainer<AcquireInvocationKey> container = iterator.next();
-            AcquireInvocationKey key = container.key();
-            if (key.permits() <= available) {
+            SemaphoreInvocationKey key = iterator.next();
+            if (isAvailable(key.permits())) {
                 iterator.remove();
-                assigned.addAll(container.keyAndRetries());
-                assignPermitsToInvocation(key.endpoint(), key.invocationUid(), key.permits());
+                acquiredWaitKeys.add(key);
+                assignPermitsToInvocation(key.endpoint(), key.invocationUid(), key.callId(), key.permits());
             }
         }
 
-        return assigned;
+        return acquiredWaitKeys;
     }
 
     /**
-     * Assigns all available permits to the <sessionId, threadId> endpoint.
-     * Permits are not assigned if the drain request is a retry of a successful
-     * drain request of a session-aware proxy. Permits are assigned again if
-     * the drain request is a retry of a successful drain request of
-     * a sessionless proxy. Returns cancelled wait keys of the same endpoint
-     * if there are any.
+     * Assigns all available permits to the given session endpoint. Permits are
+     * not assigned if the drain() call is a retry of a completed drain() call
+     * of a session-aware proxy. Permits are assigned again if the drain() call
+     * is a retry of a completed drain() call of a sessionless proxy.
+     * <p>
+     * Returns cancelled wait key of the same endpoint if there are any.
+     * <p>
+     * If an invocation with a call id that is smaller than the greatest call
+     * id of the given endpoint is received, it means that this invocation is
+     * not valid anymore, thus it fails with {@link WaitKeyCancelledException}.
      */
-    AcquireResult drain(SemaphoreEndpoint endpoint, UUID invocationUid) {
-        SessionSemaphoreState state = sessionStates.get(endpoint.sessionId());
-        if (state != null) {
-            Integer permits = state.getInvocationResponse(endpoint.threadId(), invocationUid);
-            if (permits != null) {
-                return new AcquireResult(SUCCESSFUL, permits, Collections.emptyList());
+    AcquireResult drain(SemaphoreInvocationKey key) {
+        SemaphoreEndpoint endpoint = key.endpoint();
+        UUID invocationUid = key.invocationUid();
+
+        if (key.sessionId() != NO_SESSION_ID) {
+            SessionState sessionState = getOrInitSessionSemaphoreState(endpoint.sessionId());
+            Integer response = sessionState.getMemoizedResponse(endpoint, invocationUid, key.callId());
+            if (response != null) {
+                // Even if 0 permit is assigned, this is a successful operation
+                return new AcquireResult(SUCCESSFUL, response, null);
             }
         }
 
-        Collection<AcquireInvocationKey> cancelled = cancelWaitKeys(endpoint, invocationUid);
+        SemaphoreInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, invocationUid, key.callId());
 
         int drained = available;
-        assignPermitsToInvocation(endpoint, invocationUid, drained);
+        assignPermitsToInvocation(endpoint, invocationUid, key.callId(), drained);
         available = 0;
 
-        return new AcquireResult(SUCCESSFUL, drained, cancelled);
+        // Even if 0 permit is assigned, this is a successful operation
+        return new AcquireResult(SUCCESSFUL, drained, cancelledWaitKey);
     }
 
     /**
-     * Changes the number of permits by adding the given permit value. Permits
-     * are not changed if it is a retry of a previous successful change request
-     * of a session-aware proxy. Permits are changed again if it is a retry of
-     * a successful change request of a sessionless proxy. If number of permits
-     * increase, new assignments can be done. Returns completed wait keys after
-     * successful change if there are any. Returns cancelled wait keys of
-     * the same endpoint if there are any.
+     * Changes the number of permits by adding the given value. Permits are not
+     * changed if it is a retry of a completed change() call of a session-aware
+     * proxy. Permits are changed again if it is a retry of a completed
+     * change() call of a sessionless proxy. If number of permits increase, new
+     * permit assignments can be done.
+     * <p>
+     * Returns completed wait keys after a successful change. Returns cancelled
+     * wait key of the same endpoint if there is any.
+     * <p>
+     * If an invocation with a call id that is smaller than the greatest call
+     * id of the given endpoint is received, it means that this invocation is
+     * not valid anymore, thus it fails with {@link WaitKeyCancelledException}.
      */
-    ReleaseResult change(SemaphoreEndpoint endpoint, UUID invocationUid, int permits) {
+    ReleaseResult change(SemaphoreInvocationKey key) {
+        int permits = key.permits();
         if (permits == 0) {
-            return ReleaseResult.failed(Collections.emptyList());
+            return ReleaseResult.failed(null);
         }
 
-        Collection<AcquireInvocationKey> cancelled = cancelWaitKeys(endpoint, invocationUid);
+        SemaphoreEndpoint endpoint = key.endpoint();
 
         long sessionId = endpoint.sessionId();
         if (sessionId != NO_SESSION_ID) {
-            SessionSemaphoreState state = sessionStates.get(sessionId);
-            if (state == null) {
-                state = new SessionSemaphoreState();
-                sessionStates.put(sessionId, state);
-            }
-
-            long threadId = endpoint.threadId();
-            Integer response = state.getInvocationResponse(threadId, invocationUid);
+            SessionState state = getOrInitSessionSemaphoreState(sessionId);
+            Integer response = state.getMemoizedResponse(endpoint, key.invocationUid(), key.callId());
             if (response != null) {
-                Collection<AcquireInvocationKey> c = Collections.emptyList();
-                return ReleaseResult.successful(c, c);
+                return ReleaseResult.successful(Collections.emptyList(), null);
             }
 
-            state.invocationRefUids.put(threadId, BiTuple.of(invocationUid, permits));
+            state.memoize(endpoint.threadId(), key.invocationUid(), key.callId(), permits);
         }
+
+        SemaphoreInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, key.invocationUid(), key.callId());
 
         available += permits;
         initialized = true;
 
-        Collection<AcquireInvocationKey> acquired = permits > 0 ? assignPermitsToWaitKeys() : Collections.emptyList();
-        return ReleaseResult.successful(acquired, cancelled);
+        Collection<SemaphoreInvocationKey> acquiredWaitKeys = permits > 0 ? assignPermitsToWaitKeys() : Collections.emptyList();
+        return ReleaseResult.successful(acquiredWaitKeys, cancelledWaitKey);
     }
 
     /**
@@ -314,14 +350,15 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
      */
     @Override
     protected void onSessionClose(long sessionId, Map<Long, Object> responses) {
-        SessionSemaphoreState state = sessionStates.get(sessionId);
+        SessionState state = sessionStates.get(sessionId);
         if (state != null) {
             // remove the session after release() because release() checks existence of the session
             if (state.acquiredPermits > 0) {
                 SemaphoreEndpoint endpoint = new SemaphoreEndpoint(sessionId, 0);
-                ReleaseResult result = release(endpoint, newUnsecureUUID(), state.acquiredPermits);
-                assert result.cancelledWaitKeys().isEmpty();
-                for (AcquireInvocationKey key : result.acquiredWaitKeys()) {
+                ReleaseResult result = release(endpoint, newUnsecureUUID(), Long.MAX_VALUE, state.acquiredPermits);
+                // wait keys are already deleted...
+                assert result.cancelledWaitKey() == null;
+                for (SemaphoreInvocationKey key : result.acquiredWaitKeys()) {
                     responses.put(key.commitIndex(), Boolean.TRUE);
                 }
             }
@@ -333,7 +370,7 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
     @Override
     protected Collection<Long> getActivelyAttachedSessions() {
         Set<Long> activeSessionIds = new HashSet<>();
-        for (Entry<Long, SessionSemaphoreState> e : sessionStates.entrySet()) {
+        for (Entry<Long, SessionState> e : sessionStates.entrySet()) {
             if (e.getValue().acquiredPermits > 0) {
                 activeSessionIds.add(e.getKey());
             }
@@ -343,8 +380,8 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
     }
 
     @Override
-    protected void onWaitKeyExpire(AcquireInvocationKey key) {
-        assignPermitsToInvocation(key.endpoint(), key.invocationUid(), 0);
+    protected void onWaitKeyExpire(SemaphoreInvocationKey key) {
+        assignPermitsToInvocation(key.endpoint(), key.invocationUid(), key.callId(), 0);
     }
 
     @Override
@@ -363,15 +400,20 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
         out.writeBoolean(initialized);
         out.writeInt(available);
         out.writeInt(sessionStates.size());
-        for (Entry<Long, SessionSemaphoreState> e1 : sessionStates.entrySet()) {
+        for (Entry<Long, SessionState> e1 : sessionStates.entrySet()) {
             out.writeLong(e1.getKey());
-            SessionSemaphoreState state = e1.getValue();
-            out.writeInt(state.invocationRefUids.size());
-            for (Entry<Long, BiTuple<UUID, Integer>> e2 : state.invocationRefUids.entrySet()) {
+            SessionState state = e1.getValue();
+            out.writeInt(state.invocations.size());
+            for (Entry<Long, BiTuple<UUID, Integer>> e2 : state.invocations.entrySet()) {
                 out.writeLong(e2.getKey());
                 BiTuple<UUID, Integer> t = e2.getValue();
                 writeUUID(out, t.element1);
                 out.writeInt(t.element2);
+            }
+            out.writeInt(state.greatestCallIds.size());
+            for (Entry<Long, Long> e2 : state.greatestCallIds.entrySet()) {
+                out.writeLong(e2.getKey());
+                out.writeLong(e2.getValue());
             }
             out.writeInt(state.acquiredPermits);
         }
@@ -385,13 +427,19 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
         int count = in.readInt();
         for (int i = 0; i < count; i++) {
             long sessionId = in.readLong();
-            SessionSemaphoreState state = new SessionSemaphoreState();
+            SessionState state = new SessionState();
             int refUidCount = in.readInt();
             for (int j = 0; j < refUidCount; j++) {
                 long threadId = in.readLong();
                 UUID invocationUid = readUUID(in);
                 int permits = in.readInt();
-                state.invocationRefUids.put(threadId, BiTuple.of(invocationUid, permits));
+                state.invocations.put(threadId, BiTuple.of(invocationUid, permits));
+            }
+            int callIdCount = in.readInt();
+            for (int j = 0; j < callIdCount; j++) {
+                long threadId = in.readLong();
+                long callId = in.readLong();
+                state.greatestCallIds.put(threadId, callId);
             }
 
             state.acquiredPermits = in.readInt();
@@ -406,23 +454,47 @@ public class Semaphore extends BlockingResource<AcquireInvocationKey> implements
                 + ", available=" + available + ", sessionStates=" + sessionStates + '}';
     }
 
-    private static class SessionSemaphoreState {
+    private static class SessionState {
 
         /**
-         * map of threadId -> <invocationUid, permits> to track last operation of each endpoint
+         * Responses of the last acquire(), release(), drain() or change()
+         * call for each thread. If an acquire() call is currently in the wait
+         * queue, its UUID is not in this map.
          */
-        private final Long2ObjectHashMap<BiTuple<UUID, Integer>> invocationRefUids = new Long2ObjectHashMap<>();
+        final Long2ObjectHashMap<BiTuple<UUID, Integer>> invocations = new Long2ObjectHashMap<>();
 
-        private int acquiredPermits;
+        /**
+         * The greatest call id of completed invocations of each thread.
+         */
+        final Long2LongHashMap greatestCallIds = new Long2LongHashMap(-1L);
 
-        Integer getInvocationResponse(long threadId, UUID invocationUid) {
-            BiTuple<UUID, Integer> t = invocationRefUids.get(threadId);
-            return (t != null && t.element1.equals(invocationUid)) ? t.element2 : null;
+        int acquiredPermits;
+
+        Integer getMemoizedResponse(SemaphoreEndpoint endpoint, UUID invocationUid, long callId) {
+            BiTuple<UUID, Integer> t = invocations.get(endpoint.threadId());
+            if (t != null && t.element1.equals(invocationUid)) {
+                return t.element2;
+            } else if (greatestCallIds.get(endpoint.threadId()) > callId) {
+                // We have already seen that the semaphore endpoint has made
+                // a more recent invocation after the given one in the given
+                // thread. It means that the given operation is not valid
+                // anymore and we don't need to process it.
+                throw new WaitKeyCancelledException("Invocation: " + invocationUid + " with call id: " + callId
+                        + " cannot be processed because a more recent invocation of " + endpoint + " has been already processed");
+            }
+
+            return null;
+        }
+
+        void memoize(long threadId, UUID invocationUid, long callId, int permits) {
+            invocations.put(threadId, BiTuple.of(invocationUid, permits));
+            greatestCallIds.merge(threadId, callId, Math::max);
         }
 
         @Override
         public String toString() {
-            return "SessionState{" + "invocationRefUids=" + invocationRefUids + ", acquiredPermits=" + acquiredPermits + '}';
+            return "SessionSemaphoreState{" + "invocation=" + invocations + ", highestCallIds=" + greatestCallIds
+                    + ", acquiredPermits=" + acquiredPermits + '}';
         }
     }
 

@@ -42,6 +42,7 @@ import static com.hazelcast.internal.util.Preconditions.checkPositive;
 import static com.hazelcast.internal.util.UuidUtil.newUnsecureUUID;
 import static java.lang.Math.max;
 
+// TODO [basri] handle WaitKeyCancelledException
 /**
  * Server-side sessionless proxy of Raft-based {@link ISemaphore}
  */

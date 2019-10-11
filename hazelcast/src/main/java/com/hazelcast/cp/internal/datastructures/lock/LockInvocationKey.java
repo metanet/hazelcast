@@ -16,6 +16,7 @@
 
 package com.hazelcast.cp.internal.datastructures.lock;
 
+import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKey;
 import com.hazelcast.cluster.Address;
 import com.hazelcast.nio.ObjectDataInput;
@@ -53,8 +54,18 @@ public class LockInvocationKey extends WaitKey implements IdentifiedDataSerializ
         return endpoint;
     }
 
-    boolean isDifferentInvocationOf(LockEndpoint endpoint, UUID invocationUid) {
-        return endpoint().equals(endpoint) && !invocationUid().equals(invocationUid);
+    boolean isOlderInvocationOf(LockEndpoint endpoint, UUID invocationUid, long callId) {
+        boolean isDifferent = endpoint().equals(endpoint) && !invocationUid().equals(invocationUid);
+        if (isDifferent && this.callId > callId) {
+            // Currently we have another ongoing invocation of the lock
+            // endpoint with a greater call id than the given one. It means
+            // that the given operation is not valid anymore and we don't need
+            // to process it.
+            throw new WaitKeyCancelledException("Invocation: " + invocationUid + " with call id: " + callId
+                    + " cannot be processed because a more recent call: " + this + " is currently in progress!");
+        }
+
+        return isDifferent;
     }
 
     @Override

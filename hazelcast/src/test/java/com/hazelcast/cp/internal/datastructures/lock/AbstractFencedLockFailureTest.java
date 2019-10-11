@@ -27,8 +27,8 @@ import com.hazelcast.cp.internal.datastructures.lock.operation.LockOp;
 import com.hazelcast.cp.internal.datastructures.lock.operation.TryLockOp;
 import com.hazelcast.cp.internal.datastructures.lock.operation.UnlockOp;
 import com.hazelcast.cp.internal.datastructures.lock.proxy.FencedLockProxy;
-import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKeyContainer;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.operation.ExpireWaitKeysOp;
+import com.hazelcast.cp.internal.raft.impl.RaftNodeImpl;
 import com.hazelcast.cp.internal.session.AbstractProxySessionManager;
 import com.hazelcast.cp.internal.session.ProxySessionManagerService;
 import com.hazelcast.internal.util.BiTuple;
@@ -49,6 +49,7 @@ import static com.hazelcast.cp.internal.session.AbstractProxySessionManager.NO_S
 import static com.hazelcast.cp.lock.FencedLock.INVALID_FENCE;
 import static com.hazelcast.internal.util.ThreadUtil.getThreadId;
 import static com.hazelcast.internal.util.UuidUtil.newUnsecureUUID;
+import static java.util.Collections.singleton;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.Assert.assertEquals;
@@ -57,6 +58,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSupport {
 
@@ -85,37 +87,8 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         return getPrimaryInstance();
     }
 
-    @Test
-    public void testRetriedLockDoesNotCancelPendingLockRequest() {
-        lockByOtherThread();
-
-        // there is a session id now
-
-        RaftGroupId groupId = lock.getGroupId();
-        long sessionId = getSessionManager().getSession(groupId);
-        RaftInvocationManager invocationManager = getRaftInvocationManager();
-        UUID invUid = newUnsecureUUID();
-
-        invocationManager.invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, MINUTES.toMillis(5)));
-
-        assertTrueEventually(() -> {
-            LockService service = getNodeEngineImpl(primaryInstance).getService(LockService.SERVICE_NAME);
-            LockRegistry registry = service.getRegistryOrNull(groupId);
-            assertNotNull(registry);
-            assertEquals(1, registry.getWaitTimeouts().size());
-        });
-
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid));
-
-        assertTrueAllTheTime(() -> {
-            LockService service = getNodeEngineImpl(primaryInstance).getService(LockService.SERVICE_NAME);
-            LockRegistry registry = service.getRegistryOrNull(groupId);
-            assertEquals(1, registry.getWaitTimeouts().size());
-        }, 10);
-    }
-
-    @Test
-    public void testNewLockCancelsPendingLockRequest() {
+    @Test(timeout = 300_000)
+    public void testNewLockCallCancelsWaitingLockCall() {
         lockByOtherThread();
 
         // there is a session id now
@@ -145,9 +118,23 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         }
     }
 
-    @Test
-    public void testRetriedTryLockWithTimeoutDoesNotCancelPendingLockRequest() {
-        lockByOtherThread();
+    @Test(timeout = 300_000)
+    public void testRetriedTryLockWithTimeoutDoesNotCancelWaitingLockCall() {
+        CountDownLatch lockLatch = new CountDownLatch(1);
+        CountDownLatch unlockLatch = new CountDownLatch(1);
+
+        spawn(() -> {
+            try {
+                lock.lock();
+                lockLatch.countDown();
+                unlockLatch.await(300, SECONDS);
+                lock.unlock();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+        assertOpenEventually(lockLatch);
 
         // there is a session id now
 
@@ -161,21 +148,16 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
         LockService service = nodeEngine.getService(LockService.SERVICE_NAME);
 
+        long[] firstCallId = new long[1];
+
         assertTrueEventually(() -> {
             LockRegistry registry = service.getRegistryOrNull(groupId);
             assertNotNull(registry);
             assertNotNull(registry.getResourceOrNull(objectName));
             assertEquals(1, registry.getWaitTimeouts().size());
-        });
-
-        invocationManager.invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, MINUTES.toMillis(5)));
-
-        assertTrueEventually(() -> {
             RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
-            int partitionId = raftService.getCPGroupPartitionId(groupId);
-            LockRegistry registry = service.getRegistryOrNull(groupId);
-            boolean[] verified = new boolean[1];
             CountDownLatch latch = new CountDownLatch(1);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
             OperationServiceImpl operationService = nodeEngine.getOperationService();
             operationService.execute(new PartitionSpecificRunnable() {
                 @Override
@@ -186,20 +168,52 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
                 @Override
                 public void run() {
                     Lock lock = registry.getResourceOrNull(objectName);
-                    Map<Object, WaitKeyContainer<LockInvocationKey>> waitKeys = lock.getInternalWaitKeysMap();
-                    verified[0] = (waitKeys.size() == 1 && waitKeys.values().iterator().next().retryCount() == 1);
+                    Map<Object, LockInvocationKey> waitKeys = lock.getInternalWaitKeysMap();
+                    assertEquals(1, waitKeys.size());
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            latch.await(60, SECONDS);
+        });
+
+        InternalCompletableFuture<Object> f = invocationManager
+                .invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, MINUTES.toMillis(5)));
+
+        assertTrueEventually(() -> {
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            LockRegistry registry = service.getRegistryOrNull(groupId);
+            CountDownLatch latch = new CountDownLatch(1);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            long[] retryCallId = new long[1];
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Lock lock = registry.getResourceOrNull(objectName);
+                    Map<Object, LockInvocationKey> waitKeys = lock.getInternalWaitKeysMap();
+                    retryCallId[0] = waitKeys.values().iterator().next().callId();
                     latch.countDown();
                 }
             });
 
             latch.await(60, SECONDS);
 
-            assertTrue(verified[0]);
+            assertTrue( retryCallId[0] > firstCallId[0]);
         });
+
+        unlockLatch.countDown();
+        f.joinInternal();
     }
 
-    @Test
-    public void testNewTryLockWithTimeoutCancelsPendingLockRequest() {
+    @Test(timeout = 300_000)
+    public void testNewTryLockWithTimeoutCancelsWaitingLockCall() {
         lockByOtherThread();
 
         // there is a session id now
@@ -229,37 +243,8 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         }
     }
 
-    @Test
-    public void testRetriedTryLockWithoutTimeoutDoesNotCancelPendingLockRequest() {
-        lockByOtherThread();
-
-        // there is a session id now
-
-        RaftGroupId groupId = lock.getGroupId();
-        long sessionId = getSessionManager().getSession(groupId);
-        RaftInvocationManager invocationManager = getRaftInvocationManager();
-        UUID invUid = newUnsecureUUID();
-
-        invocationManager.invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, MINUTES.toMillis(5)));
-
-        assertTrueEventually(() -> {
-            LockService service = getNodeEngineImpl(primaryInstance).getService(LockService.SERVICE_NAME);
-            LockRegistry registry = service.getRegistryOrNull(groupId);
-            assertNotNull(registry);
-            assertEquals(1, registry.getWaitTimeouts().size());
-        });
-
-        invocationManager.invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, 0));
-
-        assertTrueAllTheTime(() -> {
-            LockService service = getNodeEngineImpl(primaryInstance).getService(LockService.SERVICE_NAME);
-            LockRegistry registry = service.getRegistryOrNull(groupId);
-            assertEquals(1, registry.getWaitTimeouts().size());
-        }, 10);
-    }
-
-    @Test
-    public void testNewUnlockCancelsPendingLockRequest() {
+    @Test(timeout = 300_000)
+    public void testNewUnlockCallCancelsWaitingLockCall() {
         lockByOtherThread();
 
         // there is a session id now
@@ -292,7 +277,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         }
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testLockAcquireRetry() {
         lock.lock();
         lock.unlock();
@@ -306,13 +291,13 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         RaftInvocationManager invocationManager = getRaftInvocationManager();
         UUID invUid = newUnsecureUUID();
 
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid)).join();
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid)).join();
+        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid)).joinInternal();
+        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid)).joinInternal();
 
         assertEquals(1, lock.getLockCount());
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testLockReentrantAcquireRetry() {
         lock.lock();
         lock.unlock();
@@ -327,15 +312,15 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         UUID invUid1 = newUnsecureUUID();
         UUID invUid2 = newUnsecureUUID();
 
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid1)).join();
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid2)).join();
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid2)).join();
+        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid1)).joinInternal();
+        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid2)).joinInternal();
+        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, getThreadId(), invUid2)).joinInternal();
 
         assertEquals(2, lock.getLockCount());
     }
 
-    @Test
-    public void testPendingLockAcquireRetry() {
+    @Test(timeout = 300_000)
+    public void testWaitedLockAcquireRetry() {
         CountDownLatch unlockLatch = new CountDownLatch(1);
         spawn(() -> {
             lock.lock();
@@ -381,7 +366,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertEquals(1, lock.getLockCount());
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testRetriedUnlockIsSuccessfulAfterLockedByAnotherEndpoint() {
         lock.lock();
 
@@ -390,14 +375,14 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         RaftInvocationManager invocationManager = getRaftInvocationManager();
         UUID invUid = newUnsecureUUID();
 
-        invocationManager.invoke(groupId, new UnlockOp(objectName, sessionId, getThreadId(), invUid)).join();
+        invocationManager.invoke(groupId, new UnlockOp(objectName, sessionId, getThreadId(), invUid)).joinInternal();
 
         lockByOtherThread();
 
-        invocationManager.invoke(groupId, new UnlockOp(objectName, sessionId, getThreadId(), invUid)).join();
+        invocationManager.invoke(groupId, new UnlockOp(objectName, sessionId, getThreadId(), invUid)).joinInternal();
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testIsLockedByCurrentThreadCallInitializesLockedSessionId() {
         lock.lock();
         lock.unlock();
@@ -410,7 +395,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertNotEquals(NO_SESSION_ID, sessionId);
 
         RaftInvocationManager invocationManager = getRaftInvocationManager();
-        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, threadId, newUnsecureUUID())).join();
+        invocationManager.invoke(groupId, new LockOp(objectName, sessionId, threadId, newUnsecureUUID())).joinInternal();
 
         // the current thread acquired the lock once and we pretend that there was a operation timeout in lock.lock() call
 
@@ -420,7 +405,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertEquals(sessionId, (long) lockedSessionId);
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testLockCallInitializesLockedSessionId() {
         lock.lock();
         lock.unlock();
@@ -442,7 +427,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertEquals(sessionId, (long) lockedSessionId);
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testUnlockCallInitializesLockedSessionId() {
         lock.lock();
         lock.unlock();
@@ -465,7 +450,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertEquals(sessionId, (long) lockedSessionId);
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testIsLockedCallInitializesLockedSessionId() {
         lock.lock();
         lock.unlock();
@@ -488,7 +473,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertEquals(sessionId, (long) lockedSessionId);
     }
 
-    @Test
+    @Test(timeout = 300_000)
     public void testGetLockCountCallInitializesLockedSessionId() {
         lock.lock();
         lock.unlock();
@@ -511,8 +496,8 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         assertEquals(sessionId, (long) lockedSessionId);
     }
 
-    @Test
-    public void testRetriedWaitKeysAreExpiredTogether() {
+    @Test(timeout = 300_000)
+    public void testLastRetryOfWaitKeysIsExpired() {
         CountDownLatch releaseLatch = new CountDownLatch(1);
         spawn(() -> {
             lock.lock();
@@ -538,12 +523,36 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
         LockService service = nodeEngine.getService(LockService.SERVICE_NAME);
 
+        long[] firstCallId = new long[1];
+
         assertTrueEventually(() -> {
             LockRegistry registry = service.getRegistryOrNull(groupId);
             assertNotNull(registry);
             Map<BiTuple<String, UUID>, BiTuple<Long, Long>> waitTimeouts = registry.getWaitTimeouts();
             assertEquals(1, waitTimeouts.size());
             lockWaitTimeoutKeyRef[0] = waitTimeouts.keySet().iterator().next();
+
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            CountDownLatch latch = new CountDownLatch(1);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Lock lock = registry.getResourceOrNull(objectName);
+                    Map<Object, LockInvocationKey> waitKeys = lock.getInternalWaitKeysMap();
+                    assertEquals(1, waitKeys.size());
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            latch.await(60, SECONDS);
         });
 
         InternalCompletableFuture<Long> f2 = invocationManager
@@ -553,7 +562,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
             RaftService raftService = nodeEngine.getService(RaftService.SERVICE_NAME);
             int partitionId = raftService.getCPGroupPartitionId(groupId);
             LockRegistry registry = service.getRegistryOrNull(groupId);
-            boolean[] verified = new boolean[1];
+            long[] retryCallId = new long[1];
             CountDownLatch latch = new CountDownLatch(1);
             OperationServiceImpl operationService = nodeEngine.getOperationService();
             operationService.execute(new PartitionSpecificRunnable() {
@@ -565,18 +574,18 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
                 @Override
                 public void run() {
                     Lock lock = registry.getResourceOrNull(objectName);
-                    Map<Object, WaitKeyContainer<LockInvocationKey>> waitKeys = lock.getInternalWaitKeysMap();
-                    verified[0] = (waitKeys.size() == 1 && waitKeys.values().iterator().next().retryCount() == 1);
+                    Map<Object, LockInvocationKey> waitKeys = lock.getInternalWaitKeysMap();
+                    retryCallId[0] = waitKeys.values().iterator().next().callId();
                     latch.countDown();
                 }
             });
 
-            assertOpenEventually(latch);
-            assertTrue(verified[0]);
+            latch.await(60, SECONDS);
+            assertTrue(retryCallId[0] > firstCallId[0]);
         });
 
         RaftOp op = new ExpireWaitKeysOp(LockService.SERVICE_NAME, Collections.singletonList(lockWaitTimeoutKeyRef[0]));
-        invocationManager.invoke(groupId, op).join();
+        invocationManager.invoke(groupId, op).joinInternal();
 
         assertTrueEventually(() -> assertTrue(service.getRegistryOrNull(groupId).getWaitTimeouts().isEmpty()));
 
@@ -584,15 +593,14 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
 
         assertTrueEventually(() -> assertFalse(lock.isLocked()));
 
-        long fence1 = f1.join();
-        long fence2 = f2.join();
-
-        assertInvalidFence(fence1);
+        long fence2 = f2.joinInternal();
         assertInvalidFence(fence2);
+
+        assertTrueAllTheTime(() -> assertFalse(f1.isDone()), 10);
     }
 
-    @Test
-    public void testExpiredAndRetriedTryLockRequestReceivesFailureResponse() {
+    @Test(timeout = 300_000)
+    public void testExpiredAndRetriedTryLockCallReceivesFailureResponse() {
         final CountDownLatch unlockLatch = new CountDownLatch(1);
         spawn(() -> {
             lock.lock();
@@ -610,7 +618,7 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         InternalCompletableFuture<Long> f1 = invocationManager
                 .invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, SECONDS.toMillis(5)));
 
-        long fence1 = f1.join();
+        long fence1 = f1.joinInternal();
         assertEquals(INVALID_FENCE, fence1);
 
         unlockLatch.countDown();
@@ -620,13 +628,170 @@ public abstract class AbstractFencedLockFailureTest extends HazelcastRaftTestSup
         InternalCompletableFuture<Long> f2 = invocationManager
                 .invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid, SECONDS.toMillis(5)));
 
-        long fence2 = f2.join();
+        long fence2 = f2.joinInternal();
         assertEquals(INVALID_FENCE, fence2);
     }
 
+    @Test(timeout = 300_000)
+    public void testStaleRetryOfWaitingLockCallFails() {
+        assumeTrue(proxyInstance.getConfig().getCPSubsystemConfig().getCPMemberCount() > 0);
+
+        CountDownLatch lockLatch = new CountDownLatch(1);
+        CountDownLatch unlockLatch = new CountDownLatch(1);
+
+        spawn(() -> {
+            try {
+                lock.lock();
+                lockLatch.countDown();
+                unlockLatch.await(300, SECONDS);
+                lock.unlock();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+        assertOpenEventually(lockLatch);
+
+        // there is a session id now
+
+        RaftGroupId groupId = lock.getGroupId();
+        long sessionId = getSessionManager().getSession(groupId);
+        RaftInvocationManager invocationManager = getRaftInvocationManager();
+        UUID invUid1 = newUnsecureUUID();
+        UUID invUid2 = newUnsecureUUID();
+
+        invocationManager.invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid1, MINUTES.toMillis(5)));
+
+        NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
+        LockService service = nodeEngine.getService(LockService.SERVICE_NAME);
+
+        long[] firstCallId = new long[1];
+
+        assertTrueEventually(() -> {
+            LockRegistry registry = service.getRegistryOrNull(groupId);
+            assertNotNull(registry);
+            assertNotNull(registry.getResourceOrNull(objectName));
+            assertEquals(1, registry.getWaitTimeouts().size());
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            CountDownLatch latch = new CountDownLatch(1);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Lock lock = registry.getResourceOrNull(objectName);
+                    Map<Object, LockInvocationKey> waitKeys = lock.getInternalWaitKeysMap();
+                    assertEquals(1, waitKeys.size());
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            latch.await(60, SECONDS);
+        });
+
+        RaftNodeImpl leader = getLeaderNode(instances, groupId);
+        TryLockOp op = new TryLockOp(objectName, sessionId, getThreadId(), invUid2, MINUTES.toMillis(5));
+        op.setCaller(getAddress(proxyInstance), firstCallId[0] - 1);
+
+        InternalCompletableFuture f2 = leader.replicate(op);
+        try {
+            f2.joinInternal();
+            fail();
+        } catch (WaitKeyCancelledException ignored) {
+        }
+    }
+
+    @Test(timeout = 300_000)
+    public void testStaleRetryFails() {
+        assumeTrue(proxyInstance.getConfig().getCPSubsystemConfig().getCPMemberCount() > 0);
+
+        CountDownLatch lockLatch = new CountDownLatch(1);
+        CountDownLatch unlockLatch = new CountDownLatch(1);
+
+        spawn(() -> {
+            try {
+                lock.lock();
+                lockLatch.countDown();
+                unlockLatch.await(300, SECONDS);
+                lock.unlock();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+
+        assertOpenEventually(lockLatch);
+
+        // there is a session id now
+
+        RaftGroupId groupId = lock.getGroupId();
+        long sessionId = getSessionManager().getSession(groupId);
+        RaftInvocationManager invocationManager = getRaftInvocationManager();
+        UUID invUid1 = newUnsecureUUID();
+        UUID invUid2 = newUnsecureUUID();
+
+        InternalCompletableFuture<Long> f1 = invocationManager
+                .invoke(groupId, new TryLockOp(objectName, sessionId, getThreadId(), invUid1, MINUTES.toMillis(5)));
+
+        NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
+        LockService service = nodeEngine.getService(LockService.SERVICE_NAME);
+
+        long[] firstCallId = new long[1];
+
+        assertTrueEventually(() -> {
+            LockRegistry registry = service.getRegistryOrNull(groupId);
+            assertNotNull(registry);
+            assertNotNull(registry.getResourceOrNull(objectName));
+            assertEquals(1, registry.getWaitTimeouts().size());
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            CountDownLatch latch = new CountDownLatch(1);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Lock lock = registry.getResourceOrNull(objectName);
+                    Map<Object, LockInvocationKey> waitKeys = lock.getInternalWaitKeysMap();
+                    assertEquals(1, waitKeys.size());
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            latch.await(60, SECONDS);
+        });
+
+        invocationManager
+                .invoke(groupId, new ExpireWaitKeysOp(LockService.SERVICE_NAME, singleton(BiTuple.of(objectName, invUid1))))
+                .joinInternal();
+
+        long fence = f1.joinInternal();
+        assertEquals(INVALID_FENCE, fence);
+
+        RaftNodeImpl leader = getLeaderNode(instances, groupId);
+        TryLockOp op = new TryLockOp(objectName, sessionId, getThreadId(), invUid2, MINUTES.toMillis(5));
+        op.setCaller(getAddress(proxyInstance), firstCallId[0] - 1);
+
+        InternalCompletableFuture f2 = leader.replicate(op);
+        try {
+            f2.joinInternal();
+            fail();
+        } catch (WaitKeyCancelledException ignored) {
+        }
+    }
+
     private RaftInvocationManager getRaftInvocationManager() {
-        RaftService service = getNodeEngineImpl(proxyInstance).getService(RaftService.SERVICE_NAME);
-        return service.getInvocationManager();
+        return getRaftService(proxyInstance).getInvocationManager();
     }
 
     private void lockByOtherThread() {

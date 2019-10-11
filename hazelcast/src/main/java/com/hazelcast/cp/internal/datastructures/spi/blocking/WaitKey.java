@@ -16,8 +16,8 @@
 
 package com.hazelcast.cp.internal.datastructures.spi.blocking;
 
-import com.hazelcast.cp.internal.session.AbstractProxySessionManager;
 import com.hazelcast.cluster.Address;
+import com.hazelcast.cp.internal.session.AbstractProxySessionManager;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
@@ -25,9 +25,9 @@ import com.hazelcast.nio.serialization.DataSerializable;
 import java.io.IOException;
 import java.util.UUID;
 
+import static com.hazelcast.internal.util.Preconditions.checkNotNull;
 import static com.hazelcast.internal.util.UUIDSerializationUtil.readUUID;
 import static com.hazelcast.internal.util.UUIDSerializationUtil.writeUUID;
-import static com.hazelcast.internal.util.Preconditions.checkNotNull;
 
 /**
  * This abstraction is used when an operation does not return a response

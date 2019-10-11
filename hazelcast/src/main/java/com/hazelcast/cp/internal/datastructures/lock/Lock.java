@@ -17,10 +17,9 @@
 package com.hazelcast.cp.internal.datastructures.lock;
 
 import com.hazelcast.cp.CPGroupId;
+import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.lock.AcquireResult.AcquireStatus;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.BlockingResource;
-import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKeyContainer;
-import com.hazelcast.internal.util.BiTuple;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
@@ -31,6 +30,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 
 import static com.hazelcast.cp.internal.datastructures.lock.AcquireResult.AcquireStatus.FAILED;
@@ -62,11 +62,10 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
     private int lockCount;
 
     /**
-     * Uids of the current lock owner's lock() / unlock() invocations,
-     * and uid of the previous owner's last unlock() invocation.
-     * Used for preventing duplicate execution of lock() / unlock() invocations
+     * Responses of completed invocations for each lock endpoint. Used for
+     * preventing duplicate execution of lock() / unlock() calls.
      */
-    private Map<BiTuple<LockEndpoint, UUID>, LockOwnershipState> ownerInvocationRefUids = new HashMap<>();
+    private Map<LockEndpoint, LockEndpointState> endpointStates = new HashMap<>();
 
     Lock() {
     }
@@ -77,27 +76,34 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
     }
 
     /**
-     * Assigns the lock to the endpoint, if the lock is not held. Lock count is
-     * incremented if the endpoint already holds the lock. If some other
-     * endpoint holds the lock and the second argument is true, a wait key is
-     * created and added to the wait queue. Lock count is not incremented if
-     * the lock request is a retry of the lock holder. If the lock request is
-     * a retry of a lock endpoint that resides in the wait queue with the same
-     * invocation uid, a retry wait key wait key is attached to the original
-     * wait key. If the lock request is a new request of a lock endpoint that
-     * resides in the wait queue with a different invocation uid, the existing
-     * wait key is cancelled because it means the caller has stopped waiting
-     * for response of the previous invocation. If the invocation uid is same
-     * with one of the previous invocations of the current lock owner,
-     * memorized result of the previous invocation is returned.
+     * Assigns the lock to the given endpoint, if the lock is currently
+     * available. The lock count is incremented if the endpoint already holds
+     * the lock. If the lock is assigned to some other endpoint and the caller
+     * can wait, i.e., the "wait" argument is true, a wait key is added to
+     * the wait queue for the caller. The lock count is not incremented if
+     * the lock call is a retry. If the lock call is a retry of a wait key that
+     * resides in the wait queue with the same invocation uid, the wait key is
+     * updated to store the new call id. If the lock call is a new call of a
+     * lock endpoint that resides in the wait queue with a different invocation
+     * uid, the existing wait key is cancelled because it means the caller has
+     * stopped waiting for response of the previous invocation.
+     * <p>
+     * Deduplication is applied to prevent duplicate execution of retried
+     * invocations.
+     * <p>
+     * If an invocation with a call id that is smaller than the greatest call
+     * id of the given endpoint is received, it means that this invocation is
+     * not valid anymore, thus it fails with {@link WaitKeyCancelledException}.
      */
     AcquireResult acquire(LockInvocationKey key, boolean wait) {
         LockEndpoint endpoint = key.endpoint();
         UUID invocationUid = key.invocationUid();
-        LockOwnershipState memorized = ownerInvocationRefUids.get(BiTuple.of(endpoint, invocationUid));
-        if (memorized != null) {
-            AcquireStatus status = memorized.isLocked() ? SUCCESSFUL : FAILED;
-            return new AcquireResult(status, memorized.getFence(), Collections.emptyList());
+        long callId = key.callId();
+        LockEndpointState endpointState = getOrInitLockEndpointState(endpoint);
+        LockOwnershipState response = endpointState.getMemoizedResponse(endpoint, invocationUid, callId);
+        if (response != null) {
+            AcquireStatus status = response.isLocked() ? SUCCESSFUL : FAILED;
+            return new AcquireResult(status, response.getFence(), null);
         }
 
         if (owner == null) {
@@ -106,101 +112,106 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
 
         if (endpoint.equals(owner.endpoint())) {
             if (lockCount == lockCountLimit) {
-                ownerInvocationRefUids.put(BiTuple.of(endpoint, invocationUid), NOT_LOCKED);
-                return AcquireResult.failed(Collections.emptyList());
+                endpointState.memoize(invocationUid, callId, NOT_LOCKED);
+                return AcquireResult.failed(null);
             }
 
             lockCount++;
-            ownerInvocationRefUids.put(BiTuple.of(endpoint, invocationUid), lockOwnershipState());
+            endpointState.memoize(invocationUid, callId, lockOwnershipState());
             return AcquireResult.acquired(owner.commitIndex());
         }
 
-        // we must cancel waits keys of previous invocation of the endpoint
-        // before adding a new wait key or even if we will not wait
-        Collection<LockInvocationKey> cancelledWaitKeys = cancelWaitKeys(endpoint, invocationUid);
+        // We must cancel waits keys of previous invocation of the endpoint
+        // before adding a new wait key or even if we will not wait.
+        // If this is a stale request with an old call id,
+        // we will fail inside the cancelWaitKey() call...
+        LockInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, invocationUid, callId);
 
         if (wait) {
             addWaitKey(endpoint, key);
-            return AcquireResult.waitKeyAdded(cancelledWaitKeys);
+            return AcquireResult.waitKeyAdded(cancelledWaitKey);
         }
 
-        return AcquireResult.failed(cancelledWaitKeys);
+        endpointState.memoize(invocationUid, callId, NOT_LOCKED);
+        return AcquireResult.failed(cancelledWaitKey);
     }
 
-    private Collection<LockInvocationKey> cancelWaitKeys(LockEndpoint endpoint, UUID invocationUid) {
-        Collection<LockInvocationKey> cancelled = null;
-        WaitKeyContainer<LockInvocationKey> container = getWaitKeyContainer(endpoint);
-        if (container != null && container.key().isDifferentInvocationOf(endpoint, invocationUid)) {
-            cancelled = container.keyAndRetries();
+    private LockEndpointState getOrInitLockEndpointState(LockEndpoint endpoint) {
+        return endpointStates.computeIfAbsent(endpoint, e -> new LockEndpointState());
+    }
+
+    private LockInvocationKey cancelWaitKey(LockEndpoint endpoint, UUID invocationUid, long callId) {
+        LockInvocationKey key = getWaitKey(endpoint);
+        if (key != null && key.isOlderInvocationOf(endpoint, invocationUid, callId)) {
             removeWaitKey(endpoint);
+            return key;
         }
 
-        return cancelled != null ? cancelled : Collections.emptyList();
+        return null;
     }
 
     /**
-     * Releases the lock. The lock is freed when lock count reaches to 0.
+     * Releases the lock. The lock is freed when the lock count reaches to 0.
      * If the remaining lock count > 0 after a successful release, the lock is
-     * still held by the endpoint. The lock is not released if it is a retry of
-     * a previous successful release request of the current lock holder. If
-     * the lock is assigned to some other endpoint after this release, wait
-     * keys of the new lock holder are returned. If the release request fails
-     * because the requesting endpoint does not hold the lock, all wait keys
-     * of the endpoint are cancelled because that endpoint has stopped waiting
-     * for response of its previous lock() invocation.
+     * still held by the endpoint. If the lock is assigned to some other
+     * endpoint afterwards, the wait key of the new lock holder is returned for
+     * sending the response. If the release call fails because the lock
+     * endpoint is not the current lock holder, the caller endpoint might have
+     * a wait key in the wait queue. If this is the case, its wait key is
+     * completed with {@link WaitKeyCancelledException}.
+     * <p>
+     * Deduplication is applied to prevent duplicate execution of retried
+     * invocations.
+     * <p>
+     * If an invocation with a call id that is smaller than the greatest call
+     * id of the given endpoint is received, it means that this invocation is
+     * not valid anymore, thus it fails with {@link WaitKeyCancelledException}.
      */
-    ReleaseResult release(LockEndpoint endpoint, UUID invocationUid) {
-        return doRelease(endpoint, invocationUid, 1);
+    ReleaseResult release(LockInvocationKey key) {
+        return doRelease(key.endpoint(), key.invocationUid(), key.callId(), 1);
     }
 
-    private ReleaseResult doRelease(LockEndpoint endpoint, UUID invocationUid, int releaseCount) {
-        LockOwnershipState memorized = ownerInvocationRefUids.get(BiTuple.of(endpoint, invocationUid));
-        if (memorized != null) {
-            return ReleaseResult.successful(memorized);
+    private ReleaseResult doRelease(LockEndpoint endpoint, UUID invocationUid, long callId, int releaseCount) {
+        LockEndpointState endpointState = getOrInitLockEndpointState(endpoint);
+        LockOwnershipState response = endpointState.getMemoizedResponse(endpoint, invocationUid, callId);
+        if (response != null) {
+            return ReleaseResult.successful(response);
         }
 
         if (owner == null || !owner.endpoint().equals(endpoint)) {
-            return ReleaseResult.failed(cancelWaitKeys(endpoint, invocationUid));
+            LockInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, invocationUid, callId);
+            endpointState.memoize(invocationUid, callId, NOT_LOCKED);
+            return ReleaseResult.failed(cancelledWaitKey);
         }
 
         lockCount = lockCount - min(lockCount, releaseCount);
         if (lockCount > 0) {
             LockOwnershipState ownership = lockOwnershipState();
-            ownerInvocationRefUids.put(BiTuple.of(endpoint, invocationUid), ownership);
+            endpointState.memoize(invocationUid, callId, ownership);
             return ReleaseResult.successful(ownership);
         }
 
-        removeInvocationRefUids(endpoint);
+        LockOwnershipState ownership = setNewLockOwner();
 
-        Collection<LockInvocationKey> newOwnerWaitKeys = setNewLockOwner();
+        endpointState.reset();
+        endpointState.memoize(invocationUid, callId, ownership);
 
-        ownerInvocationRefUids.put(BiTuple.of(endpoint, invocationUid), lockOwnershipState());
-
-        return ReleaseResult.successful(lockOwnershipState(), newOwnerWaitKeys);
+        return ReleaseResult.successful(ownership, owner);
     }
 
-    private void removeInvocationRefUids(LockEndpoint endpoint) {
-        ownerInvocationRefUids.keySet().removeIf(lockEndpointUUIDBiTuple -> lockEndpointUUIDBiTuple.element1.equals(endpoint));
-    }
-
-    private Collection<LockInvocationKey> setNewLockOwner() {
-        Collection<LockInvocationKey> newOwnerWaitKeys;
-        Iterator<WaitKeyContainer<LockInvocationKey>> iter = waitKeyContainersIterator();
+    private LockOwnershipState setNewLockOwner() {
+        Iterator<LockInvocationKey> iter = waitKeyIterator();
         if (iter.hasNext()) {
-            WaitKeyContainer<LockInvocationKey> container = iter.next();
-            LockInvocationKey newOwner = container.key();
-            newOwnerWaitKeys = container.keyAndRetries();
-
+            LockInvocationKey newOwner = iter.next();
             iter.remove();
             owner = newOwner;
             lockCount = 1;
-            ownerInvocationRefUids.put(BiTuple.of(owner.endpoint(), owner.invocationUid()), lockOwnershipState());
+            getOrInitLockEndpointState(owner.endpoint()).memoize(owner.invocationUid(), owner.callId(), lockOwnershipState());
         } else {
             owner = null;
-            newOwnerWaitKeys = Collections.emptyList();
         }
 
-        return newOwnerWaitKeys;
+        return lockOwnershipState();
     }
 
     LockOwnershipState lockOwnershipState() {
@@ -217,29 +228,31 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
         clone.lockCountLimit = this.lockCountLimit;
         clone.owner = this.owner;
         clone.lockCount = this.lockCount;
-        clone.ownerInvocationRefUids.putAll(this.ownerInvocationRefUids);
+        for (Entry<LockEndpoint, LockEndpointState> e : this.endpointStates.entrySet()) {
+            clone.endpointStates.put(e.getKey(), e.getValue().cloneForSnapshot());
+        }
 
         return clone;
     }
 
     /**
      * Releases the lock if the current lock holder's session is closed.
+     * The lock will be assigned to the first wait key in the wait queue.
      */
     @Override
     protected void onSessionClose(long sessionId, Map<Long, Object> responses) {
-        removeInvocationRefUids(sessionId);
+        removeLockEndpointStates(sessionId);
 
         if (owner != null && owner.sessionId() == sessionId) {
-            ReleaseResult result = doRelease(owner.endpoint(), newUnsecureUUID(), lockCount);
-            for (LockInvocationKey key : result.completedWaitKeys()) {
-                responses.put(key.commitIndex(), result.ownership().getFence());
+            ReleaseResult result = doRelease(owner.endpoint(), newUnsecureUUID(), Long.MAX_VALUE, lockCount);
+            if (result.completedWaitKey() != null) {
+                responses.put(result.completedWaitKey().commitIndex(), result.ownership().getFence());
             }
         }
     }
 
-    private void removeInvocationRefUids(long sessionId) {
-        ownerInvocationRefUids.keySet()
-                              .removeIf(lockEndpointUUIDBiTuple -> lockEndpointUUIDBiTuple.element1.sessionId() == sessionId);
+    private void removeLockEndpointStates(long sessionId) {
+        endpointStates.keySet().removeIf(endpoint -> endpoint.sessionId() == sessionId);
     }
 
     /**
@@ -253,7 +266,7 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
 
     @Override
     protected void onWaitKeyExpire(LockInvocationKey key) {
-        ownerInvocationRefUids.put(BiTuple.of(key.endpoint(), key.invocationUid()), NOT_LOCKED);
+        getOrInitLockEndpointState(key.endpoint()).memoize(key.invocationUid(), key.callId(), NOT_LOCKED);
     }
 
     @Override
@@ -276,11 +289,16 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
             out.writeObject(owner);
         }
         out.writeInt(lockCount);
-        out.writeInt(ownerInvocationRefUids.size());
-        for (Map.Entry<BiTuple<LockEndpoint, UUID>, LockOwnershipState> e : ownerInvocationRefUids.entrySet()) {
-            out.writeObject(e.getKey().element1);
-            writeUUID(out, e.getKey().element2);
-            out.writeObject(e.getValue());
+        out.writeInt(endpointStates.size());
+        for (Entry<LockEndpoint, LockEndpointState> e1 : endpointStates.entrySet()) {
+            out.writeObject(e1.getKey());
+            LockEndpointState endpointState = e1.getValue();
+            out.writeLong(endpointState.greatestCallId);
+            out.writeInt(endpointState.invocations.size());
+            for (Entry<UUID, LockOwnershipState> e2 : endpointState.invocations.entrySet()) {
+                writeUUID(out, e2.getKey());
+                out.writeObject(e2.getValue());
+            }
         }
     }
 
@@ -293,19 +311,79 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
             owner = in.readObject();
         }
         lockCount = in.readInt();
-        int ownerInvocationRefUidCount = in.readInt();
-        for (int i = 0; i < ownerInvocationRefUidCount; i++) {
+        int endpointStateCount = in.readInt();
+        for (int i = 0; i < endpointStateCount; i++) {
             LockEndpoint endpoint = in.readObject();
-            UUID invocationUid = readUUID(in);
-            LockOwnershipState ownership = in.readObject();
-            ownerInvocationRefUids.put(BiTuple.of(endpoint, invocationUid), ownership);
+            LockEndpointState endpointState = new LockEndpointState();
+
+            endpointState.greatestCallId = in.readLong();
+            int invocationCount = in.readInt();
+            for (int j = 0; j < invocationCount; j++) {
+                UUID invocationUid = readUUID(in);
+                LockOwnershipState ownership = in.readObject();
+                endpointState.invocations.put(invocationUid, ownership);
+            }
+
+            endpointStates.put(endpoint, endpointState);
         }
     }
 
     @Override
     public String toString() {
         return "Lock{" + internalToString() + ", lockCountLimit=" + lockCountLimit + ", owner="
-                + owner + ", lockCount=" + lockCount + ", ownerInvocationRefUids=" + ownerInvocationRefUids + '}';
+                + owner + ", lockCount=" + lockCount + ", endpointStates=" + endpointStates + '}';
+    }
+
+    private static class LockEndpointState {
+
+        /**
+         * Responses of completed lock() and unlock() calls. If a lock
+         * call is currently in the wait queue, its UUID is not in this map.
+         */
+        final Map<UUID, LockOwnershipState> invocations = new HashMap<>();
+
+        /**
+         * The greatest call id of completed invocations of the lock endpoint.
+         */
+        long greatestCallId = -1;
+
+        LockEndpointState cloneForSnapshot() {
+            LockEndpointState clone = new LockEndpointState();
+            clone.greatestCallId = this.greatestCallId;
+            clone.invocations.putAll(this.invocations);
+
+            return clone;
+        }
+
+        LockOwnershipState getMemoizedResponse(LockEndpoint endpoint, UUID invocationUid, long callId) {
+            LockOwnershipState response = invocations.get(invocationUid);
+            if (response != null) {
+                return response;
+            } else if (callId < this.greatestCallId) {
+                // We have already seen that the lock endpoint has made a more
+                // recent invocation after the given one. It means that
+                // the given operation is not valid anymore and we don't need
+                // to process it.
+                throw new WaitKeyCancelledException("Invocation: " + invocationUid + " with call id: " + callId
+                        + " cannot be processed because a more recent invocation of " + endpoint + " has been already processed");
+            }
+
+            return null;
+        }
+
+        void memoize(UUID invocationUid, long callId, LockOwnershipState lockOwnership) {
+            invocations.put(invocationUid, lockOwnership);
+            this.greatestCallId = Math.max(this.greatestCallId, callId);
+        }
+
+        void reset() {
+            invocations.clear();
+        }
+
+        @Override
+        public String toString() {
+            return "LockEndpointState{" + "greatestCallId=" + greatestCallId + ", invocations=" + invocations + '}';
+        }
     }
 
 }

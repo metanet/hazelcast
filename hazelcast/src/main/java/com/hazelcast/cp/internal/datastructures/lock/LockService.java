@@ -18,14 +18,12 @@ package com.hazelcast.cp.internal.datastructures.lock;
 
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.internal.RaftGroupId;
-import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.lock.proxy.FencedLockProxy;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.AbstractBlockingService;
 import com.hazelcast.cp.lock.FencedLock;
 import com.hazelcast.spi.impl.NodeEngine;
 
-import java.util.Collection;
-import java.util.UUID;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -83,41 +81,38 @@ public class LockService extends AbstractBlockingService<LockInvocationKey, Lock
             scheduleTimeout(groupId, name, key.invocationUid(), timeoutMs);
         }
 
-        notifyCancelledWaitKeys(groupId, name, result.cancelledWaitKeys());
+        notifyCancelledWaitKey(groupId, name, result.cancelledWaitKey());
 
         return result;
     }
 
-    public boolean release(CPGroupId groupId, long commitIndex, String name, LockEndpoint endpoint, UUID invocationUid) {
-        heartbeatSession(groupId, endpoint.sessionId());
+    public boolean release(CPGroupId groupId, String name, LockInvocationKey key) {
+        heartbeatSession(groupId, key.sessionId());
         LockRegistry registry = getLockRegistryOrFail(groupId, name);
-        ReleaseResult result = registry.release(name, endpoint, invocationUid);
+        ReleaseResult result = registry.release(name, key);
 
         if (logger.isFineEnabled()) {
             if (result.success()) {
-                logger.fine("Lock[" + name + "] in " + groupId + " released by <" + endpoint + ", " + invocationUid
-                        + "> at commit index: " + commitIndex + ". new lock state: " + result.ownership());
+                logger.fine("Lock[" + name + "] in " + groupId + " released by <" + key.endpoint() + ", " + key.invocationUid()
+                        + "> at commit index: " + key.commitIndex() + ". new lock state: " + result.ownership());
             } else {
-                logger.fine("Lock[" + name + "] in " + groupId + " not released by <" + endpoint + ", " + invocationUid
-                        + "> at commit index: " + commitIndex + ". lock state: " + registry.getLockOwnershipState(name));
+                logger.fine("Lock[" + name + "] in " + groupId + " not released by <" + key.endpoint() + ", "
+                        + key.invocationUid() + "> at commit index: " + key.commitIndex() + ". lock state: "
+                        + registry.getLockOwnershipState(name));
             }
         }
 
         if (result.success()) {
-            notifyWaitKeys(groupId, name, result.completedWaitKeys(), result.ownership().getFence());
-            return result.ownership().isLockedBy(endpoint.sessionId(), endpoint.threadId());
+            if (result.completedWaitKey() != null) {
+                notifyWaitKeys(groupId, name, Collections.singleton(result.completedWaitKey()), result.ownership().getFence());
+            }
+
+            return result.ownership().isLockedBy(key.sessionId(), key.endpoint().threadId());
         }
 
-        notifyCancelledWaitKeys(groupId, name, result.completedWaitKeys());
+        notifyCancelledWaitKey(groupId, name, result.completedWaitKey());
+
         throw new IllegalMonitorStateException("Current thread is not owner of the lock!");
-    }
-
-    private void notifyCancelledWaitKeys(CPGroupId groupId, String name, Collection<LockInvocationKey> keys) {
-        if (keys.isEmpty()) {
-            return;
-        }
-
-        notifyWaitKeys(groupId, name, keys, new WaitKeyCancelledException());
     }
 
     public LockOwnershipState getLockOwnershipState(CPGroupId groupId, String name) {

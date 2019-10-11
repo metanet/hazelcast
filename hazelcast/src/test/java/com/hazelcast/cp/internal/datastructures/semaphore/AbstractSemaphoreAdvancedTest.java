@@ -27,7 +27,6 @@ import com.hazelcast.cp.internal.datastructures.semaphore.operation.AcquirePermi
 import com.hazelcast.cp.internal.datastructures.semaphore.operation.ChangePermitsOp;
 import com.hazelcast.cp.internal.datastructures.semaphore.operation.DrainPermitsOp;
 import com.hazelcast.cp.internal.datastructures.semaphore.operation.ReleasePermitsOp;
-import com.hazelcast.cp.internal.datastructures.spi.blocking.WaitKeyContainer;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.operation.ExpireWaitKeysOp;
 import com.hazelcast.cp.internal.session.AbstractProxySessionManager;
 import com.hazelcast.cp.internal.session.ProxySessionManagerService;
@@ -308,7 +307,7 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
         long sessionId = getSessionManager().getSession(groupId);
         UUID invUid = newUnsecureUUID();
 
-        invokeRaftOp(groupId, new ReleasePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).join();
+        invokeRaftOp(groupId, new ReleasePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).joinInternal();
 
         spawn(() -> {
             try {
@@ -318,7 +317,7 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
             }
         });
 
-        invokeRaftOp(groupId, new ReleasePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).join();
+        invokeRaftOp(groupId, new ReleasePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).joinInternal();
     }
 
     @Test
@@ -333,8 +332,8 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
         assertNotEquals(NO_SESSION_ID, sessionId);
         UUID invUid = newUnsecureUUID();
 
-        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).join();
-        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).join();
+        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).joinInternal();
+        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, 1)).joinInternal();
 
         assertEquals(2, semaphore.availablePermits());
     }
@@ -351,8 +350,8 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
         assertNotEquals(NO_SESSION_ID, sessionId);
         UUID invUid = newUnsecureUUID();
 
-        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, -1)).join();
-        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, -1)).join();
+        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, -1)).joinInternal();
+        invokeRaftOp(groupId, new ChangePermitsOp(objectName, sessionId, getThreadId(), invUid, -1)).joinInternal();
 
         assertEquals(1, semaphore.availablePermits());
     }
@@ -366,21 +365,21 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
         assertNotEquals(NO_SESSION_ID, sessionId);
         UUID invUid = newUnsecureUUID();
 
-        int drained1 = this.<Integer>invokeRaftOp(groupId, new DrainPermitsOp(objectName, sessionId, getThreadId(), invUid)).join();
+        int drained1 = this.<Integer>invokeRaftOp(groupId, new DrainPermitsOp(objectName, sessionId, getThreadId(), invUid)).joinInternal();
 
         assertEquals(3, drained1);
         assertEquals(0, semaphore.availablePermits());
 
         spawn(() -> semaphore.increasePermits(1)).get();
 
-        int drained2 = this.<Integer>invokeRaftOp(groupId, new DrainPermitsOp(objectName, sessionId, getThreadId(), invUid)).join();
+        int drained2 = this.<Integer>invokeRaftOp(groupId, new DrainPermitsOp(objectName, sessionId, getThreadId(), invUid)).joinInternal();
 
         assertEquals(3, drained2);
         assertEquals(1, semaphore.availablePermits());
     }
 
     @Test
-    public void testRetriedWaitKeysAreExpiredTogether() {
+    public void testRetriedWaitKeyIsExpired() {
         semaphore.init(1);
 
         CountDownLatch releaseLatch = new CountDownLatch(1);
@@ -410,6 +409,8 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
         InternalCompletableFuture<Boolean> f1 =
                 invokeRaftOp(groupId, new AcquirePermitsOp(objectName, sessionId, getThreadId(), invUid, 1, SECONDS.toMillis(300)));
 
+        long[] firstCallId = new long[1];
+
         assertTrueEventually(() -> {
             NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
             SemaphoreService service = nodeEngine.getService(SemaphoreService.SERVICE_NAME);
@@ -418,18 +419,8 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
             Map<BiTuple<String, UUID>, BiTuple<Long, Long>> waitTimeouts = registry.getWaitTimeouts();
             assertEquals(1, waitTimeouts.size());
             acquireWaitTimeoutKeyRef[0] = waitTimeouts.keySet().iterator().next();
-        });
-
-        InternalCompletableFuture<Boolean> f2 =
-                invokeRaftOp(groupId, new AcquirePermitsOp(objectName, sessionId, getThreadId(), invUid, 1, SECONDS.toMillis(300)));
-
-        assertTrueEventually(() -> {
-            NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
             RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
             int partitionId = raftService.getCPGroupPartitionId(groupId);
-            SemaphoreService service = nodeEngine.getService(SemaphoreService.SERVICE_NAME);
-            SemaphoreRegistry registry = service.getRegistryOrNull(groupId);
-            boolean[] verified = new boolean[1];
             CountDownLatch latch = new CountDownLatch(1);
             OperationServiceImpl operationService = nodeEngine.getOperationService();
             operationService.execute(new PartitionSpecificRunnable() {
@@ -441,20 +432,49 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
                 @Override
                 public void run() {
                     Semaphore semaphore = registry.getResourceOrNull(objectName);
-                    Map<Object, WaitKeyContainer<AcquireInvocationKey>> waitKeys = semaphore.getInternalWaitKeysMap();
-                    verified[0] = (waitKeys.size() == 1 && waitKeys.values().iterator().next().retryCount() == 1);
+                    Map<Object, SemaphoreInvocationKey> waitKeys = semaphore.getInternalWaitKeysMap();
+                    firstCallId[0] = waitKeys.values().iterator().next().callId();
+                    latch.countDown();
+                }
+            });
+
+            assertOpenEventually(latch);
+        });
+
+        InternalCompletableFuture<Boolean> f2 =
+                invokeRaftOp(groupId, new AcquirePermitsOp(objectName, sessionId, getThreadId(), invUid, 1, SECONDS.toMillis(300)));
+
+        assertTrueEventually(() -> {
+            NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
+            RaftService raftService = getNodeEngineImpl(primaryInstance).getService(RaftService.SERVICE_NAME);
+            int partitionId = raftService.getCPGroupPartitionId(groupId);
+            SemaphoreService service = nodeEngine.getService(SemaphoreService.SERVICE_NAME);
+            SemaphoreRegistry registry = service.getRegistryOrNull(groupId);
+            long[] retryCallId = new long[1];
+            CountDownLatch latch = new CountDownLatch(1);
+            OperationServiceImpl operationService = nodeEngine.getOperationService();
+            operationService.execute(new PartitionSpecificRunnable() {
+                @Override
+                public int getPartitionId() {
+                    return partitionId;
+                }
+
+                @Override
+                public void run() {
+                    Semaphore semaphore = registry.getResourceOrNull(objectName);
+                    Map<Object, SemaphoreInvocationKey> waitKeys = semaphore.getInternalWaitKeysMap();
+                    retryCallId[0] = waitKeys.values().iterator().next().callId();
                     latch.countDown();
                 }
             });
 
             assertOpenEventually(latch);
 
-            assertTrue(verified[0]);
+            assertTrue(retryCallId[0] > firstCallId[0]);
         });
 
-        RaftOp op = new ExpireWaitKeysOp(SemaphoreService.SERVICE_NAME,
-                Collections.singletonList(acquireWaitTimeoutKeyRef[0]));
-        invokeRaftOp(groupId, op).join();
+        RaftOp op = new ExpireWaitKeysOp(SemaphoreService.SERVICE_NAME, Collections.singletonList(acquireWaitTimeoutKeyRef[0]));
+        invokeRaftOp(groupId, op).joinInternal();
 
         assertTrueEventually(() -> {
             NodeEngineImpl nodeEngine = getNodeEngineImpl(primaryInstance);
@@ -466,8 +486,9 @@ public abstract class AbstractSemaphoreAdvancedTest extends HazelcastRaftTestSup
 
         assertTrueEventually(() -> assertEquals(1, semaphore.availablePermits()));
 
-        assertFalse(f1.join());
-        assertFalse(f2.join());
+        assertFalse(f2.joinInternal());
+
+        assertTrueAllTheTime(() -> assertFalse(f1.isDone()), 10);
     }
 
     @Test

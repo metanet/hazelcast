@@ -35,7 +35,7 @@ public class SemaphoreDataSerializerHook implements DataSerializerHook {
 
     public static final int RAFT_SEMAPHORE_REGISTRY = 1;
     public static final int RAFT_SEMAPHORE = 2;
-    public static final int ACQUIRE_INVOCATION_KEY = 3;
+    public static final int SEMAPHORE_INVOCATION_KEY = 3;
     public static final int SEMAPHORE_ENDPOINT = 4;
     public static final int ACQUIRE_PERMITS_OP = 5;
     public static final int AVAILABLE_PERMITS_OP = 6;
@@ -57,8 +57,8 @@ public class SemaphoreDataSerializerHook implements DataSerializerHook {
                     return new SemaphoreRegistry();
                 case RAFT_SEMAPHORE:
                     return new Semaphore();
-                case ACQUIRE_INVOCATION_KEY:
-                    return new AcquireInvocationKey();
+                case SEMAPHORE_INVOCATION_KEY:
+                    return new SemaphoreInvocationKey();
                 case SEMAPHORE_ENDPOINT:
                     return new SemaphoreEndpoint();
                 case ACQUIRE_PERMITS_OP:

@@ -22,7 +22,6 @@ import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 
 import java.util.Collection;
 import java.util.Map.Entry;
-import java.util.UUID;
 
 import static com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.AcquireStatus.WAIT_KEY_ADDED;
 
@@ -30,7 +29,7 @@ import static com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.A
  * Contains {@link Semaphore} resources and manages wait timeouts
  * based on acquire / release requests
  */
-public class SemaphoreRegistry extends ResourceRegistry<AcquireInvocationKey, Semaphore>
+public class SemaphoreRegistry extends ResourceRegistry<SemaphoreInvocationKey, Semaphore>
         implements IdentifiedDataSerializable {
 
     SemaphoreRegistry() {
@@ -58,10 +57,10 @@ public class SemaphoreRegistry extends ResourceRegistry<AcquireInvocationKey, Se
         return clone;
     }
 
-    Collection<AcquireInvocationKey> init(String name, int permits) {
-        Collection<AcquireInvocationKey> acquired = getOrInitResource(name).init(permits);
+    Collection<SemaphoreInvocationKey> init(String name, int permits) {
+        Collection<SemaphoreInvocationKey> acquired = getOrInitResource(name).init(permits);
 
-        for (AcquireInvocationKey key : acquired) {
+        for (SemaphoreInvocationKey key : acquired) {
             removeWaitKey(name, key);
         }
 
@@ -73,12 +72,10 @@ public class SemaphoreRegistry extends ResourceRegistry<AcquireInvocationKey, Se
         return semaphore != null ? semaphore.getAvailable() : 0;
     }
 
-    AcquireResult acquire(String name, AcquireInvocationKey key, long timeoutMs) {
+    AcquireResult acquire(String name, SemaphoreInvocationKey key, long timeoutMs) {
         AcquireResult result = getOrInitResource(name).acquire(key, (timeoutMs != 0));
 
-        for (AcquireInvocationKey waitKey : result.cancelledWaitKeys()) {
-            removeWaitKey(name, waitKey);
-        }
+        removeWaitKey(name, result.cancelledWaitKey());
 
         if (result.status() == WAIT_KEY_ADDED) {
             addWaitKey(name, key, timeoutMs);
@@ -87,37 +84,32 @@ public class SemaphoreRegistry extends ResourceRegistry<AcquireInvocationKey, Se
         return result;
     }
 
-    ReleaseResult release(String name, SemaphoreEndpoint endpoint, UUID invocationUid, int permits) {
-        ReleaseResult result = getOrInitResource(name).release(endpoint, invocationUid, permits);
-        for (AcquireInvocationKey key : result.acquiredWaitKeys()) {
-            removeWaitKey(name, key);
+    ReleaseResult release(String name, SemaphoreInvocationKey key) {
+        ReleaseResult result = getOrInitResource(name).release(key);
+        for (SemaphoreInvocationKey acquired : result.acquiredWaitKeys()) {
+            removeWaitKey(name, acquired);
         }
 
-        for (AcquireInvocationKey key : result.cancelledWaitKeys()) {
-            removeWaitKey(name, key);
-        }
+        removeWaitKey(name, result.cancelledWaitKey());
 
         return result;
     }
 
-    AcquireResult drainPermits(String name, SemaphoreEndpoint endpoint, UUID invocationUid) {
-        AcquireResult result = getOrInitResource(name).drain(endpoint, invocationUid);
-        for (AcquireInvocationKey key : result.cancelledWaitKeys()) {
-            removeWaitKey(name, key);
-        }
+    AcquireResult drainPermits(String name, SemaphoreInvocationKey key) {
+        AcquireResult result = getOrInitResource(name).drain(key);
+
+        removeWaitKey(name, result.cancelledWaitKey());
 
         return result;
     }
 
-    ReleaseResult changePermits(String name, SemaphoreEndpoint endpoint, UUID invocationUid, int permits) {
-        ReleaseResult result = getOrInitResource(name).change(endpoint, invocationUid, permits);
-        for (AcquireInvocationKey key : result.acquiredWaitKeys()) {
-            removeWaitKey(name, key);
+    ReleaseResult changePermits(String name, SemaphoreInvocationKey key) {
+        ReleaseResult result = getOrInitResource(name).change(key);
+        for (SemaphoreInvocationKey acquired : result.acquiredWaitKeys()) {
+            removeWaitKey(name, acquired);
         }
 
-        for (AcquireInvocationKey key : result.cancelledWaitKeys()) {
-            removeWaitKey(name, key);
-        }
+        removeWaitKey(name, result.cancelledWaitKey());
 
         return result;
     }

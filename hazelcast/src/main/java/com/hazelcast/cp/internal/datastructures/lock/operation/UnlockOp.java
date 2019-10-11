@@ -16,21 +16,30 @@
 
 package com.hazelcast.cp.internal.datastructures.lock.operation;
 
+import com.hazelcast.cluster.Address;
 import com.hazelcast.cp.CPGroupId;
-import com.hazelcast.cp.internal.datastructures.lock.Lock;
-import com.hazelcast.cp.lock.FencedLock;
+import com.hazelcast.cp.internal.CallerAware;
 import com.hazelcast.cp.internal.IndeterminateOperationStateAware;
+import com.hazelcast.cp.internal.datastructures.lock.Lock;
 import com.hazelcast.cp.internal.datastructures.lock.LockDataSerializerHook;
+import com.hazelcast.cp.internal.datastructures.lock.LockInvocationKey;
 import com.hazelcast.cp.internal.datastructures.lock.LockService;
+import com.hazelcast.cp.lock.FencedLock;
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
 
+import java.io.IOException;
 import java.util.UUID;
 
 /**
  * Operation for {@link FencedLock#unlock()}
  *
- * @see Lock#release(LockEndpoint, UUID, int)
+ * @see Lock#release(LockInvocationKey)
  */
-public class UnlockOp extends AbstractLockOp implements IndeterminateOperationStateAware {
+public class UnlockOp extends AbstractLockOp implements CallerAware, IndeterminateOperationStateAware {
+
+    private Address callerAddress;
+    private long callId;
 
     public UnlockOp() {
     }
@@ -42,7 +51,16 @@ public class UnlockOp extends AbstractLockOp implements IndeterminateOperationSt
     @Override
     public Object run(CPGroupId groupId, long commitIndex) {
         LockService service = getService();
-        return service.release(groupId, commitIndex, name, getLockEndpoint(), invocationUid);
+        getNodeEngine().getLogger(getClass()).warning("WILL PROCESS: " + this);
+        LockInvocationKey key = new LockInvocationKey(commitIndex, invocationUid, callerAddress, callId, getLockEndpoint());
+        getNodeEngine().getLogger(getClass()).warning("KEY: " + key);
+        return service.release(groupId, name, key);
+    }
+
+    @Override
+    public void setCaller(Address callerAddress, long callId) {
+        this.callerAddress = callerAddress;
+        this.callId = callId;
     }
 
     @Override
@@ -53,5 +71,19 @@ public class UnlockOp extends AbstractLockOp implements IndeterminateOperationSt
     @Override
     public int getClassId() {
         return LockDataSerializerHook.UNLOCK_OP;
+    }
+
+    @Override
+    public void writeData(ObjectDataOutput out) throws IOException {
+        super.writeData(out);
+        out.writeObject(callerAddress);
+        out.writeLong(callId);
+    }
+
+    @Override
+    public void readData(ObjectDataInput in) throws IOException {
+        super.readData(in);
+        callerAddress = in.readObject();
+        callId = in.readLong();
     }
 }

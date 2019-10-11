@@ -23,7 +23,6 @@ import com.hazelcast.cp.internal.datastructures.spi.blocking.ResourceRegistry;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 
 import java.util.Map.Entry;
-import java.util.UUID;
 
 import static com.hazelcast.config.cp.FencedLockConfig.DEFAULT_LOCK_ACQUIRE_LIMIT;
 import static com.hazelcast.cp.internal.datastructures.lock.AcquireResult.AcquireStatus.WAIT_KEY_ADDED;
@@ -73,9 +72,7 @@ class LockRegistry extends ResourceRegistry<LockInvocationKey, Lock> implements 
     AcquireResult acquire(String name, LockInvocationKey key, long timeoutMs) {
         AcquireResult result = getOrInitResource(name).acquire(key, (timeoutMs != 0));
 
-        for (LockInvocationKey cancelled : result.cancelledWaitKeys()) {
-            removeWaitKey(name, cancelled);
-        }
+        removeWaitKey(name, result.cancelledWaitKey());
 
         if (result.status() == WAIT_KEY_ADDED) {
             addWaitKey(name, key, timeoutMs);
@@ -84,16 +81,15 @@ class LockRegistry extends ResourceRegistry<LockInvocationKey, Lock> implements 
         return result;
     }
 
-    ReleaseResult release(String name, LockEndpoint endpoint, UUID invocationUid) {
+    ReleaseResult release(String name, LockInvocationKey key) {
         Lock lock = getResourceOrNull(name);
         if (lock == null) {
             return ReleaseResult.FAILED;
         }
 
-        ReleaseResult result = lock.release(endpoint, invocationUid);
-        for (LockInvocationKey key : result.completedWaitKeys()) {
-            removeWaitKey(name, key);
-        }
+        ReleaseResult result = lock.release(key);
+
+        removeWaitKey(name, result.completedWaitKey());
 
         return result;
     }

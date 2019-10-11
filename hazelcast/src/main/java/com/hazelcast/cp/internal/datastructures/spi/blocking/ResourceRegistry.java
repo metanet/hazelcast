@@ -16,16 +16,16 @@
 
 package com.hazelcast.cp.internal.datastructures.spi.blocking;
 
+import com.hazelcast.cluster.Address;
 import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.internal.util.BiTuple;
-import com.hazelcast.cluster.Address;
+import com.hazelcast.internal.util.Clock;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.nio.serialization.DataSerializable;
+import com.hazelcast.spi.exception.DistributedObjectDestroyedException;
 import com.hazelcast.spi.impl.operationservice.LiveOperations;
 import com.hazelcast.spi.impl.operationservice.LiveOperationsTracker;
-import com.hazelcast.spi.exception.DistributedObjectDestroyedException;
-import com.hazelcast.internal.util.Clock;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,10 +40,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import static com.hazelcast.internal.util.Preconditions.checkNotNull;
 import static com.hazelcast.internal.util.UUIDSerializationUtil.readUUID;
 import static com.hazelcast.internal.util.UUIDSerializationUtil.writeUUID;
-import static com.hazelcast.internal.util.Preconditions.checkNotNull;
-import static java.util.Collections.newSetFromMap;
 import static java.util.Collections.unmodifiableMap;
 
 /**
@@ -72,7 +71,7 @@ public abstract class ResourceRegistry<W extends WaitKey, R extends BlockingReso
     // populate live operations as well, they can miss some entries if they install a snapshot
     // instead of applying Raft log entries. If a follower becomes later, callers will
     // retry and commit their waiting Raft ops.
-    private final Set<BiTuple<Address, Long>> liveOperationsSet = newSetFromMap(new ConcurrentHashMap<>());
+    private final Map<UUID, BiTuple<Address, Long>> liveOperations = new ConcurrentHashMap<>();
 
     protected ResourceRegistry() {
     }
@@ -120,17 +119,27 @@ public abstract class ResourceRegistry<W extends WaitKey, R extends BlockingReso
     }
 
     protected final void removeWaitKey(String name, W key) {
+        if (key == null) {
+            return;
+        }
+
         waitTimeouts.remove(BiTuple.of(name, key.invocationUid()));
         removeLiveOperation(key);
     }
 
-    final void expireWaitKey(String name, UUID invocationUid, List<W> expired) {
+    final W expireWaitKey(String name, UUID invocationUid) {
         waitTimeouts.remove(BiTuple.of(name, invocationUid));
 
         BlockingResource<W> resource = getResourceOrNull(name);
+        W expiredWaitKey = null;
         if (resource != null) {
-            resource.expireWaitKeys(invocationUid, expired);
+            expiredWaitKey = resource.expireWaitKey(invocationUid);
+            if (expiredWaitKey != null) {
+                removeLiveOperation(expiredWaitKey);
+            }
         }
+
+        return expiredWaitKey;
     }
 
     final Collection<BiTuple<String, UUID>> getWaitKeysToExpire(long now) {
@@ -145,8 +154,8 @@ public abstract class ResourceRegistry<W extends WaitKey, R extends BlockingReso
         return expired;
     }
 
-    final Map<BiTuple<String, UUID>, Long> overwriteWaitTimeouts(Map<BiTuple<String, UUID>, BiTuple<Long, Long>>
-                                                                        existingWaitTimeouts) {
+    final Map<BiTuple<String, UUID>, Long> overwriteWaitTimeouts(Map<BiTuple<String, UUID>,
+            BiTuple<Long, Long>> existingWaitTimeouts) {
         for (Entry<BiTuple<String, UUID>, BiTuple<Long, Long>> e : existingWaitTimeouts.entrySet()) {
             waitTimeouts.put(e.getKey(), e.getValue());
         }
@@ -219,21 +228,27 @@ public abstract class ResourceRegistry<W extends WaitKey, R extends BlockingReso
 
     @Override
     public void populate(LiveOperations liveOperations) {
-        for (BiTuple<Address, Long> t : liveOperationsSet) {
+        for (BiTuple<Address, Long> t : this.liveOperations.values()) {
             liveOperations.add(t.element1, t.element2);
         }
     }
 
     private void addLiveOperation(W key) {
-        liveOperationsSet.add(BiTuple.of(key.callerAddress(), key.callId()));
+        BiTuple<Address, Long> t = liveOperations.get(key.invocationUid());
+        if (t == null || t.element2 < key.callId) {
+            liveOperations.put(key.invocationUid(), BiTuple.of(key.callerAddress(), key.callId()));
+        }
     }
 
-    final void removeLiveOperation(W key) {
-        liveOperationsSet.remove(BiTuple.of(key.callerAddress(), key.callId()));
+    private void removeLiveOperation(W key) {
+        BiTuple<Address, Long> t = liveOperations.get(key.invocationUid());
+        if (t != null && t.element2 <= key.callId()) {
+            liveOperations.remove(key.invocationUid(), t);
+        }
     }
 
     public final Collection<BiTuple<Address, Long>> getLiveOperations() {
-        return liveOperationsSet;
+        return liveOperations.values();
     }
 
     final void onSnapshotRestore() {

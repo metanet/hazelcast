@@ -18,16 +18,13 @@ package com.hazelcast.cp.internal.datastructures.lock;
 
 import com.hazelcast.cp.lock.FencedLock;
 
-import java.util.Collection;
-import java.util.Collections;
-
-import static com.hazelcast.cp.lock.FencedLock.INVALID_FENCE;
 import static com.hazelcast.cp.internal.datastructures.lock.AcquireResult.AcquireStatus.FAILED;
 import static com.hazelcast.cp.internal.datastructures.lock.AcquireResult.AcquireStatus.SUCCESSFUL;
 import static com.hazelcast.cp.internal.datastructures.lock.AcquireResult.AcquireStatus.WAIT_KEY_ADDED;
+import static com.hazelcast.cp.lock.FencedLock.INVALID_FENCE;
 
 /**
- * Represents result of a lock() request
+ * Represents result of a lock() call
  */
 public class AcquireResult {
 
@@ -43,9 +40,9 @@ public class AcquireResult {
         WAIT_KEY_ADDED,
 
         /**
-         * Denotes that a lock() request has not acquired the lock, either
-         * because the lock is held by someone else or the lock acquire limit
-         * is reached.
+         * Denotes that a lock() call has not acquired the lock, either because
+         * the lock is held by someone else or the lock acquire limit is
+         * reached.
          */
         FAILED
     }
@@ -53,34 +50,35 @@ public class AcquireResult {
     private final AcquireStatus status;
 
     /**
-     * If the lock() request is successful, represents the new fencing token.
-     * It is {@link FencedLock#INVALID_FENCE} otherwise.
+     * If the lock() call is successful, the new fencing token is provided.
+     * Otherwise, it is {@link FencedLock#INVALID_FENCE}.
      */
     private final long fence;
 
     /**
-     * If new a lock() request is send while there are pending wait keys of a previous lock() request,
-     * pending wait keys are cancelled. It is because LockEndpoint is a single-threaded entity and
-     * a new lock() request implies that the LockEndpoint is no longer interested in its previous lock() call.
+     * If new a lock() or unlock() call is sent while there is already a wait
+     * key of a previous lock() call, the wait key is cancelled. It is because
+     * a lock endpoint is a single-threaded entity and a new call implies that
+     * the endpoint is no longer interested in its previous lock() call.
      */
-    private final Collection<LockInvocationKey> cancelledWaitKeys;
+    private final LockInvocationKey cancelledWaitKey;
 
-    AcquireResult(AcquireStatus status, long fence, Collection<LockInvocationKey> cancelledWaitKeys) {
+    AcquireResult(AcquireStatus status, long fence, LockInvocationKey cancelledWaitKey) {
         this.status = status;
         this.fence = fence;
-        this.cancelledWaitKeys = Collections.unmodifiableCollection(cancelledWaitKeys);
+        this.cancelledWaitKey = cancelledWaitKey;
     }
 
     static AcquireResult acquired(long fence) {
-        return new AcquireResult(SUCCESSFUL, fence, Collections.<LockInvocationKey>emptyList());
+        return new AcquireResult(SUCCESSFUL, fence, null);
     }
 
-    static AcquireResult failed(Collection<LockInvocationKey> cancelled) {
-        return new AcquireResult(FAILED, INVALID_FENCE, cancelled);
+    static AcquireResult failed(LockInvocationKey cancelledWaitKey) {
+        return new AcquireResult(FAILED, INVALID_FENCE, cancelledWaitKey);
     }
 
-    static AcquireResult waitKeyAdded(Collection<LockInvocationKey> cancelled) {
-        return new AcquireResult(WAIT_KEY_ADDED, INVALID_FENCE, cancelled);
+    static AcquireResult waitKeyAdded(LockInvocationKey cancelledWaitKey) {
+        return new AcquireResult(WAIT_KEY_ADDED, INVALID_FENCE, cancelledWaitKey);
     }
 
     public AcquireStatus status() {
@@ -91,7 +89,12 @@ public class AcquireResult {
         return fence;
     }
 
-    Collection<LockInvocationKey> cancelledWaitKeys() {
-        return cancelledWaitKeys;
+    LockInvocationKey cancelledWaitKey() {
+        return cancelledWaitKey;
+    }
+
+    @Override
+    public String toString() {
+        return "AcquireResult{" + "status=" + status + ", fence=" + fence + ", cancelledWaitKey=" + cancelledWaitKey + '}';
     }
 }
