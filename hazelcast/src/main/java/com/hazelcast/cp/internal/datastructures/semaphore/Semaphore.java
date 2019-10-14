@@ -20,8 +20,7 @@ import com.hazelcast.cp.CPGroupId;
 import com.hazelcast.cp.internal.datastructures.exception.WaitKeyCancelledException;
 import com.hazelcast.cp.internal.datastructures.semaphore.AcquireResult.AcquireStatus;
 import com.hazelcast.cp.internal.datastructures.spi.blocking.BlockingResource;
-import com.hazelcast.internal.util.BiTuple;
-import com.hazelcast.internal.util.collection.Long2LongHashMap;
+import com.hazelcast.internal.util.TriTuple;
 import com.hazelcast.internal.util.collection.Long2ObjectHashMap;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
@@ -158,14 +157,9 @@ public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implemen
         }
 
         SessionState sessionState = getOrInitSessionSemaphoreState(sessionId);
-        BiTuple<UUID, Integer> prev = sessionState.invocations.get(endpoint.threadId());
-        if (prev == null || !prev.element1.equals(invocationUid)) {
-            // this is a new invocation, not a retry...
-            sessionState.acquiredPermits += permits;
-            available -= permits;
-        }
-
-        sessionState.memoize(endpoint.threadId(), invocationUid, callId, permits);
+        sessionState.acquiredPermits += permits;
+        available -= permits;
+        sessionState.memoize(endpoint, invocationUid, callId, permits);
     }
 
     private SessionState getOrInitSessionSemaphoreState(long sessionId) {
@@ -211,12 +205,12 @@ public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implemen
             }
 
             if (sessionState.acquiredPermits < permits) {
-                sessionState.memoize(endpoint.threadId(), invocationUid, callId, 0);
+                sessionState.memoize(endpoint, invocationUid, callId, 0);
                 return ReleaseResult.failed(cancelWaitKey(endpoint, invocationUid, callId));
             }
 
             sessionState.acquiredPermits -= permits;
-            sessionState.memoize(endpoint.threadId(), invocationUid, callId, permits);
+            sessionState.memoize(endpoint, invocationUid, callId, permits);
         }
 
         available += permits;
@@ -333,7 +327,7 @@ public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implemen
                 return ReleaseResult.successful(Collections.emptyList(), null);
             }
 
-            state.memoize(endpoint.threadId(), key.invocationUid(), key.callId(), permits);
+            state.memoize(endpoint, key.invocationUid(), key.callId(), permits);
         }
 
         SemaphoreInvocationKey cancelledWaitKey = cancelWaitKey(endpoint, key.invocationUid(), key.callId());
@@ -404,17 +398,14 @@ public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implemen
             out.writeLong(e1.getKey());
             SessionState state = e1.getValue();
             out.writeInt(state.invocations.size());
-            for (Entry<Long, BiTuple<UUID, Integer>> e2 : state.invocations.entrySet()) {
+            for (Entry<Long, TriTuple<UUID, Long, Integer>> e2 : state.invocations.entrySet()) {
                 out.writeLong(e2.getKey());
-                BiTuple<UUID, Integer> t = e2.getValue();
+                TriTuple<UUID, Long, Integer> t = e2.getValue();
                 writeUUID(out, t.element1);
-                out.writeInt(t.element2);
+                out.writeLong(t.element2);
+                out.writeInt(t.element3);
             }
-            out.writeInt(state.greatestCallIds.size());
-            for (Entry<Long, Long> e2 : state.greatestCallIds.entrySet()) {
-                out.writeLong(e2.getKey());
-                out.writeLong(e2.getValue());
-            }
+
             out.writeInt(state.acquiredPermits);
         }
     }
@@ -428,18 +419,13 @@ public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implemen
         for (int i = 0; i < count; i++) {
             long sessionId = in.readLong();
             SessionState state = new SessionState();
-            int refUidCount = in.readInt();
-            for (int j = 0; j < refUidCount; j++) {
+            int invocationCount = in.readInt();
+            for (int j = 0; j < invocationCount; j++) {
                 long threadId = in.readLong();
                 UUID invocationUid = readUUID(in);
-                int permits = in.readInt();
-                state.invocations.put(threadId, BiTuple.of(invocationUid, permits));
-            }
-            int callIdCount = in.readInt();
-            for (int j = 0; j < callIdCount; j++) {
-                long threadId = in.readLong();
                 long callId = in.readLong();
-                state.greatestCallIds.put(threadId, callId);
+                int permits = in.readInt();
+                state.invocations.put(threadId, TriTuple.of(invocationUid, callId, permits));
             }
 
             state.acquiredPermits = in.readInt();
@@ -461,40 +447,47 @@ public class Semaphore extends BlockingResource<SemaphoreInvocationKey> implemen
          * call for each thread. If an acquire() call is currently in the wait
          * queue, its UUID is not in this map.
          */
-        final Long2ObjectHashMap<BiTuple<UUID, Integer>> invocations = new Long2ObjectHashMap<>();
+        final Long2ObjectHashMap<TriTuple<UUID, Long, Integer>> invocations = new Long2ObjectHashMap<>();
 
         /**
          * The greatest call id of completed invocations of each thread.
          */
-        final Long2LongHashMap greatestCallIds = new Long2LongHashMap(-1L);
+//        final Long2LongHashMap greatestCallIds = new Long2LongHashMap(-1L);
 
         int acquiredPermits;
 
         Integer getMemoizedResponse(SemaphoreEndpoint endpoint, UUID invocationUid, long callId) {
-            BiTuple<UUID, Integer> t = invocations.get(endpoint.threadId());
-            if (t != null && t.element1.equals(invocationUid)) {
-                return t.element2;
-            } else if (greatestCallIds.get(endpoint.threadId()) > callId) {
-                // We have already seen that the semaphore endpoint has made
-                // a more recent invocation after the given one in the given
-                // thread. It means that the given operation is not valid
-                // anymore and we don't need to process it.
-                throw new WaitKeyCancelledException("Invocation: " + invocationUid + " with call id: " + callId
-                        + " cannot be processed because a more recent invocation of " + endpoint + " has been already processed");
+            TriTuple<UUID, Long, Integer> t = invocations.get(endpoint.threadId());
+            if (t != null) {
+                if (t.element1.equals(invocationUid)) {
+                    return t.element3;
+                }
+
+                if (t.element2 >= callId) {
+                    // We have already seen that the semaphore endpoint has made
+                    // a more recent invocation after the given one in the given
+                    // thread. It means that the given operation is not valid
+                    // anymore and we don't need to process it.
+                    throw new WaitKeyCancelledException("Invocation: " + invocationUid + " with call id: " + callId
+                            + " cannot be processed because a more recent invocation of " + endpoint + " has been already processed");
+                }
             }
 
             return null;
         }
 
-        void memoize(long threadId, UUID invocationUid, long callId, int permits) {
-            invocations.put(threadId, BiTuple.of(invocationUid, permits));
-            greatestCallIds.merge(threadId, callId, Math::max);
+        void memoize(SemaphoreEndpoint endpoint, UUID invocationUid, long callId, int permits) {
+            TriTuple<UUID, Long, Integer> t = invocations.get(endpoint.threadId());
+            if (t != null && t.element2 >= callId) {
+                throw new IllegalArgumentException("invalid call id: " + callId + " greatest call id: " + t.element2);
+            }
+
+            invocations.put(endpoint.threadId(), TriTuple.of(invocationUid, callId, permits));
         }
 
         @Override
         public String toString() {
-            return "SessionSemaphoreState{" + "invocation=" + invocations + ", highestCallIds=" + greatestCallIds
-                    + ", acquiredPermits=" + acquiredPermits + '}';
+            return "SessionState{" + "invocations=" + invocations + ", acquiredPermits=" + acquiredPermits + '}';
         }
     }
 

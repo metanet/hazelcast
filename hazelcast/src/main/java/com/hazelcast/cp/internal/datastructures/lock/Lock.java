@@ -193,7 +193,6 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
 
         LockOwnershipState ownership = setNewLockOwner();
 
-        endpointState.reset();
         endpointState.memoize(invocationUid, callId, ownership);
 
         return ReleaseResult.successful(ownership, owner);
@@ -293,12 +292,9 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
         for (Entry<LockEndpoint, LockEndpointState> e1 : endpointStates.entrySet()) {
             out.writeObject(e1.getKey());
             LockEndpointState endpointState = e1.getValue();
+            writeUUID(out, endpointState.invocationUid);
+            out.writeObject(endpointState.response);
             out.writeLong(endpointState.greatestCallId);
-            out.writeInt(endpointState.invocations.size());
-            for (Entry<UUID, LockOwnershipState> e2 : endpointState.invocations.entrySet()) {
-                writeUUID(out, e2.getKey());
-                out.writeObject(e2.getValue());
-            }
         }
     }
 
@@ -315,14 +311,9 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
         for (int i = 0; i < endpointStateCount; i++) {
             LockEndpoint endpoint = in.readObject();
             LockEndpointState endpointState = new LockEndpointState();
-
+            endpointState.invocationUid = readUUID(in);
+            endpointState.response = in.readObject();
             endpointState.greatestCallId = in.readLong();
-            int invocationCount = in.readInt();
-            for (int j = 0; j < invocationCount; j++) {
-                UUID invocationUid = readUUID(in);
-                LockOwnershipState ownership = in.readObject();
-                endpointState.invocations.put(invocationUid, ownership);
-            }
 
             endpointStates.put(endpoint, endpointState);
         }
@@ -340,7 +331,9 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
          * Responses of completed lock() and unlock() calls. If a lock
          * call is currently in the wait queue, its UUID is not in this map.
          */
-        final Map<UUID, LockOwnershipState> invocations = new HashMap<>();
+        UUID invocationUid;
+
+        LockOwnershipState response;
 
         /**
          * The greatest call id of completed invocations of the lock endpoint.
@@ -349,17 +342,19 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
 
         LockEndpointState cloneForSnapshot() {
             LockEndpointState clone = new LockEndpointState();
+            clone.invocationUid = this.invocationUid;
+            clone.response = this.response;
             clone.greatestCallId = this.greatestCallId;
-            clone.invocations.putAll(this.invocations);
 
             return clone;
         }
 
         LockOwnershipState getMemoizedResponse(LockEndpoint endpoint, UUID invocationUid, long callId) {
-            LockOwnershipState response = invocations.get(invocationUid);
-            if (response != null) {
+            if (invocationUid.equals(this.invocationUid)) {
                 return response;
-            } else if (callId < this.greatestCallId) {
+            }
+
+            if (this.greatestCallId >= callId) {
                 // We have already seen that the lock endpoint has made a more
                 // recent invocation after the given one. It means that
                 // the given operation is not valid anymore and we don't need
@@ -371,18 +366,20 @@ public class Lock extends BlockingResource<LockInvocationKey> implements Identif
             return null;
         }
 
-        void memoize(UUID invocationUid, long callId, LockOwnershipState lockOwnership) {
-            invocations.put(invocationUid, lockOwnership);
-            this.greatestCallId = Math.max(this.greatestCallId, callId);
-        }
+        void memoize(UUID invocationUid, long callId, LockOwnershipState response) {
+            if (this.greatestCallId >= callId) {
+                throw new IllegalArgumentException("invalid call id: " + callId + " greatest call id: " + greatestCallId);
+            }
 
-        void reset() {
-            invocations.clear();
+            this.invocationUid = invocationUid;
+            this.response = response;
+            this.greatestCallId = callId;
         }
 
         @Override
         public String toString() {
-            return "LockEndpointState{" + "greatestCallId=" + greatestCallId + ", invocations=" + invocations + '}';
+            return "LockEndpointState{" + "invocationUid=" + invocationUid + ", response=" + response + ", greatestCallId="
+                    + greatestCallId + '}';
         }
     }
 
