@@ -16,6 +16,11 @@
 
 package com.hazelcast.cp.internal.datastructures.atomicref;
 
+import com.hazelcast.cp.internal.datastructures.atomicref.fencedref.AttemptFenceFn;
+import com.hazelcast.cp.internal.datastructures.atomicref.fencedref.CASFencedValFn;
+import com.hazelcast.cp.internal.datastructures.atomicref.fencedref.FencedVal;
+import com.hazelcast.cp.internal.datastructures.atomicref.fencedref.GetFencedValFn;
+import com.hazelcast.cp.internal.datastructures.atomicref.fencedref.SetFencedValFn;
 import com.hazelcast.cp.internal.datastructures.atomicref.operation.ApplyOp;
 import com.hazelcast.cp.internal.datastructures.atomicref.operation.CompareAndSetOp;
 import com.hazelcast.cp.internal.datastructures.atomicref.operation.ContainsOp;
@@ -39,6 +44,11 @@ public final class AtomicRefDataSerializerHook implements DataSerializerHook {
     public static final int CONTAINS_OP = 4;
     public static final int GET_OP = 5;
     public static final int SET_OP = 6;
+    public static final int FENCED_VAL = 7;
+    public static final int ATTEMPT_FENCE_FN = 8;
+    public static final int CAS_FENCED_VAL_FN = 9;
+    public static final int GET_FENCED_VAL_FN = 10;
+    public static final int SET_FENCED_VAL_FN = 11;
 
 
     @Override
@@ -62,6 +72,16 @@ public final class AtomicRefDataSerializerHook implements DataSerializerHook {
                     return new GetOp();
                 case SET_OP:
                     return new SetOp();
+                case FENCED_VAL:
+                    return new FencedVal();
+                case ATTEMPT_FENCE_FN:
+                    return new AttemptFenceFn();
+                case CAS_FENCED_VAL_FN:
+                    return new CASFencedValFn();
+                case GET_FENCED_VAL_FN:
+                    return new GetFencedValFn();
+                case SET_FENCED_VAL_FN:
+                    return new SetFencedValFn();
                 default:
                     throw new IllegalArgumentException("Undefined type: " + typeId);
             }
