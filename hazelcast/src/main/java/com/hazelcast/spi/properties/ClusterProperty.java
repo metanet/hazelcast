@@ -264,7 +264,6 @@ public final class ClusterProperty {
             return RuntimeAvailableProcessors.get() >= 20 ? 4 : 3;
         }
     });
-    ;
 
     /**
      * Controls the number of socket input threads. By default it is the same as {@link #IO_THREAD_COUNT}.
@@ -486,6 +485,15 @@ public final class ClusterProperty {
      */
     public static final HazelcastProperty MAX_NO_HEARTBEAT_SECONDS
             = new HazelcastProperty("hazelcast.max.no.heartbeat.seconds", 60, SECONDS);
+
+    /**
+     * The number of heartbeat rounds for the master member to wait before checking network problems between
+     * cluster members after it receives a connection problem report from a member.
+     * 0 means this feature is disabled. If you want to enable it, it is recommended to set to at least 3
+     * otherwise the solution can take sub-optimal actions.
+     */
+    public static final HazelcastProperty PARTIAL_MEMBER_DISCONNECTION_DETECTION_HEARTBEAT_COUNT
+            = new HazelcastProperty("hazelcast.partial.member.disconnection.detection.heartbeat.count", 0);
 
     /**
      * Heartbeat failure detector type. Available options are:
