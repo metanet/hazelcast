@@ -16,12 +16,9 @@
 
 package com.hazelcast.internal.cluster.impl;
 
+import com.hazelcast.cluster.impl.MemberImpl;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.LifecycleEvent;
-import com.hazelcast.core.LifecycleListener;
-import com.hazelcast.cluster.impl.MemberImpl;
-import com.hazelcast.test.AssertTask;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
@@ -35,8 +32,8 @@ import org.junit.runner.RunWith;
 
 import java.util.concurrent.CountDownLatch;
 
-import static com.hazelcast.core.LifecycleEvent.LifecycleState.MERGED;
 import static com.hazelcast.cluster.impl.MemberImpl.NA_MEMBER_LIST_JOIN_VERSION;
+import static com.hazelcast.core.LifecycleEvent.LifecycleState.MERGED;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.F_ID;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.HEARTBEAT;
 import static com.hazelcast.internal.cluster.impl.ClusterDataSerializerHook.SPLIT_BRAIN_MERGE_VALIDATION;
@@ -99,19 +96,16 @@ public class MemberListJoinVersionTest extends HazelcastTestSupport {
                 .setProperty(MERGE_FIRST_RUN_DELAY_SECONDS.getName(), "5")
                 .setProperty(MERGE_NEXT_RUN_DELAY_SECONDS.getName(), "5");
 
-        final HazelcastInstance member1 = factory.newHazelcastInstance(config);
-        final HazelcastInstance member2 = factory.newHazelcastInstance(config);
-        final HazelcastInstance member3 = factory.newHazelcastInstance(config);
+        HazelcastInstance member1 = factory.newHazelcastInstance(config);
+        HazelcastInstance member2 = factory.newHazelcastInstance(config);
+        HazelcastInstance member3 = factory.newHazelcastInstance(config);
 
         assertClusterSizeEventually(3, member2);
 
-        final CountDownLatch mergeLatch = new CountDownLatch(1);
-        member3.getLifecycleService().addLifecycleListener(new LifecycleListener() {
-            @Override
-            public void stateChanged(LifecycleEvent event) {
-                if (event.getState() == MERGED) {
-                    mergeLatch.countDown();
-                }
+        CountDownLatch mergeLatch = new CountDownLatch(1);
+        member3.getLifecycleService().addLifecycleListener(event -> {
+            if (event.getState() == MERGED) {
+                mergeLatch.countDown();
             }
         });
 
@@ -136,12 +130,7 @@ public class MemberListJoinVersionTest extends HazelcastTestSupport {
         assertEquals(afterJoinVersionOnMember1, versionOnLocalMember3);
 
         assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member3));
-        assertTrueEventually(new AssertTask() {
-            @Override
-            public void run() {
-                assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member2));
-            }
-        });
+        assertTrueEventually(() -> assertMemberViewsAreSame(getMemberMap(member1), getMemberMap(member2)));
         assertJoinMemberListVersions(member1, member2, member3);
     }
 
