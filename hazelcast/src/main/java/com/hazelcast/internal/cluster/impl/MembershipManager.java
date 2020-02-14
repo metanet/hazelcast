@@ -74,6 +74,7 @@ import static com.hazelcast.spi.impl.executionservice.ExecutionService.ASYNC_EXE
 import static com.hazelcast.spi.properties.ClusterProperty.HEARTBEAT_INTERVAL_SECONDS;
 import static com.hazelcast.spi.properties.ClusterProperty.MASTERSHIP_CLAIM_TIMEOUT_SECONDS;
 import static com.hazelcast.spi.properties.ClusterProperty.MAX_NO_HEARTBEAT_SECONDS;
+import static com.hazelcast.spi.properties.ClusterProperty.PARTIAL_MEMBER_DISCONNECTION_RESOLUTION_ALGORITHM_TIMEOUT_SECONDS;
 import static com.hazelcast.spi.properties.ClusterProperty.PARTIAL_MEMBER_DISCONNECTION_DETECTION_HEARTBEAT_COUNT;
 import static java.lang.Math.min;
 import static java.lang.String.format;
@@ -93,7 +94,6 @@ import static java.util.stream.Collectors.toList;
 public class MembershipManager {
 
     private static final long FETCH_MEMBER_LIST_MILLIS = 5000;
-    private static final long PARTIAL_DISCONNECTIVITY_DETECTION_ALGORITHM_TIMEOUT_MILLIS = 5000;
     private static final String MASTERSHIP_CLAIM_EXECUTOR_NAME = "hz:cluster:mastership";
 
     private final Node node;
@@ -115,8 +115,8 @@ public class MembershipManager {
 
     private final Set<MemberImpl> suspectedMembers = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final int mastershipClaimTimeoutSeconds;
-    private final boolean partialDisconnectivityDetectionEnabled;
-    private final PartialDisconnectivityDetector partialDisconnectivityDetector;
+    private final boolean partialDisconnectionDetectionEnabled;
+    private final PartialDisconnectionHandler partialDisconnectionHandler;
 
     MembershipManager(Node node, ClusterServiceImpl clusterService, Lock clusterServiceLock) {
         this.node = node;
@@ -129,20 +129,20 @@ public class MembershipManager {
 
         int partialDisconnectionDetectionHeartbeatCount = node.getProperties().getInteger(
                 PARTIAL_MEMBER_DISCONNECTION_DETECTION_HEARTBEAT_COUNT);
-        this.partialDisconnectivityDetectionEnabled = partialDisconnectionDetectionHeartbeatCount > 0;
+        this.partialDisconnectionDetectionEnabled = partialDisconnectionDetectionHeartbeatCount > 0;
         long heartbeatIntervalMs = SECONDS.toMillis(node.getProperties().getInteger(HEARTBEAT_INTERVAL_SECONDS));
         long partialDisconnectivityDetectionIntervalMs =
                 partialDisconnectionDetectionHeartbeatCount * heartbeatIntervalMs;
         long heartbeatTimeoutMs = SECONDS.toMillis(node.getProperties().getInteger(MAX_NO_HEARTBEAT_SECONDS));
 
-        if (!partialDisconnectivityDetectionEnabled) {
+        if (!partialDisconnectionDetectionEnabled) {
             partialDisconnectivityDetectionIntervalMs = Long.MAX_VALUE;
         } else if (heartbeatTimeoutMs < partialDisconnectivityDetectionIntervalMs) {
             partialDisconnectivityDetectionIntervalMs = heartbeatTimeoutMs;
         }
 
-        this.partialDisconnectivityDetector = new PartialDisconnectivityDetector(partialDisconnectivityDetectionIntervalMs,
-                PARTIAL_DISCONNECTIVITY_DETECTION_ALGORITHM_TIMEOUT_MILLIS);
+        this.partialDisconnectionHandler = new PartialDisconnectionHandler(partialDisconnectivityDetectionIntervalMs,
+                node.getProperties().getInteger(PARTIAL_MEMBER_DISCONNECTION_RESOLUTION_ALGORITHM_TIMEOUT_SECONDS));
 
         registerThisMember();
     }
@@ -733,7 +733,7 @@ public class MembershipManager {
             logger.info("Removing " + member);
             clusterService.getClusterJoinManager().removeJoin(member.getAddress());
             clusterService.getClusterHeartbeatManager().removeMember(member);
-            partialDisconnectivityDetector.removeMember(member);
+            partialDisconnectionHandler.removeMember(member);
 
             MemberMap newMembers = MemberMap.cloneExcluding(currentMembers, member);
             setMembers(newMembers);
@@ -1253,10 +1253,10 @@ public class MembershipManager {
                                                                 .filter(Objects::nonNull)
                                                                 .collect(toList());
 
-        if (partialDisconnectivityDetector.update(sender, timestamp, suspectedMembers)) {
+        if (partialDisconnectionHandler.update(sender, timestamp, suspectedMembers)) {
             logger.warning("Received suspected members: " + suspectedMembers + " from " + sender);
             if (logger.isFineEnabled()) {
-                for (Entry<MemberImpl, Set<MemberImpl>> e : partialDisconnectivityDetector.getDisconnectivityMap().entrySet()) {
+                for (Entry<MemberImpl, Set<MemberImpl>> e : partialDisconnectionHandler.getDisconnections().entrySet()) {
                     logger.fine(e.getKey() + " is disconnected to: " + e.getValue());
                 }
             }
@@ -1264,7 +1264,7 @@ public class MembershipManager {
     }
 
     private boolean validateReceivedSuspectedMembers(MemberImpl sender, Collection<MemberInfo> suspectedMemberInfos) {
-        if (!partialDisconnectivityDetectionEnabled) {
+        if (!partialDisconnectionDetectionEnabled) {
             return false;
         } else if (!clusterService.isMaster()) {
             if (suspectedMemberInfos.size() > 0) {
@@ -1290,7 +1290,7 @@ public class MembershipManager {
     }
 
     void checkPartialDisconnectivity(long timestamp) {
-        if (!partialDisconnectivityDetectionEnabled) {
+        if (!partialDisconnectionDetectionEnabled) {
             return;
         } else if (!clusterService.isMaster()) {
             logger.severe("Cannot check disconnected members since I am not the master.");
@@ -1299,9 +1299,9 @@ public class MembershipManager {
 
         try {
             clusterServiceLock.lock();
-            if (partialDisconnectivityDetector.shouldCheckPartialDisconnectivity(timestamp)) {
-                Map<MemberImpl, Set<MemberImpl>> disconnectivityMap = partialDisconnectivityDetector.reset();
-                nodeEngine.getExecutionService().execute(ASYNC_EXECUTOR, new CheckPartialDisconnectivityTask(disconnectivityMap));
+            if (partialDisconnectionHandler.shouldResolvePartialDisconnections(timestamp)) {
+                Map<MemberImpl, Set<MemberImpl>> disconnections = partialDisconnectionHandler.reset();
+                nodeEngine.getExecutionService().execute(ASYNC_EXECUTOR, new ResolvePartialDisconnectionsTask(disconnections));
             }
         } finally {
             clusterServiceLock.unlock();
@@ -1312,8 +1312,8 @@ public class MembershipManager {
         return clusterService.getLocalMember();
     }
 
-    public boolean isPartialDisconnectivityDetectionEnabled() {
-        return partialDisconnectivityDetectionEnabled;
+    public boolean isPartialDisconnectionDetectionEnabled() {
+        return partialDisconnectionDetectionEnabled;
     }
 
     void reset() {
@@ -1322,7 +1322,7 @@ public class MembershipManager {
             memberMapRef.set(MemberMap.singleton(getLocalMember()));
             missingMembersRef.set(Collections.emptyMap());
             suspectedMembers.clear();
-            partialDisconnectivityDetector.reset();
+            partialDisconnectionHandler.reset();
         } finally {
             clusterServiceLock.unlock();
         }
@@ -1386,30 +1386,41 @@ public class MembershipManager {
         }
     }
 
-    private class CheckPartialDisconnectivityTask implements Runnable {
+    private class ResolvePartialDisconnectionsTask
+            implements Runnable {
 
-        final Map<MemberImpl, Set<MemberImpl>> disconnectivityMap;
+        final Map<MemberImpl, Set<MemberImpl>> disconnections;
 
-        CheckPartialDisconnectivityTask(Map<MemberImpl, Set<MemberImpl>> disconnectivityMap) {
-            this.disconnectivityMap = disconnectivityMap;
+        ResolvePartialDisconnectionsTask(Map<MemberImpl, Set<MemberImpl>> disconnections) {
+            this.disconnections = disconnections;
         }
 
         @Override
         public void run() {
             try {
-                Collection<MemberImpl> membersToRemove = partialDisconnectivityDetector
-                        .computeMembersToRemove(clusterService.getLocalMember(), clusterService.getMemberImpls(),
-                                disconnectivityMap);
-                for (MemberImpl member : membersToRemove) {
-                    String reason = format("Removing %s because it has disconnectivity with the cluster members!", member);
-                    logger.warning(reason);
-                    suspectMember(member, reason, true);
-                }
-            } catch (Exception e) {
-                logger.severe("Partial disconnectivity detection algorithm failed.", e);
+                Collection<MemberImpl> membersToRemove = partialDisconnectionHandler.resolve(disconnections);
                 clusterServiceLock.lock();
                 try {
-                    partialDisconnectivityDetector.reset();
+                    for (MemberImpl member : membersToRemove) {
+                        if (getMember(member.getAddress(), member.getUuid()) == null) {
+                            logger.warning("Won't remove partially disconnected members: " + membersToRemove);
+                            return;
+                        }
+                    }
+
+                    for (MemberImpl member : membersToRemove) {
+                        String reason = format("Removing %s because it has disconnected from some of the members!", member);
+                        logger.warning(reason);
+                        suspectMember(member, reason, true);
+                    }
+                } finally {
+                    clusterServiceLock.unlock();
+                }
+            } catch (Exception e) {
+                logger.severe("Partial disconnection resolution algorithm failed.", e);
+                clusterServiceLock.lock();
+                try {
+                    partialDisconnectionHandler.reset();
                 } finally {
                     clusterServiceLock.unlock();
                 }

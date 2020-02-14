@@ -496,6 +496,14 @@ public final class ClusterProperty {
             = new HazelcastProperty("hazelcast.partial.member.disconnection.detection.heartbeat.count", 0);
 
     /**
+     * The partial disconnectivity resolution mechanism uses a graph algorithm that finds a max-clique
+     * in non-polynomial time. Since it could take a lot of time to find a max-clique in a large graph,
+     * we use a timeout mechanism to stop execution of the algorithm.
+     */
+    public static final HazelcastProperty PARTIAL_MEMBER_DISCONNECTION_RESOLUTION_ALGORITHM_TIMEOUT_SECONDS
+            = new HazelcastProperty("hazelcast.partial.member.disconnection.resolution.algorithm.timeout.seconds", 5);
+
+    /**
      * Heartbeat failure detector type. Available options are:
      * <ul>
      * <li><code>deadline</code>:  A deadline based failure detector uses an absolute timeout

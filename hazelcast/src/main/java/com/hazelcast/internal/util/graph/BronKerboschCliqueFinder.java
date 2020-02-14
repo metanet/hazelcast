@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2008-2020, Hazelcast, Inc. All Rights Reserved.
+*  Original work Copyright (c) 2005-2020, by Ewgenij Proschak and Contributors.
+ * Modified work Copyright (c) 2020, Hazelcast, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,11 +26,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/**
- * This code is originally taken from
- * https://github.com/jgrapht/jgrapht/blob/master/jgrapht-core/src/main/java/org/jgrapht/alg/clique/BronKerboschCliqueFinder.java
- * which is licenced with Eclipse Public Licence 2.0.
- */
 public class BronKerboschCliqueFinder<V> {
 
     private final Graph<V> graph;

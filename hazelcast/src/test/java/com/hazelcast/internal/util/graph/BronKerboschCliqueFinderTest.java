@@ -44,26 +44,26 @@ import static org.junit.Assume.assumeFalse;
 public class BronKerboschCliqueFinderTest {
 
     @Test
-    public void testTwoDisconnectedVerticesIn4vertexGraph() {
-        testTwoDisconnectedVertices(4);
+    public void test2DisconnectedVerticesIn4vertexGraph() {
+        test2DisconnectedVertices(4);
     }
 
     @Test
-    public void testTwoDisconnectedVerticesIn50vertexGraph() {
-        testTwoDisconnectedVertices(50);
+    public void test2DisconnectedVerticesIn50vertexGraph() {
+        test2DisconnectedVertices(50);
     }
 
     @Test
-    public void testTwoDisconnectedVerticesIn100vertexGraph() {
-        testTwoDisconnectedVertices(100);
+    public void test2DisconnectedVerticesIn100vertexGraph() {
+        test2DisconnectedVertices(100);
     }
 
     @Test
-    public void testTwoDisconnectedVerticesIn250vertexGraph() {
-        testTwoDisconnectedVertices(250);
+    public void test2DisconnectedVerticesIn250vertexGraph() {
+        test2DisconnectedVertices(250);
     }
 
-    private void testTwoDisconnectedVertices(int vertexCount) {
+    private void test2DisconnectedVertices(int vertexCount) {
         List<String> vertices = IntStream.range(0, vertexCount).mapToObj(i -> "n" + i).collect(toList());
         Graph<String> graph = populateFullyConnectedGraph(vertices);
 
@@ -89,42 +89,42 @@ public class BronKerboschCliqueFinderTest {
     }
 
     @Test
-    public void testSplitInto4vertexLeftClique4vertexRightClique() {
+    public void testSplitInto4VertexLeftCliqueAnd4VertexRightClique() {
         testFullSplitInto2Cliques(8, 4);
     }
 
     @Test
-    public void testSplitInto8vertexLeftClique5vertexRightClique() {
+    public void testSplitInto8VertexLeftCliqueAnd5vertexRightClique() {
         testFullSplitInto2Cliques(8, 5);
     }
 
     @Test
-    public void testSplitInto25vertexLeftClique25vertexRightClique() {
+    public void testSplitInto25VertexLeftCliqueAnd25VertexRightClique() {
         testFullSplitInto2Cliques(50, 25);
     }
 
     @Test
-    public void testSplitInto15vertexLeftClique35vertexRightClique() {
+    public void testSplitInto15VertexLeftCliqueAnd35VertexRightClique() {
         testFullSplitInto2Cliques(50, 15);
     }
 
     @Test
-    public void testSplitInto50vertexLeftClique50vertexRightClique() {
+    public void testSplitInto50VertexLeftCliqueAnd50VertexRightClique() {
         testFullSplitInto2Cliques(100, 50);
     }
 
     @Test
-    public void testSplitInto75vertexLeftClique25vertexRightClique() {
+    public void testSplitInto75VertexLeftCliqueAnd25VertexRightClique() {
         testFullSplitInto2Cliques(100, 75);
     }
 
     @Test
-    public void testSplitInto125vertexLeftClique125vertexRightClique() {
+    public void testSplitInto125VertexLeftCliqueAnd125VertexRightClique() {
         testFullSplitInto2Cliques(250, 125);
     }
 
     @Test
-    public void testSplitInto100vertexLeftClique150vertexRightClique() {
+    public void testSplitInto100VertexLeftCliqueAnd150VertexRightClique() {
         testFullSplitInto2Cliques(250, 100);
     }
 
@@ -160,42 +160,42 @@ public class BronKerboschCliqueFinderTest {
     }
 
     @Test
-    public void test3VertexSubgraphDisconnectsFrom2VertexSubgraphIn10VertexGraph() {
+    public void test3VerticesDisconnectFrom2VerticesIn10VertexGraph() {
         testTwoDisconnectedSubgraphs(10, 3, 2);
     }
 
     @Test
-    public void test3VertexSubgraphDisconnectsFrom3VertexSubgraphIn10VertexGraph() {
+    public void test3VerticesDisconnectFrom3VerticesIn10VertexGraph() {
         testTwoDisconnectedSubgraphs(10, 3, 3);
     }
 
     @Test
-    public void test10VertexSubgraphDisconnectsFrom10VertexSubgraphIn50VertexGraph() {
+    public void test10VerticesDisconnectFrom10VerticesIn50VertexGraph() {
         testTwoDisconnectedSubgraphs(50, 10, 10);
     }
 
     @Test
-    public void test15VertexSubgraphDisconnectsFrom10VertexSubgraphIn50VertexGraph() {
+    public void test15VerticesDisconnectFrom10VerticesIn50VertexGraph() {
         testTwoDisconnectedSubgraphs(50, 15, 10);
     }
 
     @Test
-    public void test20VertexSubgraphDisconnectsFrom20VertexSubgraphIn100VertexGraph() {
+    public void test20VerticesDisconnectFrom20VerticesIn100VertexGraph() {
         testTwoDisconnectedSubgraphs(100, 20, 20);
     }
 
     @Test
-    public void test30VertexSubgraphDisconnectsFrom20VertexSubgraphIn100VertexGraph() {
+    public void test30VerticesDisconnectFrom20VerticesIn100VertexGraph() {
         testTwoDisconnectedSubgraphs(100, 30, 20);
     }
 
     @Test
-    public void test50VertexSubgraphDisconnectsFrom50VertexSubgraphIn250VertexGraph() {
+    public void test50VerticesDisconnectFrom50VerticesIn250VertexGraph() {
         testTwoDisconnectedSubgraphs(250, 50, 50);
     }
 
     @Test
-    public void test60VertexSubgraphDisconnectsFrom50VertexSubgraphIn250VertexGraph() {
+    public void test60VerticesDisconnectFrom50VerticesIn250VertexGraph() {
         testTwoDisconnectedSubgraphs(250, 60, 50);
     }
 

@@ -619,7 +619,7 @@ public class ClusterHeartbeatManager {
         try {
             MembersViewMetadata membersViewMetadata = clusterService.getMembershipManager().createLocalMembersViewMetadata();
             Collection<MemberInfo> suspectedMembers;
-            if (clusterService.getMembershipManager().isPartialDisconnectivityDetectionEnabled()
+            if (clusterService.getMembershipManager().isPartialDisconnectionDetectionEnabled()
                     && !clusterService.isMaster() && target.getAddress().equals(clusterService.getMasterAddress())) {
                 suspectedMembers = clusterService.getMembershipManager()
                                                  .getSuspectedMembers()
